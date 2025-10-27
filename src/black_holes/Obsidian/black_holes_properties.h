@@ -279,6 +279,9 @@ struct black_holes_props {
   /*! The wind speed of the quasar outflow */
   float quasar_wind_speed;
 
+  /*! Direction of quasar winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  int quasar_wind_dir;
+
   /*! f_acc for the quasar mode */
   float quasar_f_accretion;
 
@@ -286,7 +289,7 @@ struct black_holes_props {
   float quasar_coupling;
 
   /*! luminosity in system units above which to boost quasar eps_f quasar mode */
-  float quasar_luminosity_thresh;
+  double quasar_luminosity_thresh;
 
   /*! The disk wind efficiency from Benson & Babul 2009 */
   float adaf_disk_efficiency;
@@ -333,6 +336,9 @@ struct black_holes_props {
   /*! A multiplicative factor 0. < f < 1. to multiply E_inject in the ADAF mode */
   float adaf_kick_factor;
 
+  /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  int adaf_wind_dir;
+
   /*! How long to decouple black hole winds? */
   float adaf_decouple_time_factor;
 
@@ -366,6 +372,9 @@ struct black_holes_props {
   /*! How long to decouple black hole winds? */
   float slim_disk_decouple_time_factor;
 
+  /*! Direction of slim disk winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  int slim_disk_wind_dir;
+
   /*! Is the slim disk jet model active? */
   int slim_disk_jet_active;
 
@@ -381,14 +390,19 @@ struct black_holes_props {
   /*! The subgrid jet speed to set the accretion fraction */
   float jet_subgrid_velocity;
 
-  /*! Is the jet isotropic (=1) or along angular momentum (=0) */
-  int jet_is_isotropic;
+  /*! Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  int jet_launch_dir;
 
   /*! The minimum mass required before the jet will launch */
   float jet_minimum_reservoir_mass;
 
+<<<<<<< HEAD
   /*! Direction flag to kick the winds by default */
   int default_dir_flag;
+=======
+  /*! Above this luminosity in erg/s always launch a jet */
+  double lum_thresh_always_jet;
+>>>>>>> refs/remotes/origin/black_hole_spin
 
   /* ---- Properties of the repositioning model --- */
 
@@ -811,17 +825,25 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         (R / 16.f) * bp->A_sd * ((0.985f / (R + (5.f / 8.f) * bp->B_sd)) + 
                                 (0.015f / (R + (5.f / 8.f) * bp->C_sd)));
 
-  bp->jet_is_isotropic = 
-    parser_get_param_int(params, "ObsidianAGN:jet_is_isotropic");
+  bp->jet_launch_dir = 
+    parser_get_param_int(params, "ObsidianAGN:jet_launch_dir");
 
   bp->jet_minimum_reservoir_mass
       = parser_get_param_float(params, 
                                "ObsidianAGN:jet_minimum_reservoir_mass_Msun");
   bp->jet_minimum_reservoir_mass /= bp->mass_to_solar_mass;
 
+<<<<<<< HEAD
   /* 2 is along accreted angular momentum direction */
   bp->default_dir_flag =
       parser_get_opt_param_int(params, "ObsidianAGN:default_dir_flag", 2);
+=======
+  bp->lum_thresh_always_jet
+      = parser_get_opt_param_float(params, 
+                               "ObsidianAGN:lum_thresh_always_jet_1e45_erg_s", 0.f);
+  bp->lum_thresh_always_jet *= 1.e45 * units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
+      units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+>>>>>>> refs/remotes/origin/black_hole_spin
 
   /* We need to keep epsilon_r continuous over all M_dot,BH/M_dot,Edd */
   bp->epsilon_r = eta_at_slim_disk_boundary;
@@ -836,7 +858,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->quasar_luminosity_thresh = 
       parser_get_opt_param_float(params, "ObsidianAGN:quasar_luminosity_thresh_1e45_erg_s", 0.f);
   bp->quasar_luminosity_thresh *= units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
-      units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+      units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) * 1.e45;
   bp->slim_disk_coupling = parser_get_opt_param_float(params, 
       "ObsidianAGN:slim_disk_coupling", bp->quasar_coupling);
 
@@ -857,6 +879,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       parser_get_opt_param_float(params,
             "ObsidianAGN:quasar_decouple_time_factor", f_quasar_recouple);
 
+  bp->quasar_wind_dir = 
+    parser_get_param_int(params, "ObsidianAGN:quasar_wind_dir");
+
   bp->quasar_wind_mass_loading = bp->quasar_wind_momentum_flux * 
         fabs(bp->quasar_coupling) * bp->epsilon_r *
         (phys_const->const_speed_light_c / fabs(bp->quasar_wind_speed));
@@ -869,6 +894,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       "ObsidianAGN:slim_disk_wind_speed_km_s", 
       bp->quasar_wind_speed / bp->kms_to_internal);
   bp->slim_disk_wind_speed *= bp->kms_to_internal;
+
+  bp->slim_disk_wind_dir = 
+    parser_get_param_int(params, "ObsidianAGN:slim_disk_wind_dir");
 
   const double slim_disk_velocity_kpc_s = 
       (fabs(bp->slim_disk_wind_speed) / bp->kms_to_internal) * kpc_per_km;
@@ -910,6 +938,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   if (f_psi > 1.f) {
     error("adaf_f_quasar_psi must be <= 1.");
   }
+
+  bp->adaf_wind_dir = 
+    parser_get_param_int(params, "ObsidianAGN:adaf_wind_dir");
 
   float jet_subgrid_mass_loading
       = 2.f * bp->jet_efficiency *
@@ -1228,7 +1259,17 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             bp->epsilon_r);
     message("Black hole quasar coupling %g is boosted above Lbol>%g erg/s",
             bp->quasar_coupling, bp->quasar_luminosity_thresh * 
+<<<<<<< HEAD
 	    bp->conv_factor_energy_rate_to_cgs * 1.e45);
+=======
+	    bp->conv_factor_energy_rate_to_cgs);
+    }
+    if (bp->lum_thresh_always_jet > 0.f) {
+      message("Black hole jet mode always on above Lbol>%g erg/s",
+            bp->lum_thresh_always_jet * 
+	    bp->conv_factor_energy_rate_to_cgs);
+    }
+>>>>>>> refs/remotes/origin/black_hole_spin
     message("Black hole quasar wind speed is %g km/s",
             bp->quasar_wind_speed / bp->kms_to_internal);
     message("Black hole quasar mass loading (momentum) is %g", 
