@@ -50,6 +50,12 @@ enum BH_loading_types {
   BH_jet_mixed_loaded       /* A mix between momentum and energy loading */
 };
 
+enum thin_disc_regions {
+  TD_region_B, /*< Region B from Shakura & Sunyaev (1973) */
+  TD_region_C  /*< Region C from Shakura & Sunyaev (1973) */
+};
+
+
 /**
  * @brief Properties of black holes and AGN feedback in the EAGEL model.
  */
@@ -152,8 +158,91 @@ struct black_holes_props {
   /*! The spin of EVERY black hole */
   float fixed_spin;
 
+  /*! seed spin for evolution */
+  float subgrid_seed_spin;
+
   /*! Method to compute the dynamical time within the kernel */
   int dynamical_time_calculation_method;
+
+  /* ---- Black hole accretion disk parameters ---------- */
+
+  /*! Viscous alpha of the accretion disk, and various factors and powers
+      involving it. Here alpha_factor_x refers to alpha raised to the power of
+      x, expressed as e.g. 0549 if x is 0.549 (these are the decimal
+      expressions for powers of alpha that appear in accretion disk theory).
+      alpha_factor_x_inv refers to the inverse of a similar number, or
+      equivalently alpha raised to the power of -x. alpha_factor_x_inv_10 is
+      alpha * 10 raised to the power of -x, a combination that also often
+      appears in the literature.  */
+  float alpha_acc;
+  float alpha_acc_2;
+  float alpha_acc_2_inv;
+  float alpha_factor_01;
+  float alpha_factor_02;
+  float alpha_factor_08;
+  float alpha_factor_08_inv;
+  float alpha_factor_08_inv_10;
+  float alpha_factor_0549;
+  float alpha_factor_06222;
+
+  /* ---- BH disk warp parameters ---- */
+  /*! Gas-to-total pressure ratio of the accretion disk */
+  float beta_acc;
+  float beta_acc_inv;
+
+  /*! Critical accretion rate that separates two different states in the
+      thick disk regime, related to radiation */
+  float edd_crit_thick;
+
+  /*! Effective adiabatic index of the accretion disk */
+  float gamma_acc;
+
+  /*! Epsilon parameter of the ADAF (thick disk), which appears in
+      Narayan & Yi (1994, 1995) model */
+  float eps_ADAF;
+
+  /*! Numerical coefficient relating sound speed in ADAF (thick disk) to the
+      Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
+  float cs_0_ADAF;
+
+  /*! Numerical coefficient relating radial velocity in ADAF (thick disk) to
+   the Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
+  float v_0_ADAF;
+
+  /*! Numerical coefficient relating angular velocity in ADAF (thick disk) to
+      the Keplerian angular velocity, which appears in Narayan & Yi
+      (1994, 1995) model */
+  float omega_0_ADAF;
+
+  /*! Aspect ratio of the ADAF (thick disk), which appears in Narayan & Yi
+      (1994, 1995) model */
+  float h_0_ADAF;
+  float h_0_ADAF_2;
+
+  /*! Electron heating parameter of the ADAF (thick disk), which appears in
+      Narayan & Yi (1994, 1995) model */
+  float delta_ADAF;
+
+  /*! The gamma parameter of the slim disk, which appears in the Wang & Zhou
+      (1999) model */
+  float gamma_SD;
+  float gamma_SD_inv;
+
+  /*! The ratio of vertical to horizontal kinematic viscosity of the thin disk.
+      Note that we use the definition xi = nu_2 / nu_1, whereas xi =
+      (nu_2 / nu_1) * 2 * alpha^2 is often used, e.g. Fiacconi et al. (2018) */
+  float xi_TD;
+
+  /*! Which region of the thin disc (Shakura & Sunyaev) we are assuming the
+      subgrid accretion disk is represented as:
+       B - region b; gas pressure dominates over radiation pressure,
+                     electron scattering dominates the opacity
+       C - region c; gas pressure dominates over radiation pressure,
+                     free-free absorption dominates the opacity */
+
+  enum thin_disc_regions TD_region;
+
+
 
   /* ---- Properties of the feedback model ------- */
 
@@ -297,9 +386,6 @@ struct black_holes_props {
 
   /*! The minimum mass required before the jet will launch */
   float jet_minimum_reservoir_mass;
-
-  /*! Above this luminosity in erg/s always launch a jet */
-  float lum_thresh_always_jet;
 
   /*! Direction flag to kick the winds by default */
   int default_dir_flag;
@@ -462,6 +548,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   const double m_p = phys_const->const_proton_mass;
   const double mu = hydro_props->mu_ionised;
   bp->temp_to_u_factor = k_B / (mu * hydro_gamma_minus_one * m_p);
+
+  /* Get subgrid_seed_spin to initlialise BH spin on creation from a gas element */
+  bp->subgrid_seed_spin = parser_get_param_float(params, "ObsidianAGN:subgrid_seed_spin");
+  if ((bp->subgrid_seed_spin <= 0.) || (bp->subgrid_seed_spin > 1.)) {
+    error("The BH seed spin parameter must be strictly between 0 and 1, "
+        "not %f",
+        bp->subgrid_seed_spin);}
 
   /* Read in the basic neighbour search properties or default to the hydro
      ones if the user did not provide any different values */
@@ -726,12 +819,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
                                "ObsidianAGN:jet_minimum_reservoir_mass_Msun");
   bp->jet_minimum_reservoir_mass /= bp->mass_to_solar_mass;
 
-  bp->lum_thresh_always_jet
-      = parser_get_opt_param_float(params, 
-                               "ObsidianAGN:lum_thresh_always_jet_1e45_erg_s", 0.f);
-  bp->lum_thresh_always_jet *= units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
-      units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
-
   /* 2 is along accreted angular momentum direction */
   bp->default_dir_flag =
       parser_get_opt_param_int(params, "ObsidianAGN:default_dir_flag", 2);
@@ -747,7 +834,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->quasar_coupling = 
       parser_get_param_float(params, "ObsidianAGN:quasar_coupling");
   bp->quasar_luminosity_thresh = 
-      parser_get_opt_param_float(params, "ObsidianAGN:quasar_lum_thresh_1e45_erg_s", 0.f);
+      parser_get_opt_param_float(params, "ObsidianAGN:quasar_luminosity_thresh_1e45_erg_s", 0.f);
   bp->quasar_luminosity_thresh *= units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
       units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
   bp->slim_disk_coupling = parser_get_opt_param_float(params, 
@@ -1047,6 +1134,24 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->max_merging_distance_ratio =
       parser_get_param_float(params, "ObsidianAGN:merger_max_distance_ratio");
 
+  /* ---- BH spin factors -------*/
+  bp->h_0_ADAF_2 = 0.09;
+  bp->gamma_SD = sqrtf(5.);
+  bp->gamma_SD_inv = 1. / bp->gamma_SD; 
+  bp->xi_TD =2. * (1. + 7. * bp->alpha_acc_2) / (4. + bp->alpha_acc_2);
+
+  char temp4[PARSER_MAX_LINE_SIZE];
+  parser_get_param_string(params, "ObsidianAGN:TD_region", temp4);
+  if (strcmp(temp4, "B") == 0)
+    bp->TD_region = TD_region_B;
+  else if (strcmp(temp4, "C") == 0)
+    bp->TD_region = TD_region_C;
+  else
+    error("The choice of thin disc region must be B or C, not %s", temp4);
+
+  
+
+
   /* ---- Black hole time-step properties ------------------ */
 
   const double time_step_min_Myr = parser_get_opt_param_float(
@@ -1121,16 +1226,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g",
             bp->epsilon_r);
-    if (bp->quasar_luminosity_thresh > 0.f) {
-      message("Black hole quasar coupling %g is boosted above Lbol>%g erg/s",
+    message("Black hole quasar coupling %g is boosted above Lbol>%g erg/s",
             bp->quasar_coupling, bp->quasar_luminosity_thresh * 
 	    bp->conv_factor_energy_rate_to_cgs * 1.e45);
-    }
-    if (bp->lum_thresh_always_jet > 0.f) {
-      message("Black hole jet mode always on above Lbol>%g erg/s",
-            bp->lum_thresh_always_jet * 
-	    bp->conv_factor_energy_rate_to_cgs * 1.e45);
-    }
     message("Black hole quasar wind speed is %g km/s",
             bp->quasar_wind_speed / bp->kms_to_internal);
     message("Black hole quasar mass loading (momentum) is %g", 

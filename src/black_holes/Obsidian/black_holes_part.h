@@ -223,6 +223,18 @@ struct bpart {
   /*! Total (physical) angular momentum accumulated from subgrid accretion */
   float accreted_angular_momentum[3];
 
+  /*! direction of angular momentum */
+  float angular_momentum_direction[3];
+
+  /*! Jet efficiency */
+  float jet_efficiency;
+  
+  /*! direction of jets */
+  float jet_direction[3];
+
+  /*! apin evolution */
+  float spin;
+
   /*! Eddington fractions */
   float eddington_fraction;
 
