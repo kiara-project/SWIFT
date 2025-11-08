@@ -3,7 +3,7 @@
  * Copyright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
  *                    Matthieu Schaller (schaller@strw.leidenuniv.nl)
  *               2025 Doug Rennehan (douglas.rennehan@gmail.com)
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -40,9 +40,9 @@
  * @param list The list of i/o properties to read.
  * @param num_fields The number of i/o fields to read.
  */
-INLINE static void hydro_read_particles(struct part* parts,
-                                        struct io_props* list,
-                                        int* num_fields) {
+INLINE static void hydro_read_particles(struct part *parts,
+                                        struct io_props *list,
+                                        int *num_fields) {
   *num_fields = 8;
 
   /* List what we want to read */
@@ -64,27 +64,27 @@ INLINE static void hydro_read_particles(struct part* parts,
                                 UNIT_CONV_DENSITY, parts, rho);
 }
 
-INLINE static void convert_S(const struct engine* e, const struct part* p,
-                             const struct xpart* xp, float* ret) {
+INLINE static void convert_S(const struct engine *e, const struct part *p,
+                             const struct xpart *xp, float *ret) {
   ret[0] = hydro_get_comoving_entropy(p, xp);
 }
 
-INLINE static void convert_P(const struct engine* e, const struct part* p,
-                             const struct xpart* xp, float* ret) {
+INLINE static void convert_P(const struct engine *e, const struct part *p,
+                             const struct xpart *xp, float *ret) {
   ret[0] = hydro_get_comoving_pressure(p);
 }
 
-INLINE static void convert_div_v(const struct engine* e, const struct part* p,
-                                 const struct xpart* xp, float* ret) {
+INLINE static void convert_div_v(const struct engine *e, const struct part *p,
+                                 const struct xpart *xp, float *ret) {
   ret[0] = p->gradients.velocity_tensor[0][0] +
            p->gradients.velocity_tensor[1][1] +
            p->gradients.velocity_tensor[2][2];
 }
 
-INLINE static void convert_part_pos(const struct engine* e,
-                                    const struct part* p,
-                                    const struct xpart* xp, double* ret) {
-  const struct space* s = e->s;
+INLINE static void convert_part_pos(const struct engine *e,
+                                    const struct part *p,
+                                    const struct xpart *xp, double *ret) {
+  const struct space *s = e->s;
   if (s->periodic) {
     ret[0] = box_wrap(p->x[0], 0.0, s->dim[0]);
     ret[1] = box_wrap(p->x[1], 0.0, s->dim[1]);
@@ -101,11 +101,11 @@ INLINE static void convert_part_pos(const struct engine* e,
   }
 }
 
-INLINE static void convert_part_vel(const struct engine* e,
-                                    const struct part* p,
-                                    const struct xpart* xp, float* ret) {
+INLINE static void convert_part_vel(const struct engine *e,
+                                    const struct part *p,
+                                    const struct xpart *xp, float *ret) {
   const int with_cosmology = (e->policy & engine_policy_cosmology);
-  const struct cosmology* cosmo = e->cosmology;
+  const struct cosmology *cosmo = e->cosmology;
   const integertime_t ti_current = e->ti_current;
   const double time_base = e->time_base;
   const float dt_kick_grav_mesh = e->dt_kick_grav_mesh_for_io;
@@ -152,23 +152,22 @@ INLINE static void convert_part_vel(const struct engine* e,
   ret[2] *= cosmo->a_inv;
 }
 
-INLINE static void convert_part_potential(const struct engine* e,
-                                          const struct part* p,
-                                          const struct xpart* xp, float* ret) {
+INLINE static void convert_part_potential(const struct engine *e,
+                                          const struct part *p,
+                                          const struct xpart *xp, float *ret) {
   if (p->gpart != NULL)
     ret[0] = gravity_get_comoving_potential(p->gpart);
   else
     ret[0] = 0.f;
 }
 
-INLINE static void convert_part_softening(const struct engine* e,
-                                          const struct part* p,
-                                          const struct xpart* xp, float* ret) {
+INLINE static void convert_part_softening(const struct engine *e,
+                                          const struct part *p,
+                                          const struct xpart *xp, float *ret) {
   if (p->gpart != NULL) {
     ret[0] = kernel_gravity_softening_plummer_equivalent_inv *
              gravity_get_softening(p->gpart, e->gravity_properties);
-  }
-  else {
+  } else {
     ret[0] = 0.f;
   }
 }
@@ -180,10 +179,10 @@ INLINE static void convert_part_softening(const struct engine* e,
  * @param list The list of i/o properties to write.
  * @param num_fields The number of i/o fields to write.
  */
-INLINE static void hydro_write_particles(const struct part* parts,
-                                         const struct xpart* xparts,
-                                         struct io_props* list,
-                                         int* num_fields) {
+INLINE static void hydro_write_particles(const struct part *parts,
+                                         const struct xpart *xparts,
+                                         struct io_props *list,
+                                         int *num_fields) {
   *num_fields = 0;
   int num = 0;
 
@@ -200,9 +199,8 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "co-moving positions of the particles");
   num++;
 
-  list[num] = io_make_output_field(
-      "Masses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, mass, 
-      "Masses of the particles");
+  list[num] = io_make_output_field("Masses", FLOAT, 1, UNIT_CONV_MASS, 0.f,
+                                   parts, mass, "Masses of the particles");
   num++;
 
   list[num] = io_make_output_field(
@@ -221,9 +219,9 @@ INLINE static void hydro_write_particles(const struct part* parts,
       /*can convert to comoving=*/0, "Unique IDs of the particles");
   num++;
 
-  list[num] = io_make_output_field(
-      "Densities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f, parts, rho,
-      "Co-moving mass densities of the particles");
+  list[num] = io_make_output_field("Densities", FLOAT, 1, UNIT_CONV_DENSITY,
+                                   -3.f, parts, rho,
+                                   "Co-moving mass densities of the particles");
   num++;
 
   list[num] = io_make_output_field_convert_part(
@@ -285,27 +283,26 @@ INLINE static void hydro_write_particles(const struct part* parts,
   */
 
 #ifdef MAGMA2_DEBUG_CHECKS
-  list[num] = io_make_output_field(
-      "NumberOfNeighbours", INT, 1, UNIT_CONV_NO_UNITS, 
-      0.f, parts, debug.num_ngb,
-      "Number of neighbours.");
+  list[num] =
+      io_make_output_field("NumberOfNeighbours", INT, 1, UNIT_CONV_NO_UNITS,
+                           0.f, parts, debug.num_ngb, "Number of neighbours.");
   num++;
 
   list[num] = io_make_output_field(
-      "LowOrderGradientsCount", INT, 1, UNIT_CONV_NO_UNITS, 
-      0.f, parts, debug.N_force_low_order_grad,
+      "LowOrderGradientsCount", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      debug.N_force_low_order_grad,
       "Cumulative number of low order gradient force interactions.");
   num++;
 
   list[num] = io_make_output_field(
-      "HighOrderGradientsCount", INT, 1, UNIT_CONV_NO_UNITS, 
-      0.f, parts, debug.N_force_high_order_grad,
+      "HighOrderGradientsCount", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      debug.N_force_high_order_grad,
       "Cumulative number of high order gradient force interactions.");
   num++;
 
   list[num] = io_make_output_field(
-      "CorrectionMatrices", FLOAT, 9, UNIT_CONV_LENGTH * UNIT_CONV_LENGTH, 
-      2.f, parts, debug.correction_matrix,
+      "CorrectionMatrices", FLOAT, 9, UNIT_CONV_LENGTH * UNIT_CONV_LENGTH, 2.f,
+      parts, debug.correction_matrix,
       "Co-moving correction matrices for the particles.");
   num++;
 
@@ -316,41 +313,42 @@ INLINE static void hydro_write_particles(const struct part* parts,
   num++;
 
   list[num] = io_make_output_field(
-      "VelocityGradientNumeratorMatrices", FLOAT, 9, 
-      UNIT_CONV_DENSITY * UNIT_CONV_SPEED / UNIT_CONV_LENGTH,
-      -5.f, parts, debug.velocity_tensor_aux,
+      "VelocityGradientNumeratorMatrices", FLOAT, 9,
+      UNIT_CONV_DENSITY * UNIT_CONV_SPEED / UNIT_CONV_LENGTH, -5.f, parts,
+      debug.velocity_tensor_aux,
       "Co-moving numerator matrices for the particles.");
   num++;
 
   list[num] = io_make_output_field(
-      "VelocityGradientDenominatorMatrices", FLOAT, 9, UNIT_CONV_DENSITY,
-      -3.f, parts, debug.velocity_tensor_aux_norm,
+      "VelocityGradientDenominatorMatrices", FLOAT, 9, UNIT_CONV_DENSITY, -3.f,
+      parts, debug.velocity_tensor_aux_norm,
       "Co-moving denominator matrices for the particles.");
   num++;
 
   list[num] = io_make_output_field(
-      "VelocityGradientIllConditionedCounts", INT, 1, UNIT_CONV_NO_UNITS, 
-      0.f, parts, debug.D_ill_conditioned_count,
+      "VelocityGradientIllConditionedCounts", INT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      parts, debug.D_ill_conditioned_count,
       "Count for how many times this particle had an ill-conditioned D matrix");
   num++;
 
   list[num] = io_make_output_field(
-      "SpecificEnergyGradientNumerators", FLOAT, 3, 
+      "SpecificEnergyGradientNumerators", FLOAT, 3,
       UNIT_CONV_DENSITY * UNIT_CONV_ENERGY_PER_UNIT_MASS / UNIT_CONV_LENGTH,
       -6.f, parts, debug.u_aux,
       "Co-moving specific energy numerator matrices for the particles.");
   num++;
 
   list[num] = io_make_output_field(
-      "SpecificEnergyGradientDenominators", FLOAT, 3, UNIT_CONV_DENSITY,
-      -3.f, parts, debug.u_aux,
+      "SpecificEnergyGradientDenominators", FLOAT, 3, UNIT_CONV_DENSITY, -3.f,
+      parts, debug.u_aux,
       "Co-moving specific energy gradient numerator for the particles.");
   num++;
 
-  list[num] = io_make_output_field(
-      "SpecificEnergyIllConditionedCounts", INT, 1, UNIT_CONV_NO_UNITS, 
-      0.f, parts, debug.u_ill_conditioned_count,
-      "Count for how many times this particle had an ill-conditioned u_aux_norm");
+  list[num] = io_make_output_field("SpecificEnergyIllConditionedCounts", INT, 1,
+                                   UNIT_CONV_NO_UNITS, 0.f, parts,
+                                   debug.u_ill_conditioned_count,
+                                   "Count for how many times this particle had "
+                                   "an ill-conditioned u_aux_norm");
   num++;
 #endif
 
