@@ -550,6 +550,7 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->rho_gradient[1] = 0.f;
   p->rho_gradient[2] = 0.f;
   p->density.rho_dh = 0.f;
+  p->density.div_v = 0.f;
 #ifdef MAGMA2_DEBUG_CHECKS
   p->debug.num_ngb = 0;
 #endif
@@ -1421,6 +1422,12 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   p->density.wcount *= h_inv_dim;
   p->density.wcount_dh *= h_inv_dim_plus_one;
 
+  /* Finish calculation of the velocity divergence */
+  const float rho_inv = 1.f / p->rho;
+  const float a_inv2 = cosmo->a2_inv;
+  p->density.div_v *= h_inv_dim_plus_one * rho_inv * a_inv2;
+  p->density.div_v += cosmo->H * hydro_dimension;
+
   /* Need this for correct dh/dt */
   p->gradients.wcount = p->density.wcount;
 
@@ -1857,7 +1864,7 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
   p->density.wcount = kernel_root * h_inv_dim;
   p->density.rho_dh = 0.f;
   p->density.wcount_dh = 0.f;
-
+  p->density.div_v = 0.f;
 #ifdef MAGMA2_DEBUG_CHECKS
   p->debug.num_ngb = 0;
 #endif

@@ -90,15 +90,24 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 
   adaptive_softening_add_correction_term(pj, xj, hj_inv, mi);
 
+  /* Now we need to compute the div terms */
+  const hydro_real_t r_inv = r ? 1.0 / r : 0.0;
+  const hydro_real_t faci = mj * wi_dx * r_inv;
+  const hydro_real_t facj = mi * wj_dx * r_inv;
+
+  /* Compute dv dot r */
+  const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
+                              pi->v[2] - pj->v[2]};
+  const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
+
+  pi->density.div_v -= faci * dvdr;
+  pj->density.div_v -= facj * dvdr;
+
   /* For slope limiter */
   pi->gradients.kernel_size = fmax(r, pi->gradients.kernel_size);
   pj->gradients.kernel_size = fmax(r, pj->gradients.kernel_size);
 
   /* Now we need to compute the derivative terms */
-  const hydro_real_t r_inv = r ? 1.0 / r : 0.0;
-  const hydro_real_t faci = mj * wi_dx * r_inv;
-  const hydro_real_t facj = mi * wj_dx * r_inv;
-
   /* Equations 19 & 20 in Rosswog 2020. Compute the internal energy auxiliary
    * vector and norm for the gradient */
   const hydro_real_t du = pi->u - pj->u;
@@ -125,9 +134,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->gradients.u_aux_norm[0] += dx[0] * dx[0] * facj;
   pj->gradients.u_aux_norm[1] += dx[1] * dx[1] * facj;
   pj->gradients.u_aux_norm[2] += dx[2] * dx[2] * facj;
-
-  const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
-                              pi->v[2] - pj->v[2]};
 
   /* Equations 19 & 20 in Rosswog 2020. Signs are all positive because
    * dv * dx always results in a positive sign. */
@@ -204,11 +210,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
 
   adaptive_softening_add_correction_term(pi, xi, h_inv, mj);
 
-  /* For slope limiter */
-  pi->gradients.kernel_size = fmax(r, pi->gradients.kernel_size);
-
   const hydro_real_t r_inv = r ? 1.0 / r : 0.0;
   const hydro_real_t faci = mj * wi_dx * r_inv;
+
+  /* Compute dv dot r */
+  const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
+                              pi->v[2] - pj->v[2]};
+  const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
+  pi->density.div_v -= faci * dvdr;
+
+  /* For slope limiter */
+  pi->gradients.kernel_size = fmax(r, pi->gradients.kernel_size);
 
   /* Equations 19 & 20 in Rosswog 2020. Compute the internal energy auxiliary
    * vector and norm for the gradient */
@@ -225,9 +237,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->gradients.u_aux_norm[0] += dx[0] * dx[0] * faci;
   pi->gradients.u_aux_norm[1] += dx[1] * dx[1] * faci;
   pi->gradients.u_aux_norm[2] += dx[2] * dx[2] * faci;
-
-  const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
-                              pi->v[2] - pj->v[2]};
 
   /* Equations 19 & 20 in Rosswog 2020. Signs are all positive because
    * dv * dx always results in a positive sign. */

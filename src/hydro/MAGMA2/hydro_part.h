@@ -270,6 +270,8 @@ struct part {
       /*! Derivative of density with respect to h */
       float rho_dh;
 
+      /*! Particle velocity divergence. */
+      float div_v;
     } density;
 
     /**
