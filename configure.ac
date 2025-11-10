@@ -2279,6 +2279,9 @@ case "$with_hydro" in
    gasoline)
       AC_DEFINE([GASOLINE_SPH], [1], [Gasoline SPH])
    ;;
+   magma2)
+      AC_DEFINE([MAGMA2_SPH], [1], [MAGMA2 SPH])
+   ;;
    anarchy-pu)
       AC_DEFINE([ANARCHY_PU_SPH], [1], [ANARCHY (PU) SPH])
    ;;
