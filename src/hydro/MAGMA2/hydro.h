@@ -447,8 +447,6 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     const struct hydro_props *restrict hydro_properties,
     const struct cosmology *restrict cosmo) {
 
-  // if (p->dt_min == 0.f || p->decoupled ||
-  // p->feedback_data.decoupling_delay_time > 0.f) return FLT_MAX;
   if (p->dt_min == 0.f) return FLT_MAX;
 
   /* Use full kernel support and physical time */
@@ -1846,14 +1844,6 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
   const float h_inv = 1.0f / h;                 /* 1/h */
   const float h_inv_dim = pow_dimension(h_inv); /* 1/h^d */
 
-  /* Decoupled particles might have no neighbours */
-  if (!p->decoupled) {
-    warning(
-        "Gas particle with ID %lld treated as having no neighbours (h: %g, "
-        "wcount: %g).",
-        p->id, h, p->density.wcount);
-  }
-
   /* Re-set problematic values */
   p->rho = p->mass * kernel_root * h_inv_dim;
   p->rho_gradient[0] = 0.f;
@@ -2038,9 +2028,6 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     const struct entropy_floor_properties *floor_props,
     const struct pressure_floor_props *pressure_floor) {
 
-  /* Wind particles do not need the extra predict evolution */
-  if (p->decoupled) return;
-
   /* Predict the internal energy */
   p->u += p->u_dt * dt_therm;
 
@@ -2194,9 +2181,6 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     const struct cosmology *cosmo, const struct hydro_props *hydro_props,
     const struct entropy_floor_properties *floor_props) {
 
-  /* Wind particles do not need the extra kick evolution */
-  if (p->decoupled) return;
-
   /* Integrate the internal energy forward in time */
   const float delta_u = p->u_dt * dt_therm;
 
@@ -2308,13 +2292,10 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
     p->debug.velocity_tensor_aux_norm[i][2] = 0.;
   }
 #endif
+  p->decoupled = 0;
 
   hydro_reset_acceleration(p);
   hydro_init_part(p, NULL);
-
-  p->decoupled = 0;
-  p->to_be_decoupled = 0;
-  p->to_be_recoupled = 0;
 }
 
 /**

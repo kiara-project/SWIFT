@@ -254,34 +254,6 @@ INLINE static void hydro_write_particles(const struct part *parts,
       "Co-moving gravitational Plummer-equivalent softenings of the particles");
   num++;
 
-  /*
-  list[num] = io_make_output_field(
-      "NumberOfTimesDecoupled", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
-      feedback_data.number_of_times_decoupled,
-      "The integer number of times a particle was decoupled from "
-      "the hydro.  Black hole wind events are encoded in thousands, "
-      "jet events in hundreds of thousands.");
-  num++;
-
-  list[num] = io_make_output_field(
-      "DecouplingDelayTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
-      feedback_data.decoupling_delay_time,
-      "Time remaining until the particle recouples to the hydro.");
-  num++;
-
-  list[num] = io_make_output_field(
-      "CoolingShutOffTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
-      feedback_data.cooling_shutoff_delay_time,
-      "Time remaining until cooling is allowed again.");
-  num++;
-
-  list[num] = io_make_output_field(
-      "InternalEnergiesDt", FLOAT, 1, UNIT_CONV_U_DT,
-      -3.f * hydro_gamma_minus_one, parts, u_dt,
-      "Comoving rate of change of specific thermal energy (u_dt).");
-  num++;
-  */
-
 #ifdef MAGMA2_DEBUG_CHECKS
   list[num] =
       io_make_output_field("NumberOfNeighbours", INT, 1, UNIT_CONV_NO_UNITS,

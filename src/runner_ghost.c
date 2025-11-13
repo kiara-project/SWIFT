@@ -1207,7 +1207,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
           hydro_end_density(p, cosmo);
           adaptive_softening_end_density(p, e->gravity_properties);
           mhd_end_density(p, cosmo);
-          chemistry_end_density(p, chemistry, cosmo);
+          chemistry_end_density(p, xp, chemistry, cosmo);
           star_formation_end_density(p, xp, star_formation, cosmo);
 
           /* Are we using the alternative definition of the
