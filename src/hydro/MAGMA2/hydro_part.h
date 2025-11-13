@@ -297,15 +297,6 @@ struct part {
     } force;
   };
 
-  /*! Flag for decoupling from the hydrodynamics/feedback routines */
-  unsigned char decoupled;
-
-  /*! Flag to indicate that the decoupling task will run */
-  unsigned char to_be_decoupled;
-
-  /*! Flag to indicate that the recoupling task will run */
-  unsigned char to_be_recoupled;
-
   /*! Additional data used for adaptive softening */
   struct adaptive_softening_part_data adaptive_softening_data;
 
@@ -320,11 +311,6 @@ struct part {
 
   /*! Additional data used by the feedback */
   struct feedback_part_data feedback_data;
-
-#ifdef WITH_FOF_GALAXIES
-  /*! Additional data used by the FoF */
-  struct galaxy_data galaxy_data;
-#endif
 
   /*! Black holes information (e.g. swallowing ID) */
   struct black_holes_part_data black_holes_data;
@@ -352,6 +338,9 @@ struct part {
 
   /*! Time-step limiter information */
   struct timestep_limiter_data limiter_data;
+
+  /*! Flag to indicate particle is decoupled */
+  int decoupled;
 
 #ifdef SWIFT_DEBUG_CHECKS
 

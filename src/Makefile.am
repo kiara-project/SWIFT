@@ -170,6 +170,18 @@ SPHM1RT_RT_SOURCES += rt/SPHM1RT/rt_rate_equations.c
 SPHM1RT_RT_SOURCES += rt/SPHM1RT/rt_cooling.c
 endif
 
+# source files for KIARA cooling
+KIARA_COOLING_SOURCES =
+if HAVEKIARACOOLING
+KIARA_COOLING_SOURCES += cooling/KIARA/cooling.c 
+endif
+
+# source files for KIARA feedback
+KIARA_FEEDBACK_SOURCES =
+if HAVEKIARAFEEDBACK
+KIARA_FEEDBACK_SOURCES += feedback/KIARA/feedback.c
+endif
+
 # Common source files
 AM_SOURCES = space.c space_rebuild.c space_regrid.c space_unique_id.c
 AM_SOURCES += space_sort.c space_split.c space_extras.c space_first_init.c space_init.c
@@ -219,6 +231,7 @@ AM_SOURCES += $(AGORA_FEEDBACK_SOURCES)
 AM_SOURCES += $(PS2020_COOLING_SOURCES)
 AM_SOURCES += $(SPHM1RT_RT_SOURCES)
 AM_SOURCES += $(GEAR_RT_SOURCES)
+AM_SOURCES += $(KIARA_COOLING_SOURCES) # $(KIARA_FEEDBACK_SOURCES)
 AM_SOURCES += swift_lustre_api.c
 
 # Include files for distribution, not installation.
@@ -423,6 +436,8 @@ nobase_noinst_HEADERS += cooling/PS2020/cooling.h cooling/PS2020/cooling_struct.
 nobase_noinst_HEADERS += cooling/PS2020/cooling_io.h cooling/PS2020/interpolate.h cooling/PS2020/cooling_rates.h
 nobase_noinst_HEADERS += cooling/PS2020/cooling_tables.h cooling/PS2020/cooling_subgrid.h
 nobase_noinst_HEADERS += cooling/PS2020/cooling_properties.h cooling/PS2020/cooling_debug.h
+nobase_noinst_HEADERS += cooling/KIARA/cooling.h cooling/KIARA/cooling_struct.h
+nobase_noinst_HEADERS += cooling/KIARA/cooling_io.h cooling/KIARA/cooling_properties.h cooling/KIARA/cooling_debug.h
 nobase_noinst_HEADERS += chemistry/none/chemistry.h
 nobase_noinst_HEADERS += chemistry/none/chemistry_additions.h
 nobase_noinst_HEADERS += chemistry/none/chemistry_io.h
@@ -486,6 +501,9 @@ nobase_noinst_HEADERS += feedback/GEAR/feedback_properties.h feedback/GEAR/feedb
 nobase_noinst_HEADERS += feedback/GEAR/initial_mass_function.h feedback/GEAR/supernovae_ia.h feedback/GEAR/supernovae_ii.h
 nobase_noinst_HEADERS += feedback/GEAR/lifetime.h feedback/GEAR/hdf5_functions.h feedback/GEAR/interpolation.h
 nobase_noinst_HEADERS += feedback/GEAR/feedback_debug.h
+#nobase_noinst_HEADERS += feedback/KIARA/feedback.h feedback/KIARA/feedback_struct.h
+#nobase_noinst_HEADERS += feedback/KIARA/feedback_properties.h feedback/KIARA/feedback_iact.h
+#nobase_noinst_HEADERS += feedback/KIARA/feedback_debug.h
 nobase_noinst_HEADERS += black_holes/Default/black_holes.h black_holes/Default/black_holes_io.h
 nobase_noinst_HEADERS += black_holes/Default/black_holes_part.h black_holes/Default/black_holes_iact.h
 nobase_noinst_HEADERS += black_holes/Default/black_holes_properties.h

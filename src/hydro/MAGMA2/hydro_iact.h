@@ -50,10 +50,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
     struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
-  const unsigned char decoupled_i = pi->decoupled;
-  const unsigned char decoupled_j = pj->decoupled;
-  if ((decoupled_i && !decoupled_j) || (!decoupled_i && decoupled_j)) return;
-
   /* Kernel weights to be filled */
   float wi, wj, wi_dx, wj_dx;
 
@@ -185,10 +181,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
     struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
 
-  const unsigned char decoupled_i = pi->decoupled;
-  const unsigned char decoupled_j = pj->decoupled;
-  if ((decoupled_i && !decoupled_j) || (!decoupled_i && decoupled_j)) return;
-
   /* Kernel weights to be filled */
   float wi, wi_dx;
 
@@ -283,10 +275,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
-
-  const unsigned char decoupled_i = pi->decoupled;
-  const unsigned char decoupled_j = pj->decoupled;
-  if (decoupled_i || decoupled_j) return;
 
   /* Get particle properties */
   const hydro_real_t mi = hydro_get_mass(pi);
@@ -410,10 +398,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
-  const unsigned char decoupled_i = pi->decoupled;
-  const unsigned char decoupled_j = pj->decoupled;
-  if (decoupled_i || decoupled_j) return;
-
   /* Get particle properties */
   const hydro_real_t mj = hydro_get_mass(pj);
   const hydro_real_t rhoi = hydro_get_comoving_density(pi);
@@ -504,10 +488,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
-
-  const unsigned char decoupled_i = pi->decoupled;
-  const unsigned char decoupled_j = pj->decoupled;
-  if (decoupled_i || decoupled_j) return;
 
   /* Cosmological factors entering the EoMs */
   const hydro_real_t fac_mu = pow_three_gamma_minus_five_over_two(a);
@@ -959,6 +939,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 #endif
   }
 
+  /* If one or both are decoupled they do not contribute to accel or u_dt */
+  if (pi->decoupled || pj->decoupled) return;
+
   /* Get the time derivative for v. */
 
   /* Assemble the acceleration */
@@ -1006,10 +989,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
-
-  const unsigned char decoupled_i = pi->decoupled;
-  const unsigned char decoupled_j = pj->decoupled;
-  if (decoupled_i || decoupled_j) return;
 
   /* Cosmological factors entering the EoMs */
   const hydro_real_t fac_mu = pow_three_gamma_minus_five_over_two(a);
@@ -1445,6 +1424,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     pi->debug.N_force_low_order_grad++;
 #endif
   }
+
+  /* If one or both are decoupled they do not contribute to accel or u_dt */
+  if (pi->decoupled || pj->decoupled) return;
 
   /* Assemble the acceleration */
   const hydro_real_t acc[3] = {

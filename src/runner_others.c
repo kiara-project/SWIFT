@@ -132,6 +132,7 @@ void runner_do_cooling(struct runner *r, struct cell *c, int timer) {
   const struct hydro_props *hydro_props = e->hydro_properties;
   const struct entropy_floor_properties *entropy_floor_props = e->entropy_floor;
   const struct pressure_floor_props *pressure_floor = e->pressure_floor_props;
+  const struct fof_props *fof_props = e->fof_properties;
   const double time_base = e->time_base;
   const integertime_t ti_current = e->ti_current;
   struct part *restrict parts = c->hydro.parts;
@@ -180,7 +181,7 @@ void runner_do_cooling(struct runner *r, struct cell *c, int timer) {
 
         /* Let's cool ! */
         cooling_cool_part(constants, us, cosmo, hydro_props,
-                          entropy_floor_props, pressure_floor, cooling_func, p,
+                          entropy_floor_props, pressure_floor, cooling_func, fof_props, p,
                           xp, dt_cool, dt_therm, time);
       }
     }
@@ -733,7 +734,7 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
         hydro_end_force(p, cosmo);
         mhd_end_force(p, cosmo);
         timestep_limiter_end_force(p);
-        chemistry_end_force(p, cosmo, with_cosmology, e->time, dt,
+        chemistry_end_force(p, xp, cosmo, with_cosmology, e->time, dt,
                             e->chemistry);
 
         /* Apply the forcing terms (if any) */
