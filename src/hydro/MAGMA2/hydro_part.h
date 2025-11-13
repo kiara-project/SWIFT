@@ -78,7 +78,7 @@ struct xpart {
   /* Additional data used by the tracers */
   struct tracers_xpart_data tracers_data;
 
-  /* Additional data used by the tracers */
+  /* Additional data used by the SF routines */
   struct star_formation_xpart_data sf_data;
 
   /* Additional data used by the feedback */
@@ -316,7 +316,7 @@ struct part {
   struct black_holes_part_data black_holes_data;
 
   /* Additional data used by the SF routines */
-  struct star_formation_xpart_data sf_data;
+  struct star_formation_part_data sf_data;
 
   /*! Sink information (e.g. swallowing ID) */
   struct sink_part_data sink_data;

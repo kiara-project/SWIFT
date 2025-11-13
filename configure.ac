@@ -2195,34 +2195,6 @@ case "$with_subgrid" in
 	enable_fof=yes
         enable_fof_galaxies=no
    ;;
-   SIMBA)
-	with_subgrid_cooling=SIMBA
-	with_subgrid_chemistry=EAGLE
-	with_subgrid_tracers=EAGLE
-	with_subgrid_entropy_floor=SIMBA
-	with_subgrid_stars=EAGLE
-	with_subgrid_star_formation=SIMBA
-	with_subgrid_feedback=SIMBA
-	with_subgrid_black_holes=SIMBA
-	with_subgrid_sink=none
-	with_subgrid_extra_io=none
-	enable_fof=yes
-        enable_fof_galaxies=yes
-   ;;
-   SIMBART)
-        with_subgrid_cooling=SIMBA
-        with_subgrid_chemistry=KIARA
-        with_subgrid_tracers=none
-        with_subgrid_entropy_floor=SIMBA
-        with_subgrid_stars=SIMBA
-        with_subgrid_star_formation=SIMBA
-        with_subgrid_feedback=KIARA
-        with_subgrid_black_holes=SIMBA
-        with_subgrid_sink=none
-        with_subgrid_extra_io=none
-        enable_fof=yes
-        enable_fof_galaxies=yes
-   ;;
    Obsidian)
 	with_subgrid_cooling=KIARA
 	with_subgrid_chemistry=KIARA
@@ -2256,9 +2228,9 @@ case "$with_subgrid" in
 	with_subgrid_chemistry=KIARA
 	with_subgrid_tracers=none
 	with_subgrid_entropy_floor=none
-	with_subgrid_stars=EAGLE
-	with_subgrid_star_formation=EAGLE
-	with_subgrid_feedback=EAGLE
+	with_subgrid_stars=KIARA
+	with_subgrid_star_formation=KIARA
+	with_subgrid_feedback=none
 	with_subgrid_black_holes=none
 	#with_subgrid_black_holes=Obsidian
 	with_subgrid_sink=none
@@ -2953,7 +2925,7 @@ esac
 # Stellar model.
 AC_ARG_WITH([stars],
    [AS_HELP_STRING([--with-stars=<model>],
-      [Stellar model to use @<:@none, basic, EAGLE, GEAR, SIMBA, default: basic@:>@]
+      [Stellar model to use @<:@none, basic, EAGLE, GEAR, KIARA, default: basic@:>@]
    )],
    [with_stars="$withval"],
    [with_stars="basic"]
@@ -2974,8 +2946,8 @@ case "$with_stars" in
    GEAR)
       AC_DEFINE([STARS_GEAR], [1], [GEAR stellar model])
    ;;  
-   SIMBA)
-      AC_DEFINE([STARS_SIMBA], [1], [SIMBA stellar model])
+   KIARA)
+      AC_DEFINE([STARS_KIARA], [1], [KIARA stellar model])
    ;;
    basic)
       AC_DEFINE([STARS_BASIC], [1], [Basic stellar model])
