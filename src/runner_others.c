@@ -332,6 +332,7 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
   const int with_cosmology = (e->policy & engine_policy_cosmology);
   const int with_feedback = (e->policy & engine_policy_feedback);
   const struct hydro_props *restrict hydro_props = e->hydro_properties;
+  const struct fof_props *restrict fof_props = e->fof_properties;
   const struct unit_system *restrict us = e->internal_units;
   struct cooling_function_data *restrict cooling = e->cooling_func;
   const struct entropy_floor_properties *entropy_floor = e->entropy_floor;
@@ -414,7 +415,7 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
 
           /* Compute the SF rate of the particle */
           star_formation_compute_SFR(p, xp, sf_props, phys_const, hydro_props,
-                                     cosmo, dt_star);
+                                     fof_props, cosmo, dt_star);
 
           /* Add the SFR and SFR*dt to the SFH struct of this cell */
           star_formation_logger_log_active_part(p, xp, &c->stars.sfh, dt_star);

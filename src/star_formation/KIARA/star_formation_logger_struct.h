@@ -16,30 +16,39 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-#ifndef SWIFT_STAR_FORMATION_STRUCT_H
-#define SWIFT_STAR_FORMATION_STRUCT_H
+#ifndef SWIFT_KIARA_STAR_FORMATION_LOGGER_STRUCT_H
+#define SWIFT_KIARA_STAR_FORMATION_LOGGER_STRUCT_H
 
-/**
- * @file src/star_formation_struct.h
- * @brief Branches between the different particle data SF tracers
- */
+/* Starformation history struct */
+struct star_formation_history {
+  /*! Total new stellar mass */
+  float new_stellar_mass;
 
-/* Config parameters. */
-#include <config.h>
+  /*! SFR of all particles */
+  float SFR_inactive;
 
-/* Import the right star formation definition */
-#if defined(STAR_FORMATION_NONE)
-#include "./star_formation/none/star_formation_struct.h"
-#elif defined(STAR_FORMATION_QLA)
-#include "./star_formation/QLA/star_formation_struct.h"
-#elif defined(STAR_FORMATION_EAGLE)
-#include "./star_formation/EAGLE/star_formation_struct.h"
-#elif defined(STAR_FORMATION_GEAR)
-#include "./star_formation/GEAR/star_formation_struct.h"
-#elif defined(STAR_FORMATION_KIARA)
-#include "./star_formation/KIARA/star_formation_struct.h"
-#else
-#error "Invalid choice of star formation structure."
-#endif
+  /*! SFR of active particles */
+  float SFR_active;
 
-#endif /* SWIFT_STAR_FORMATION_STRUCT_H */
+  /*! SFR*dt of active particles */
+  float SFRdt_active;
+};
+
+/* Starformation history struct for the engine.
+ Allows to integrate in time some values.
+ Nothing to do in KIARA => copy of star_formation_history */
+struct star_formation_history_accumulator {
+  /*! Total new stellar mass */
+  float new_stellar_mass;
+
+  /*! SFR of all particles */
+  float SFR_inactive;
+
+  /*! SFR of active particles */
+  float SFR_active;
+
+  /*! SFR*dt of active particles */
+  float SFRdt_active;
+};
+
+#endif /* SWIFT_KIARA_STAR_FORMATION_LOGGER_STRUCT_H */

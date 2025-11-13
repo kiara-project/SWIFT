@@ -1,6 +1,6 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2022 Bert Vandenbroucke (bert.vandenbroucke@gmail.com)
+ * Copyright (c) 2016 Matthieu Schaller (schaller@strw.leidenuniv.nl)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -16,25 +16,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-#ifndef SWIFT_STAR_FORMATION_DEBUG_H
-#define SWIFT_STAR_FORMATION_DEBUG_H
+#ifndef SWIFT_SIMBA_STARS_DEBUG_H
+#define SWIFT_SIMBA_STARS_DEBUG_H
 
-/* Config parameters. */
-#include <config.h>
+__attribute__((always_inline)) INLINE static void stars_debug_particle(
+    const struct spart* p) {
+  printf(
+      "x=[%.3e,%.3e,%.3e], "
+      "v_full=[%.3e,%.3e,%.3e] p->mass=%.3e \n t_begin=%d, t_end=%d\n",
+      p->x[0], p->x[1], p->x[2], p->v_full[0], p->v_full[1], p->v_full[2],
+      p->mass, p->ti_begin, p->ti_end);
+}
 
-/* Import the debug routines of the right star formation definition */
-#if defined(STAR_FORMATION_NONE)
-#include "./star_formation/none/star_formation_debug.h"
-#elif defined(STAR_FORMATION_QLA)
-#include "./star_formation/QLA/star_formation_debug.h"
-#elif defined(STAR_FORMATION_EAGLE)
-#include "./star_formation/EAGLE/star_formation_debug.h"
-#elif defined(STAR_FORMATION_GEAR)
-#include "./star_formation/GEAR/star_formation_debug.h"
-#elif defined(STAR_FORMATION_KIARA)
-#include "./star_formation/KIARA/star_formation_debug.h"
-#else
-#error "Invalid choice of star formation model."
-#endif
-
-#endif /* SWIFT_STAR_FORMATION_DEBUG_H */
+#endif /* SWIFT_SIMBA_STARS_DEBUG_H */
