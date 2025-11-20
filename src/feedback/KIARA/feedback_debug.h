@@ -1,7 +1,8 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Copyright (c) 2019 Matthieu Schaller (schaller@strw.leidenuniv.nl)
- *
+ * Copyright (c) 2022 Bert Vandenbroucke (bert.vandenbroucke@gmail.com)
+ *               2022 Doug Rennehan (douglas.rennehan@gmail.com)
+ * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -16,25 +17,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-#ifndef SWIFT_BLACK_HOLES_IO_H
-#define SWIFT_BLACK_HOLES_IO_H
+#ifndef SWIFT_FEEDBACK_KIARA_DEBUG_H
+#define SWIFT_FEEDBACK_KIARA_DEBUG_H
 
-#include <config.h>
+__attribute__((always_inline)) INLINE static void feedback_debug_particle(
+    const struct part* p, const struct xpart* xp) {}
 
-/* Local includes */
-#include "engine.h"
-
-/* Load the correct BH model */
-#if defined(BLACK_HOLES_NONE)
-#include "./black_holes/Default/black_holes_io.h"
-#elif defined(BLACK_HOLES_EAGLE)
-#include "./black_holes/EAGLE/black_holes_io.h"
-#elif defined(BLACK_HOLES_SPIN_JET)
-#include "./black_holes/SPIN_JET/black_holes_io.h"
-#elif defined(BLACK_HOLES_OBSIDIAN)
-#include "./black_holes/Obsidian/black_holes_io.h"
-#else
-#error "Invalid choice of BH model"
-#endif
-
-#endif /* SWIFT_BLACK_HOLES_IO_H */
+#endif /* SWIFT_FEEDBACK_KIARA_DEBUG_H */

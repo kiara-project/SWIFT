@@ -2734,6 +2734,31 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     /* Calculate the radius*/
     float r = sqrtf((x[0] * x[0]) + (x[1] * x[1]) + (x[2] * x[2]));
     radii[index] = fmax(radii[index], r);
+
+#ifdef WITH_FOF_GALAXIES
+    /* Get a handle on the gpart. */
+    const struct gpart *restrict gp = &gparts[i];
+
+    /* Load FoF data into particles of various types */
+    if (gp->type == swift_type_gas) {
+      struct part *restrict p = &(s->parts[-gp->id_or_neg_offset]);
+      p->galaxy_data.stellar_mass = stellar_mass[index];
+      p->galaxy_data.gas_mass = gas_mass[index];
+      p->galaxy_data.specific_sfr = star_formation_rate[index] / stellar_mass[index];
+    }
+    else if (gp->type == swift_type_stars) {
+      struct spart *restrict sp = &(s->sparts[-gp->id_or_neg_offset]);
+      sp->galaxy_data.stellar_mass = stellar_mass[index];
+      sp->galaxy_data.gas_mass = gas_mass[index];
+      sp->galaxy_data.specific_sfr = star_formation_rate[index] / stellar_mass[index];
+    }
+    else if (gp->type == swift_type_black_hole) {
+      struct bpart *restrict bp = &(s->bparts[-gp->id_or_neg_offset]);
+      bp->galaxy_data.stellar_mass = stellar_mass[index];
+      bp->galaxy_data.gas_mass = gas_mass[index];
+      bp->galaxy_data.specific_sfr = star_formation_rate[index] / stellar_mass[index];
+    }
+#endif
   }
 
 #ifdef WITH_MPI

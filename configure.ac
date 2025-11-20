@@ -2199,9 +2199,8 @@ case "$with_subgrid" in
 	with_subgrid_entropy_floor=none
 	with_subgrid_stars=KIARA
 	with_subgrid_star_formation=KIARA
-	with_subgrid_feedback=none
-	with_subgrid_black_holes=none
-	#with_subgrid_black_holes=Obsidian
+	with_subgrid_feedback=KIARA
+	with_subgrid_black_holes=Obsidian
 	with_subgrid_sink=none
 	with_subgrid_extra_io=none
 	enable_fof=yes

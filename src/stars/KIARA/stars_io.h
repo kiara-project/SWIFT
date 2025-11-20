@@ -144,7 +144,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          struct io_props *list, int *num_fields,
                                          const int with_cosmology) {
   /* Say how much we want to write */
-  *num_fields = 12;
+  *num_fields = 11;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -196,12 +196,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "Temperatures at the time of birth of the gas "
       "particles that turned into stars");
 
-/*  list[9] = io_make_output_field(
-      "TotalMassEjected", FLOAT, 1, UNIT_CONV_MASS, 0.f, sparts, 
-      feedback_data.total_mass_kicked, 
-      "Total gas mass kicked by the star over its life-time. ");*/
-
-  list[10] = io_make_output_field_convert_spart(
+  list[9] = io_make_output_field_convert_spart(
       "Luminosities", FLOAT, luminosity_bands_count, UNIT_CONV_NO_UNITS, 0.f,
       sparts, convert_spart_luminosities,
       "Rest-frame dust-free AB-luminosities of the star particles in the GAMA "
@@ -213,7 +208,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "absolute AB-magnitudes (rest-frame absolute maggies) directly by "
       "applying -2.5 log10(L) without additional corrections.");
 
-  list[11] = io_make_output_field_convert_spart(
+  list[10] = io_make_output_field_convert_spart(
       "Potentials", FLOAT, 1, UNIT_CONV_POTENTIAL, -1.f, sparts,
       convert_spart_potential, "Gravitational potentials of the particles");
 }

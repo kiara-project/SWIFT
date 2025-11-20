@@ -1267,88 +1267,14 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
 }
 
 /**
- * @brief Apply the cooling function to a particle.
+ * @brief Set subgrid ISM properties and initialise chemistry 
  *
- * @param phys_const The physical constants in internal units.
- * @param us The internal system of units.
- * @param cosmo The current cosmological model.
- * @param hydro_props The #hydro_props.
- * @param floor_props Properties of the entropy floor.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
- * @param xp Pointer to the particle' extended data.
- * @param dt The time-step of this particle.
- * @param dt_therm The time-step operator used for thermal quantities.
- * @param time The current time (since the Big Bang or start of the run) in
- * internal units.
  */
-void cooling_cool_part(const struct phys_const* restrict phys_const,
-                       const struct unit_system* restrict us,
-                       const struct cosmology* restrict cosmo,
-                       const struct hydro_props* hydro_props,
-                       const struct entropy_floor_properties* floor_props,
-                       const struct pressure_floor_props *pressure_floor_props,
+__attribute__((always_inline)) INLINE void cooling_init_chemistry(
                        const struct cooling_function_data* restrict cooling,
-		       const struct fof_props* fof_props,
-                       struct part* restrict p, struct xpart* restrict xp,
-                       const double dt, const double dt_therm,
-                       const double time) {
-
-  /* Compute cooling time and other quantities needed for firehose */
-  firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props, 
-                              cooling, p, xp, dt);        
-
-  /* No cooling if particle is decoupled */
-  if (p->decoupled) {
-    /* Make sure these are always set for the wind particles */
-    p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-    p->cooling_data.subgrid_temp = 0.;
-    p->cooling_data.subgrid_fcold = 0.f;
-
-    return;
-  }
-
-  /* Collect information about galaxy that the particle belongs to */
-  size_t group_id = p->gpart->fof_data.group_id;
-  float galaxy_mstar = fof_props->group_stellar_mass[group_id];
-  float galaxy_ssfr = fof_props->group_star_formation_rate[group_id] / galaxy_mstar;
-
-  /* Never cool if there is a cooling shut off, let the hydro do its magic 
-  if (p->feedback_data.cooling_shutoff_delay_time > 0.f) {
-    p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-    p->cooling_data.subgrid_temp = 0.;
-    p->cooling_data.subgrid_fcold = 0.f;
-
-    return;
-  }*/
-
-  /* Update the subgrid properties */
-  cooling_set_particle_subgrid_properties( phys_const, us, 
-	  cosmo, hydro_props, floor_props, cooling, p, xp);
-
-  /* No cooling happens over zero time */
-  if (dt == 0.f || dt_therm == 0.f) {
-    return;
-  }
-
-  /* If less that thermal_time has passed since last cooling, don't cool 
-   * KIARA can't use this because the dust needs to be formed/destroyed over dt_therm
-  if (time - xp->cooling_data.time_last_event < cooling->thermal_time) {
-    return;
-  }*/
-
-  /* Compute the ISRF */
-  p->cooling_data.G0 = fmax(cooling_compute_G0(p, p->cooling_data.subgrid_dens, cooling, galaxy_mstar, galaxy_ssfr, dt), 0.);
-
-  /* Current energy */
-  const float u_old = hydro_get_physical_internal_energy(p, xp, cosmo);
-  //const float T_old = cooling_get_temperature( phys_const, hydro_props, us, cosmo, cooling, p, xp); // for debugging only
-
-  /* Compute the entropy floor */
-  //const double T_warm = entropy_floor_temperature(p, cosmo, floor_props);
-  const double T_warm = warm_ISM_temperature(p, cooling, phys_const, cosmo);
-  const double u_warm = 
-      cooling_convert_temp_to_u(T_warm, xp->cooling_data.e_frac, cooling, p);
+                       struct part* restrict p) {
 
   /* If it's eligible for SF and metal-free, crudely self-enrich to 
      very small level; needed to kick-start Grackle dust. Arbitrary
@@ -1411,8 +1337,54 @@ void cooling_cool_part(const struct phys_const* restrict phys_const,
             " particle id=%lld", p->id);
     }
   }
+}
+
+/**
+ * @brief Apply the cooling function to a particle.
+ *
+ * @param phys_const The physical constants in internal units.
+ * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
+ * @param hydro_props The #hydro_props.
+ * @param floor_props Properties of the entropy floor.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle' extended data.
+ * @param dt The time-step of this particle.
+ * @param dt_therm The time-step operator used for thermal quantities.
+ * @param time The current time (since the Big Bang or start of the run) in
+ * internal units.
+ */
+__attribute__((always_inline)) INLINE void cooling_do_grackle_cooling(
+		       const struct phys_const* restrict phys_const,
+                       const struct unit_system* restrict us,
+                       const struct cosmology* restrict cosmo,
+                       const struct hydro_props* hydro_props,
+                       const struct entropy_floor_properties* floor_props,
+                       const struct cooling_function_data* restrict cooling,
+                       struct part* restrict p, struct xpart* restrict xp,
+                       const double dt, const double dt_therm,
+                       const double time) {
+
+  /* Self-enrich gas if very low metallicity */
+  cooling_init_chemistry(cooling, p);
+
+  /* Collect information about galaxy that the particle belongs to */
+  const float galaxy_mstar = p->galaxy_data.stellar_mass;
+  const float galaxy_ssfr = p->galaxy_data.specific_sfr;
+
+  /* Compute the ISRF */
+  p->cooling_data.G0 = fmax(cooling_compute_G0(p, p->cooling_data.subgrid_dens, cooling, galaxy_mstar, galaxy_ssfr, dt), 0.);
+
+  /* Compute the entropy floor */
+  //const double T_warm = entropy_floor_temperature(p, cosmo, floor_props);
+  const double T_warm = warm_ISM_temperature(p, cooling, phys_const, cosmo);
+  const double u_warm = 
+      cooling_convert_temp_to_u(T_warm, xp->cooling_data.e_frac, cooling, p);
 
   /* Do grackle cooling */
+  const float u_old = hydro_get_physical_internal_energy(p, xp, cosmo);
+  //const float T_old = cooling_get_temperature( phys_const, hydro_props, us, cosmo, cooling, p, xp); // for debugging only
   gr_float u_new = u_old;
   u_new = cooling_grackle_driver(phys_const, us, cosmo, hydro_props, cooling,
                                    p, xp, dt, T_warm, 0);
@@ -1513,6 +1485,53 @@ void cooling_cool_part(const struct phys_const* restrict phys_const,
 }
 
 /**
+ * @brief Apply the cooling function to a particle.
+ *
+ * @param phys_const The physical constants in internal units.
+ * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
+ * @param hydro_props The #hydro_props.
+ * @param floor_props Properties of the entropy floor.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle' extended data.
+ * @param dt The time-step of this particle.
+ * @param dt_therm The time-step operator used for thermal quantities.
+ * @param time The current time (since the Big Bang or start of the run) in
+ * internal units.
+ */
+void cooling_cool_part(const struct phys_const* restrict phys_const,
+                       const struct unit_system* restrict us,
+                       const struct cosmology* restrict cosmo,
+                       const struct hydro_props* hydro_props,
+                       const struct entropy_floor_properties* floor_props,
+                       const struct pressure_floor_props *pressure_floor_props,
+                       const struct cooling_function_data* restrict cooling,
+                       struct part* restrict p, struct xpart* restrict xp,
+                       const double dt, const double dt_therm,
+                       const double time) {
+
+  /* Compute cooling time and other quantities needed for firehose */
+  firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props, 
+                              cooling, p, xp, dt);        
+
+  /* Update the subgrid properties */
+  cooling_set_particle_subgrid_properties( phys_const, us, 
+	  cosmo, hydro_props, floor_props, cooling, p, xp);
+
+  /* No cooling if particle is decoupled */
+  if (p->decoupled) return;
+
+  /* No cooling happens over zero time */
+  if (dt == 0.f || dt_therm == 0.f) return;
+
+  /* Do the cooling and chemistry */
+  cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props,
+                          floor_props, cooling, 
+                          p, xp, dt, dt_therm, time);
+}
+
+/**
  * @brief Set the subgrid properties (rho, T) of the gas particle for use 
  *        in SF routine
  *
@@ -1531,6 +1550,16 @@ void cooling_set_particle_subgrid_properties(
     const struct entropy_floor_properties *floor_props,
     const struct cooling_function_data *cooling, 
     struct part *p, struct xpart *xp) {
+
+  /* No subgrid ISM if particle is decoupled */
+  if (p->decoupled) {
+    /* Make sure these are always set for the wind particles */
+    p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
+    p->cooling_data.subgrid_temp = 0.;
+    p->cooling_data.subgrid_fcold = 0.f;
+
+    return;
+  }
 
   /* Get temperature of overall particle */
   const double u = hydro_get_physical_internal_energy(p, xp, cosmo);

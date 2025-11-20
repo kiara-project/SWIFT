@@ -1397,8 +1397,8 @@ void runner_do_limiter(struct runner *r, struct cell *c, int force,
         if (!part_is_active(p, e) && p->limiter_data.to_be_synchronized) {
           warning(
               "Not limiting particle with id %lld because it needs to be "
-              "synced.",
-              p->id);
+              "synced tdel=%g dec=%d.",
+              p->id, p->feedback_data.decoupling_delay_time, p->decoupled);
           continue;
         }
 

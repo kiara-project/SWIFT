@@ -335,7 +335,7 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
 INLINE static void star_formation_compute_SFR_wn07(
     struct part* p, struct xpart* xp,
     const struct star_formation* starform, const struct phys_const* phys_const,
-    const struct hydro_props* hydro_props, const struct fof_props* fof_props,
+    const struct hydro_props* hydro_props, 
     const struct cosmology* cosmo, const double dt_star) {
 
   p->sf_data.SFR = 0.f;
@@ -344,10 +344,9 @@ INLINE static void star_formation_compute_SFR_wn07(
   const double rho_0 = starform->lognormal.rho0;
 
   /* Collect information about galaxy that the particle belongs to */
-  size_t group_id = p->gpart->fof_data.group_id;
-  const float galaxy_mstar = fof_props->group_stellar_mass[group_id];
-  const float galaxy_sfr = fof_props->group_star_formation_rate[group_id];
-  const float galaxy_ssfr = galaxy_sfr / galaxy_mstar;
+  const float galaxy_mstar = p->galaxy_data.stellar_mass;
+  const float galaxy_ssfr = p->galaxy_data.specific_sfr;
+  const float galaxy_sfr = galaxy_mstar * galaxy_ssfr;
 
   /* Density is too low, so no SF */
   if (rho_V <= 1.001 * rho_0) return;
@@ -525,7 +524,7 @@ INLINE static void star_formation_compute_SFR_lognormal(
 INLINE static void star_formation_compute_SFR(
     struct part* p, struct xpart* xp,
     const struct star_formation* starform, const struct phys_const* phys_const,
-    const struct hydro_props* hydro_props, const struct fof_props* fof_props,
+    const struct hydro_props* hydro_props, 
     const struct cosmology* cosmo, const double dt_star) {
 
   /* Abort early if time-step size is 0 */
@@ -615,8 +614,7 @@ INLINE static void star_formation_compute_SFR(
       break;
     case kiara_star_formation_WadaNorman:
       star_formation_compute_SFR_wn07(p, xp, starform, phys_const,
-                                              hydro_props, fof_props, 
-					      cosmo, dt_star);
+                                              hydro_props, cosmo, dt_star);
       break;
     case kiara_star_formation_lognormal:
       star_formation_compute_SFR_lognormal(p, xp, starform, phys_const,
@@ -795,6 +793,11 @@ INLINE static void star_formation_copy_properties(
   sp->feedback_data.eta_suppression_factor = 1.f;*/
   sp->last_enrichment_time = sp->birth_time;
   sp->count_since_last_enrichment = 0;
+
+  /* Copy FoF galaxy data from spawning particle */
+  sp->galaxy_data.stellar_mass = p->galaxy_data.stellar_mass;
+  sp->galaxy_data.gas_mass = p->galaxy_data.gas_mass;
+  sp->galaxy_data.specific_sfr = p->galaxy_data.specific_sfr;
 }
 
 /**

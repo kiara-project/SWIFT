@@ -2294,6 +2294,13 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
 #endif
   p->decoupled = 0;
 
+#ifdef WITH_FOF_GALAXIES
+  /* Initialise FoF galaxy data */
+  p->galaxy_data.stellar_mass = 0.f;
+  p->galaxy_data.gas_mass = 0.f;
+  p->galaxy_data.specific_sfr = 0.f;
+#endif
+
   hydro_reset_acceleration(p);
   hydro_init_part(p, NULL);
 }
