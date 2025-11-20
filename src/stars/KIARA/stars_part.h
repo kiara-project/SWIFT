@@ -100,6 +100,11 @@ struct spart {
   /*! The birth temperature */
   float birth_temperature;
 
+#ifdef WITH_FOF_GALAXIES
+  /*! Struct for host galaxy information */
+  struct fof_galaxy_data galaxy_data;
+#endif
+
   /*! Star formation struct */
   struct star_formation_spart_data sf_data;
 

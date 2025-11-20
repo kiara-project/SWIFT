@@ -132,7 +132,6 @@ void runner_do_cooling(struct runner *r, struct cell *c, int timer) {
   const struct hydro_props *hydro_props = e->hydro_properties;
   const struct entropy_floor_properties *entropy_floor_props = e->entropy_floor;
   const struct pressure_floor_props *pressure_floor = e->pressure_floor_props;
-  const struct fof_props *fof_props = e->fof_properties;
   const double time_base = e->time_base;
   const integertime_t ti_current = e->ti_current;
   struct part *restrict parts = c->hydro.parts;
@@ -181,7 +180,7 @@ void runner_do_cooling(struct runner *r, struct cell *c, int timer) {
 
         /* Let's cool ! */
         cooling_cool_part(constants, us, cosmo, hydro_props,
-                          entropy_floor_props, pressure_floor, cooling_func, fof_props, p,
+                          entropy_floor_props, pressure_floor, cooling_func, p,
                           xp, dt_cool, dt_therm, time);
       }
     }
@@ -332,7 +331,6 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
   const int with_cosmology = (e->policy & engine_policy_cosmology);
   const int with_feedback = (e->policy & engine_policy_feedback);
   const struct hydro_props *restrict hydro_props = e->hydro_properties;
-  const struct fof_props *restrict fof_props = e->fof_properties;
   const struct unit_system *restrict us = e->internal_units;
   struct cooling_function_data *restrict cooling = e->cooling_func;
   const struct entropy_floor_properties *entropy_floor = e->entropy_floor;
@@ -415,7 +413,7 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
 
           /* Compute the SF rate of the particle */
           star_formation_compute_SFR(p, xp, sf_props, phys_const, hydro_props,
-                                     fof_props, cosmo, dt_star);
+                                     cosmo, dt_star);
 
           /* Add the SFR and SFR*dt to the SFH struct of this cell */
           star_formation_logger_log_active_part(p, xp, &c->stars.sfh, dt_star);

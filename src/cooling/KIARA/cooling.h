@@ -165,7 +165,6 @@ void cooling_cool_part(const struct phys_const* restrict phys_const,
                        const struct entropy_floor_properties* floor_props,
 		                   const struct pressure_floor_props *pressure_floor_props,
                        const struct cooling_function_data* restrict cooling,
-		       const struct fof_props* fof_props,
                        struct part* restrict p, struct xpart* restrict xp,
                        const double dt, const double dt_therm,
                        const double time);

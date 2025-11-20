@@ -144,6 +144,11 @@ struct part {
   /*! Conduction du/dt */
   float u_dt_cond;
 
+#ifdef WITH_FOF_GALAXIES
+  /*! Additional data used to record host galaxy information */
+  struct fof_galaxy_data galaxy_data;
+#endif
+
 #ifdef MAGMA2_DEBUG_CHECKS
   struct {
     /*! Correction matrix at the last time it was ill-conditioned */
