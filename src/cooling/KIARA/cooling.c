@@ -792,6 +792,7 @@ void cooling_copy_to_grackle(grackle_field_data* data,
                           const struct part* p, const struct xpart* xp,
                           const double dt, const double T_warm,
                           gr_float species_densities[N_SPECIES],
+			  gr_float* iact_rates, 
                           int mode) {
 
   int i;
@@ -877,11 +878,12 @@ void cooling_copy_to_grackle(grackle_field_data* data,
   cooling_copy_to_grackle3(data, p, xp, 
                            species_densities[12], species_densities);
 
-  data->RT_heating_rate = NULL;
-  data->RT_HI_ionization_rate = NULL;
-  data->RT_HeI_ionization_rate = NULL;
-  data->RT_HeII_ionization_rate = NULL;
-  data->RT_H2_dissociation_rate = NULL;
+  /* RT heating and ionisation rates */
+  data->RT_heating_rate = &iact_rates[0];
+  data->RT_HI_ionization_rate = &iact_rates[1];
+  data->RT_HeI_ionization_rate = &iact_rates[2];
+  data->RT_HeII_ionization_rate = &iact_rates[3];
+  data->RT_H2_dissociation_rate = &iact_rates[4];
 
   species_densities[19] = 
       chemistry_get_total_metal_mass_fraction_for_cooling(p) * 
@@ -955,7 +957,8 @@ gr_float cooling_grackle_driver(
     const struct cosmology* restrict cosmo,
     const struct hydro_props* hydro_props,
     const struct cooling_function_data* restrict cooling,
-    struct part* restrict p, struct xpart* restrict xp, double dt,
+    struct part* restrict p, struct xpart* restrict xp, 
+    gr_float* iact_rates, double dt,
     double T_warm, int mode) {
 
   /* set current units for conversion to physical quantities */
@@ -969,7 +972,7 @@ gr_float cooling_grackle_driver(
 
   /* load particle information from particle to grackle data */
   cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, T_warm, 
-                          species_densities, mode);
+                          species_densities, iact_rates, mode);
 
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
@@ -1065,8 +1068,10 @@ gr_float cooling_time(const struct phys_const* restrict phys_const,
   if (rhocool > 0.f) p_temp.rho = rhocool;
   if (ucool > 0.f) p_temp.u = ucool;
 
+  gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
+
   gr_float cooling_time = cooling_grackle_driver(
-      phys_const, us, cosmo, hydro_properties, cooling, &p_temp, xp, 0., 0., 1);
+      phys_const, us, cosmo, hydro_properties, cooling, &p_temp, xp, iact_rates, 0., 0., 1);
 
   return cooling_time;
 }
@@ -1094,9 +1099,11 @@ float cooling_get_temperature(
   struct part p_temp = *p;  
   struct xpart xp_temp = *xp;
 
+  gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
+
   const float temperature = 
       cooling_grackle_driver(phys_const, us, cosmo, hydro_properties, 
-                             cooling, &p_temp, &xp_temp, 0., 0., 2);
+                             cooling, &p_temp, &xp_temp, iact_rates, 0., 0., 2);
 
   return temperature;
 }
@@ -1350,12 +1357,13 @@ __attribute__((always_inline)) INLINE void cooling_init_chemistry(
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the particle' extended data.
+ * @param iact_rates Interaction rates for radiative transfer (if used)
  * @param dt The time-step of this particle.
  * @param dt_therm The time-step operator used for thermal quantities.
  * @param time The current time (since the Big Bang or start of the run) in
  * internal units.
  */
-__attribute__((always_inline)) INLINE void cooling_do_grackle_cooling(
+void cooling_do_grackle_cooling(
 		       const struct phys_const* restrict phys_const,
                        const struct unit_system* restrict us,
                        const struct cosmology* restrict cosmo,
@@ -1363,6 +1371,7 @@ __attribute__((always_inline)) INLINE void cooling_do_grackle_cooling(
                        const struct entropy_floor_properties* floor_props,
                        const struct cooling_function_data* restrict cooling,
                        struct part* restrict p, struct xpart* restrict xp,
+		       gr_float* iact_rates, 
                        const double dt, const double dt_therm,
                        const double time) {
 
@@ -1387,7 +1396,7 @@ __attribute__((always_inline)) INLINE void cooling_do_grackle_cooling(
   //const float T_old = cooling_get_temperature( phys_const, hydro_props, us, cosmo, cooling, p, xp); // for debugging only
   gr_float u_new = u_old;
   u_new = cooling_grackle_driver(phys_const, us, cosmo, hydro_props, cooling,
-                                   p, xp, dt, T_warm, 0);
+                                   p, xp, iact_rates, dt, T_warm, 0);
 
   /* Apply simulation-wide minimum temperature */
   u_new = max(u_new, hydro_props->minimal_internal_energy);
@@ -1525,10 +1534,13 @@ void cooling_cool_part(const struct phys_const* restrict phys_const,
   /* No cooling happens over zero time */
   if (dt == 0.f || dt_therm == 0.f) return;
 
+  /* Interaction rates for RT; not used here */
+  gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
+
   /* Do the cooling and chemistry */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props,
                           floor_props, cooling, 
-                          p, xp, dt, dt_therm, time);
+                          p, xp, iact_rates, dt, dt_therm, time);
 }
 
 /**

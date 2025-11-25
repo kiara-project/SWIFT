@@ -62,55 +62,6 @@ double feedback_get_turnover_mass(const struct feedback_props* fb_props,
 void feedback_prepare_interpolation_tables(
                                   const struct feedback_props* fb_props);
 
-/**
- * @brief Determine the probability of a gas particle being kicked
- *        due to stellar feedback in star forming gas.
- *
- * @param p The #part to consider.
- * @param xp The #xpart to consider.
- * @param e The #engine.
- * @param fb_props The feedback properties.
- * @param ti_current The current timestep.
- * @param dt_part The time step of the particle.
- * @param rand_for_sf_wind The random number for the wind generation.
- * @param wind_mass The amount of mass in the wind (code units).
- */
-__attribute__((always_inline)) INLINE static double feedback_wind_probability(
-    struct part* p, struct xpart* xp, const struct engine* e, 
-    const struct cosmology* cosmo,
-    const struct feedback_props* fb_props, 
-    const integertime_t ti_current, 
-    const double dt_part,
-    double *rand_for_sf_wind,
-    double *wind_mass) {
-
-  return 0.f;
-}
-
-
-/**
- * @brief Kick a gas particle selected for stellar feedback.
- *
- * @param p The #part to consider.
- * @param xp The #xpart to consider.
- * @param e The #engine.
- * @param fb_props The feedback properties.
- * @param ti_current The current timestep.
- * @param with_cosmology Is cosmological integration on?
- * @param dt_part The time step of the particle.
- * @param wind_mass The amount of mass in the wind (code units).
- */
-__attribute__((always_inline)) INLINE static 
-void feedback_kick_and_decouple_part(
-    struct part* p, struct xpart* xp, 
-    const struct engine* e, 
-    const struct cosmology* cosmo,
-    const struct feedback_props* fb_props, 
-    const integertime_t ti_current,
-    const int with_cosmology,
-    const double dt_part,
-    const double wind_mass) {};
-
 
 /**
  * @brief Recouple wind particles.
@@ -134,7 +85,6 @@ void feedback_recouple_set_flags(struct part* p,
   p->cooling_data.subgrid_fcold = 0.f;
 
   /* Make sure to sync the newly coupled part on the timeline */
-  warning("Recoupling part %lld", p->id);
   timestep_sync_part(p);
 }
 
@@ -172,6 +122,11 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     /* Decrement the counter */
     p->feedback_data.decoupling_delay_time -= dt_part;
 
+    /* Estimate if it will decouple in the next step, if so set flag=2 */
+    if (p->feedback_data.decoupling_delay_time <= dt_part) {
+      p->decoupled = 2;
+    }
+
     /**
      * Recouple under 3 conditions:
      * (1) Below the density threshold.
@@ -188,7 +143,12 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
                           p->chemistry_data.radius_stream < 0.f ||
                           rho_nH_cgs < rho_recouple_cgs);
 
-    if (recouple) {
+    if (recouple && p->decoupled == 1) {
+      /* If it is recoupling, do one more decoupled step to set timestep etc */
+      p->decoupled = 2;
+    }
+    else if (recouple) {
+      /* extra decoupled step is done, now properly recouple */
       feedback_recouple_set_flags(p, cosmo);
     }
     else {
@@ -227,57 +187,6 @@ __attribute__((always_inline)) INLINE static void feedback_set_wind_direction(
       p->gpart->a_grav[1] * p->gpart->v_full[0];
 }
 
-/**
- * @brief Determine if particles that ignore cooling should start cooling again.
- *
- * @param p The #part to consider.
- * @param xp The #xpart to consider.
- * @param e The #engine.
- * @param cosmo The cosmological information of the simulation.
- * @param with_cosmology Is this a cosmological simulation?
- */
-__attribute__((always_inline)) INLINE static void feedback_ready_to_cool(
-    struct part* p, struct xpart* xp, const struct engine* e,
-    const struct cosmology* restrict cosmo, const int with_cosmology) {
-
-  /* No reason to do this if the decoupling time is zero */
-  if (p->feedback_data.cooling_shutoff_delay_time > 0.f) {
-
-    /* Reset subgrid properties */
-    p->cooling_data.subgrid_temp = 0.f;
-    p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-    p->cooling_data.subgrid_fcold = 0.f;
-    
-    const integertime_t ti_step = get_integer_timestep(p->time_bin);
-    const integertime_t ti_begin =
-        get_integer_time_begin(e->ti_current - 1, p->time_bin);
-
-    /* Get particle time-step */
-    double dt_part;
-    if (with_cosmology) {
-      dt_part =
-          cosmology_get_delta_time(e->cosmology, ti_begin, ti_begin + ti_step);
-    } else {
-      dt_part = get_timestep(p->time_bin, e->time_base);
-    }
-
-    p->feedback_data.cooling_shutoff_delay_time -= dt_part;
-
-    if (p->feedback_data.cooling_shutoff_delay_time < 0.f) {
-      p->feedback_data.cooling_shutoff_delay_time = 0.f;
-
-      /* Make sure to sync the newly coupled part on the timeline */
-      warning("Recoupling part that is now cooling %lld", p->id);
-      timestep_sync_part(p);
-    }
-  } 
-  else {
-    /* Because we are using floats, always make sure to set exactly zero */
-    p->feedback_data.cooling_shutoff_delay_time = 0.f;
-    p->decoupled = 0;
-  }
-
-}
 
 /**
  * @brief Update the properties of a particle due to feedback effects after
