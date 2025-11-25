@@ -90,6 +90,7 @@ void runner_do_kick1(struct runner *r, struct cell *c, const int timer) {
   const struct cosmology *cosmo = e->cosmology;
   const struct hydro_props *hydro_props = e->hydro_properties;
   const struct entropy_floor_properties *entropy_floor = e->entropy_floor;
+  const struct feedback_props *feedback_props = e->feedback_props;
   const int periodic = e->s->periodic;
   const int with_cosmology = (e->policy & engine_policy_cosmology);
   struct part *restrict parts = c->hydro.parts;
@@ -165,6 +166,10 @@ void runner_do_kick1(struct runner *r, struct cell *c, const int timer) {
               ti_end, ti_begin, ti_step, p->time_bin, p->limiter_data.wakeup,
               ti_current);
 #endif
+
+	/* Rennehan: Here we recouple the wind particles */
+        feedback_recouple_part(p, xp, e, with_cosmology, cosmo,
+                               feedback_props);
 
         /* Time intervals for this half-kick */
         const double dt_kick_grav = kick_get_grav_kick_dt(

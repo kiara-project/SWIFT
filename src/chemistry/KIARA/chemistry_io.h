@@ -83,6 +83,20 @@ INLINE static int chemistry_write_particles(const struct part* parts,
       "The full diffusion coefficient");
   num++;
 
+  list[num] = io_make_output_field(
+      "DecouplingDelayTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
+      feedback_data.decoupling_delay_time,
+      "Maximum time left as a firehose wind particle");
+  num++;
+
+  list[num] = io_make_output_field(
+      "NumberOfTimesDecoupled", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      feedback_data.number_of_times_decoupled, 
+      "Number of times decoupled.  Units of 1 are from SF feedback,"
+      "units of 1000 are from non-jet AGN feedback,"
+      "units of 100000 are from jet AGN feedback");
+  num++;
+
 #ifdef KIARA_DEBUG_CHECKS
   list[num] = io_make_output_field(
       "ElementDiffusionRates", FLOAT, chemistry_element_count, 

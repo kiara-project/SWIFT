@@ -1269,9 +1269,9 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
     }
   }
 
-  /* Decoupled winds need the hydro time-step for firehose model. */
   if (cd->use_firehose_wind_model) {
-    if (p->decoupled) {
+    /* About-to-recouple winds need the hydro time-step. */
+    if (p->decoupled == 2) {
       const float CFL_condition = hydro_props->CFL_condition;
       const float h = kernel_gamma * cosmo->a * p->h;
       const float v_sig = 2.f * hydro_get_physical_soundspeed(p, cosmo);
