@@ -153,6 +153,7 @@ INLINE static void rt_convert_mass_fractions(const struct engine* engine,
  * transfer data of hydro particles.
  *
  * @param parts The particle array.
+ * @param xparts The particle extra information.
  * @param list The list of i/o properties to write.
  *
  * @return Returns the number of fields to write.
