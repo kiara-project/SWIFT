@@ -1344,7 +1344,7 @@ void cooling_do_grackle_cooling(
     const struct entropy_floor_properties *floor_props,
     const struct cooling_function_data *restrict cooling,
     struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
-    const double dt, const double dt_therm, const double time) {
+    const double dt, const double dt_therm) {
 
   /* Self-enrich gas if very low metallicity */
   cooling_init_chemistry(cooling, p);
@@ -1461,9 +1461,6 @@ void cooling_do_grackle_cooling(
 
   /* Store the radiated energy */
   xp->cooling_data.radiated_energy -= hydro_get_mass(p) * cool_du_dt * dt_therm;
-
-  /* Record this cooling event */
-  xp->cooling_data.time_last_event = time;
 }
 
 /**
@@ -1512,7 +1509,10 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
 
   /* Do the cooling and chemistry */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
-                             cooling, p, xp, iact_rates, dt, dt_therm, time);
+                             cooling, p, xp, iact_rates, dt, dt_therm);
+
+  /* Record this cooling event */
+  xp->cooling_data.time_last_event = time;
 }
 
 /**

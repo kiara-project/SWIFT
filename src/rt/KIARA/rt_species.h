@@ -1,6 +1,6 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Copyright (c) 2021 Mladen Ivkovic (mladen.ivkovic@hotmail.com)
+ * Copyright (c) 2022 Mladen Ivkovic (mladen.ivkovic@hotmail.com)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -16,31 +16,32 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-#ifndef SWIFT_RT_ADDITIONS_H
-#define SWIFT_RT_ADDITIONS_H
+#ifndef SWIFT_RT_KIARA_SPECIES_H
+#define SWIFT_RT_KIARA_SPECIES_H
 
 /**
- * @file src/rt_additions.h
- * @brief Branches between the different additional functions required outside
- * of the RT files; Required to avoid circular inclusions.
- */
+ * @file src/rt/KIARA/rt_species.h
+ * @brief header file concerning (ionizing) species.
+ **/
 
-/* Config parameters. */
-#include <config.h>
+enum rt_ionizing_species {
+  rt_ionizing_species_HI = 0,
+  rt_ionizing_species_HeI,
+  rt_ionizing_species_HeII,
+  rt_ionizing_species_count
+};
 
-/* Import the right RT definition */
-#if defined(RT_NONE)
-#include "./rt/none/rt_additions.h"
-#elif defined(RT_DEBUG)
-#include "./rt/debug/rt_additions.h"
-#elif defined(RT_GEAR)
-#include "./rt/GEAR/rt_additions.h"
-#elif defined(RT_KIARA)
-#include "./rt/KIARA/rt_additions.h"
-#elif defined(RT_SPHM1RT)
-#include "./rt/SPHM1RT/rt_additions.h"
-#else
-#error "Invalid choice of radiation scheme"
-#endif
+/**
+ * Get the ionizing energy in erg for all ionizing species.
+ *
+ * @param E_ion (return) the ionizing energies.
+ **/
+__attribute__((always_inline)) INLINE static void
+rt_species_get_ionizing_energy(double E_ion[rt_ionizing_species_count]) {
 
-#endif /* SWIFT_RT_ADDITIONS_H */
+  E_ion[rt_ionizing_species_HI] = 2.179e-11;   /* 13.60 eV in erg */
+  E_ion[rt_ionizing_species_HeI] = 3.940e-11;  /* 24.59 eV in erg */
+  E_ion[rt_ionizing_species_HeII] = 8.719e-11; /* 54.42 eV in erg */
+}
+
+#endif /* SWIFT_RT_KIARA_SPECIES_H */

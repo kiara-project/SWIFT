@@ -16,31 +16,23 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-#ifndef SWIFT_RT_ADDITIONS_H
-#define SWIFT_RT_ADDITIONS_H
+
+#ifndef SWIFT_KIARA_RT_PARAMETERS_H
+#define SWIFT_KIARA_RT_PARAMETERS_H
 
 /**
- * @file src/rt_additions.h
- * @brief Branches between the different additional functions required outside
- * of the RT files; Required to avoid circular inclusions.
+ * @file src/rt/KIARA/rt_parameters.h
+ * @brief Global RT parameters.
  */
 
-/* Config parameters. */
-#include <config.h>
+extern struct rt_parameters rt_params;
 
-/* Import the right RT definition */
-#if defined(RT_NONE)
-#include "./rt/none/rt_additions.h"
-#elif defined(RT_DEBUG)
-#include "./rt/debug/rt_additions.h"
-#elif defined(RT_GEAR)
-#include "./rt/GEAR/rt_additions.h"
-#elif defined(RT_KIARA)
-#include "./rt/KIARA/rt_additions.h"
-#elif defined(RT_SPHM1RT)
-#include "./rt/SPHM1RT/rt_additions.h"
-#else
-#error "Invalid choice of radiation scheme"
-#endif
+/**
+ * Some global RT related parameters.
+ */
+struct rt_parameters {
+  float reduced_speed_of_light;
+  float reduced_speed_of_light_inverse;
+};
 
-#endif /* SWIFT_RT_ADDITIONS_H */
+#endif /* SWIFT_KIARA_RT_PARAMETERS_H */

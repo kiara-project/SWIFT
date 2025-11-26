@@ -2047,7 +2047,7 @@ AC_SUBST([SUNDIALS_INCS])
 # As an example for this, see the call to AC_ARG_WITH for cooling.
 AC_ARG_WITH([subgrid],
 	[AS_HELP_STRING([--with-subgrid=<subgrid>],
-		[Master switch for subgrid methods. Inexperienced user should start here. Options are: @<:@none, GEAR, GEAR-G3, AGORA, QLA, QLA-EAGLE, EAGLE, EAGLE-XL, SPIN_JET_EAGLE, SIMBA, KIARA default: none@:>@]
+		[Master switch for subgrid methods. Inexperienced user should start here. Options are: @<:@none, GEAR, GEAR-G3, AGORA, QLA, QLA-EAGLE, EAGLE, EAGLE-XL, SPIN_JET_EAGLE, SIMBA, KIARA, KIARART default: none@:>@]
 	)],
 	[with_subgrid="$withval"],
 	[with_subgrid=none]
@@ -2210,8 +2210,8 @@ case "$with_subgrid" in
         with_subgrid_cooling=KIARA
         with_subgrid_chemistry=KIARA
         with_subgrid_tracers=none
-        with_subgrid_entropy_floor=SIMBA
-        with_subgrid_stars=SIMBA
+        with_subgrid_entropy_floor=none
+        with_subgrid_stars=KIARA
         with_subgrid_star_formation=KIARA
         with_subgrid_feedback=KIARA
         with_subgrid_black_holes=Obsidian
@@ -3283,18 +3283,18 @@ AC_DEFINE_UNQUOTED([SELF_GRAVITY_MULTIPOLE_ORDER], [$with_multipole_order], [Mul
 #  Radiative transfer scheme
 AC_ARG_WITH([rt],
    [AS_HELP_STRING([--with-rt=<scheme>],
-      [Radiative transfer scheme to use @<:@none, GEAR_*, SPHM1RT_*, debug default: none@:>@.
-      For GEAR and SPHM1RT, the number of photon groups (e.g. GEAR_4) needs to be provided.]
+      [Radiative transfer scheme to use @<:@none, GEAR_*, SPHM1RT_*, KIARA_* debug default: none@:>@.
+      For GEAR, SPHM1RT, and KIARA the number of photon groups (e.g. GEAR_4) needs to be provided.]
    )],
    [with_rt="$withval"],
    [with_rt="none"]
 )
 
-# For GEAR-RT scheme: Select a RT Riemann solver
+# For GEAR-RT/KIARA-RT scheme: Select a RT Riemann solver
 AC_ARG_WITH([rt-riemann-solver],
    [AS_HELP_STRING([--with-rt-riemann-solver=<scheme>],
       [Riemann solver for the moments of the ratiadiative transfer equation with the M1 closure to use @<:@none, HLL, GLF, default: none@:>@.
-      For the GEAR RT scheme, you need to select one Riemann solver.]
+      For the GEAR/KIARA RT scheme, you need to select one Riemann solver.]
    )],
    [with_rt_riemann_solver="$withval"],
    [with_rt_riemann_solver="none"]
@@ -3339,11 +3339,11 @@ case "$with_rt" in
       fi
 
       case "$with_hydro" in
-          "gizmo-mfv" | "sphenix")
+          "gizmo-mfv" | "sphenix" | "magma2")
           # allowed.
         ;;
         *)
-          AC_MSG_ERROR([GEAR-RT: Cannot work without gizmo-mfv or sphenix hydro. Compile using --with-hydro=gizmo-mfv or --with-hydro=sphenix])
+          AC_MSG_ERROR([GEAR-RT: Cannot work without gizmo-mfv or sphenix/magma2 hydro. Compile using --with-hydro=gizmo-mfv or --with-hydro=sphenix or --with-hydro=magma2])
         ;;
       esac
 
@@ -3357,6 +3357,47 @@ case "$with_rt" in
 
       if test "$with_cooling" = "none"; then
           AC_MSG_ERROR([GEAR-RT: You need to select a cooling module (--with-cooling=grackle_1)])
+      fi
+
+   ;;
+   KIARA_*)
+      AC_DEFINE([RT_KIARA], [1], [KIARA M1 closure scheme])
+      number_group=${with_rt#*_}
+      AC_DEFINE_UNQUOTED([RT_NGROUPS], [$number_group], [Number of photon groups to follow])
+      AC_DEFINE([MPI_SYMMETRIC_FORCE_INTERACTION_RT], [1], [Do symmetric MPI interactions])
+
+      if test "$number_group" = "0"; then
+          AC_MSG_ERROR([KIARA-RT: Cannot work with zero photon groups])
+      fi
+      if ! test $number_group -eq $number_group; then
+          # abuse -eq to check whether $number_group is an integer. -eq
+          # only works with those.
+          AC_MSG_ERROR([KIARA-RT: Cannot work with non-integer photon groups])
+      fi
+
+      if test "$enable_debugging_checks" = "yes"; then
+          AC_DEFINE([SWIFT_RT_DEBUG_CHECKS], [1], [additional debugging checks for RT])
+      fi
+
+      case "$with_hydro" in
+          "sphenix" | "magma2")
+          # allowed.
+        ;;
+        *)
+          AC_MSG_ERROR([KIARA-RT: Needs sphenix/magma2 hydro. Compile using --with-hydro=sphenix or --with-hydro=magma2])
+        ;;
+      esac
+
+      if test "$with_rt_riemann_solver" = "none"; then
+          AC_MSG_ERROR([KIARA-RT: You need to select an RT Riemann solver (--with-rt-riemann-solver=...)])
+      fi
+
+      if test "$have_grackle" != "yes"; then
+        AC_MSG_ERROR([KIARA-RT: You need the grackle library for KIARA-RT. (--with-grackle=PATH)])
+      fi
+
+      if test "$with_cooling" = "none"; then
+          AC_MSG_ERROR([KIARA-RT: You need to select a cooling module (--with-cooling=grackle_1)])
       fi
 
    ;;
@@ -3500,10 +3541,11 @@ AM_CONDITIONAL([HAVESPHM1RTRT], [test "${with_rt:0:7}" = "SPHM1RT"])
 # Check if using GEAR-RT radiative transfer
 AM_CONDITIONAL([HAVEGEARRT], [test "${with_rt:0:4}" = "GEAR"])
 
+# Check if using KIARA-RT radiative transfer
+AM_CONDITIONAL([HAVEKIARART], [test "${with_rt:0:5}" = "KIARA"])
+
 # Check if using Moving mesh
 AM_CONDITIONAL([HAVE_MOVING_MESH], [test "$enable_moving_mesh" = "yes"])
-
-
 
 
 # Handle .in files.
