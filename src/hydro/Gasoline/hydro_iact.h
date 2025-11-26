@@ -46,7 +46,7 @@
  */
 __attribute__((always_inline)) INLINE static void runner_iact_density(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
   float wi, wj, wi_dx, wj_dx;
 
@@ -60,11 +60,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   /* Compute density of pi. */
   const float hi_inv = 1.f / hi;
   const float ui = r * hi_inv;
-  
+
   if (!decoupled_j) {
     kernel_deval(ui, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -75,8 +74,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 
   if (!decoupled_i) {
     kernel_deval(uj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -138,7 +136,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
     pi->weighted_self_wcount += mj * r2 * wi_dx * r_inv;
     pj->weighted_self_wcount += mi * r2 * wj_dx * r_inv;
   }
-
 }
 
 /**
@@ -155,7 +152,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, const struct part* restrict pj, const float a,
+    struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
   float wi, wi_dx;
 
@@ -207,7 +204,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   if (r < hi && r < hj) {
     pi->weighted_self_wcount += mj * r2 * wi_dx * r_inv;
   }
-
 }
 
 /**
@@ -228,7 +224,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const int decoupled_i = pi->decoupled;
@@ -268,7 +264,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   if (!decoupled_i) {
     pj->viscosity.v_sig = max(pj->viscosity.v_sig, new_v_sig);
   }
-  if (pj->viscosity.v_sig > 3.e5) message("V_SIG: sym z=%g idj=%lld idi=%lld vsigj=%g vsigi=%g dec=%d tdec=%g dvdr=%g omij=%g muij=%g r=%g", 1./a - 1., pj->id, pi->id, pj->viscosity.v_sig, pi->viscosity.v_sig, pj->decoupled, pj->feedback_data.decoupling_delay_time, dvdr, omega_ij, mu_ij, 1./r_inv);
+  if (pj->viscosity.v_sig > 3.e5)
+    message(
+        "V_SIG: sym z=%g idj=%lld idi=%lld vsigj=%g vsigi=%g dec=%d tdec=%g "
+        "dvdr=%g omij=%g muij=%g r=%g",
+        1. / a - 1., pj->id, pi->id, pj->viscosity.v_sig, pi->viscosity.v_sig,
+        pj->decoupled, pj->feedback_data.decoupling_delay_time, dvdr, omega_ij,
+        mu_ij, 1. / r_inv);
 
   /* Calculate Del^2 u for the thermal diffusion coefficient. */
   /* Need to get some kernel values F_ij = wi_dx */
@@ -277,16 +279,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   if (!decoupled_j) {
     const float ui = r / hi;
     kernel_deval(ui, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
   if (!decoupled_i) {
     const float uj = r / hj;
     kernel_deval(uj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -340,10 +340,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
-    pj->rho_gradient[j] +=
-        pi->mass * drho_ij * dx_ij * wj_dx * r_inv;
+    pi->rho_gradient[j] += pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
+    pj->rho_gradient[j] += pi->mass * drho_ij * dx_ij * wj_dx * r_inv;
   }
 }
 
@@ -366,9 +364,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
-  
+
   /* In the non-sym case only the neighbor matters */
   const int decoupled_j = pj->decoupled;
   if (decoupled_j) return;
@@ -401,7 +399,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
   /* Update if we need to */
   pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
 
-  if (pi->viscosity.v_sig > 3.e5) message("V_SIG: nonsym z=%g idi=%lld idj=%lld vsigi=%g vsigj=%g dec=%d tdec=%g dvdr=%g omij=%g muij=%g r=%g", 1./a - 1., pi->id, pj->id, pi->viscosity.v_sig, pj->viscosity.v_sig, pi->decoupled, pi->feedback_data.decoupling_delay_time, dvdr, omega_ij, mu_ij, 1./r_inv);
+  if (pi->viscosity.v_sig > 3.e5)
+    message(
+        "V_SIG: nonsym z=%g idi=%lld idj=%lld vsigi=%g vsigj=%g dec=%d tdec=%g "
+        "dvdr=%g omij=%g muij=%g r=%g",
+        1. / a - 1., pi->id, pj->id, pi->viscosity.v_sig, pj->viscosity.v_sig,
+        pi->decoupled, pi->feedback_data.decoupling_delay_time, dvdr, omega_ij,
+        mu_ij, 1. / r_inv);
 
   /* Need to get some kernel values F_ij = wi_dx */
   float wi, wi_dx;
@@ -443,8 +447,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
+    pi->rho_gradient[j] += pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
   }
 }
 
@@ -462,7 +465,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_force(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const int decoupled_i = pi->decoupled;
@@ -493,8 +496,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   float wi, wi_dx;
   if (!decoupled_j) {
     kernel_deval(xi, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -507,8 +509,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   float wj, wj_dx;
   if (!decoupled_i) {
     kernel_deval(xj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -593,12 +594,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
                              (pi->u - pj->u) * kernel_gradient / rho_ij;*/
   /* Rennehan: replacing with Monaghan, Huppert, & Worster (2006) Eq 2.14 */
   float diff_du_term = 0.f;
-  if (pi->diffusion.rate > 0.f && pj->diffusion.rate > 0.f && 
-      pi->rho > 0.f && pj->rho > 0.f) {
+  if (pi->diffusion.rate > 0.f && pj->diffusion.rate > 0.f && pi->rho > 0.f &&
+      pj->rho > 0.f) {
     const float D_i_weighted = pi->rho * pi->diffusion.rate;
     const float D_j_weighted = pj->rho * pj->diffusion.rate;
     const float rho_ij_multiplied = pi->rho * pj->rho;
-    const float diff_rate_ij = 
+    const float diff_rate_ij =
         2.f * (D_i_weighted * D_j_weighted) / (D_i_weighted + D_j_weighted);
     const float diff_weight = 2.f * diff_rate_ij / rho_ij_multiplied;
     diff_du_term = diff_weight * (pi->u - pj->u) * kernel_gradient;
@@ -631,7 +632,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, const struct part* restrict pj, const float a,
+    struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
 
   const int decoupled_i = pi->decoupled;
@@ -661,8 +662,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   float wi, wi_dx;
   if (!decoupled_j) {
     kernel_deval(xi, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -675,8 +675,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   float wj, wj_dx;
   if (!decoupled_i) {
     kernel_deval(xj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -689,7 +688,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* Get the time derivative for h. */
   pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
-  
+
   /* Decoupled winds do not need any further calculations. */
   if (decoupled_i || decoupled_j) return;
 
@@ -755,12 +754,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
                              (pi->u - pj->u) * kernel_gradient / rho_ij;*/
   /* Rennehan: replacing with Monaghan, Huppert, & Worster (2006) Eq 2.14 */
   float diff_du_term = 0.f;
-  if (pi->diffusion.rate > 0.f && pj->diffusion.rate > 0.f && 
-      pi->rho > 0.f && pj->rho > 0.f) {
+  if (pi->diffusion.rate > 0.f && pj->diffusion.rate > 0.f && pi->rho > 0.f &&
+      pj->rho > 0.f) {
     const float D_i_weighted = pi->rho * pi->diffusion.rate;
     const float D_j_weighted = pj->rho * pj->diffusion.rate;
     const float rho_ij_multiplied = pi->rho * pj->rho;
-    const float diff_rate_ij = 
+    const float diff_rate_ij =
         2.f * (D_i_weighted * D_j_weighted) / (D_i_weighted + D_j_weighted);
     const float diff_weight = 2.f * diff_rate_ij / rho_ij_multiplied;
     diff_du_term = diff_weight * (pi->u - pj->u) * kernel_gradient;
@@ -776,8 +775,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   assert(pj->u_dt == pj->u_dt);
   assert(pi->a_hydro[0] == pi->a_hydro[0]);
   assert(pj->a_hydro[0] == pj->a_hydro[0]);
-  assert(pi->weighted_wcount!=0.f);
-  assert(pj->weighted_wcount!=0.f);
+  assert(pi->weighted_wcount != 0.f);
+  assert(pj->weighted_wcount != 0.f);
 }
 
 #endif /* SWIFT_GASOLINE_HYDRO_IACT_H */

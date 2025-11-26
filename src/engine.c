@@ -1764,7 +1764,7 @@ void engine_skip_force_and_kick(struct engine *e) {
         /* Rennehan: decoupling task */
         t->type == task_type_hydro_decoupling ||
         /* Rennehan: recoupling task */
-        t->type == task_type_hydro_recoupling || 
+        t->type == task_type_hydro_recoupling ||
         t->type == task_type_stars_in || t->type == task_type_stars_out ||
         t->type == task_type_star_formation ||
         t->type == task_type_star_formation_sink ||
@@ -2248,9 +2248,9 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
     cooling_update(e->physical_constants, e->cosmology, e->pressure_floor_props,
                    e->cooling_func, e->s, e->time);
 
-  if (e->policy & engine_policy_rt){
+  if (e->policy & engine_policy_rt) {
     rt_props_update(e->rt_props, e->internal_units, e->cosmology);
-  /* Also update cooling when using RT for KIARART. */
+    /* Also update cooling when using RT for KIARART. */
     cooling_update(e->physical_constants, e->cosmology, e->pressure_floor_props,
                    e->cooling_func, e->s, e->time);
   }
@@ -2709,9 +2709,9 @@ int engine_step(struct engine *e) {
                        e->cosmology);
 
   /* Update the rt properties */
-  if (e->policy & engine_policy_rt){
+  if (e->policy & engine_policy_rt) {
     rt_props_update(e->rt_props, e->internal_units, e->cosmology);
-  /* Also update cooling when using RT. */
+    /* Also update cooling when using RT. */
     cooling_update(e->physical_constants, e->cosmology, e->pressure_floor_props,
                    e->cooling_func, e->s, e->time);
   }
@@ -3033,9 +3033,9 @@ int engine_step(struct engine *e) {
             e->collect_group1.csds_file_size_gb);
 #endif
 
-    /********************************************************/
-    /* OK, we are done with the regular stuff. Time for i/o */
-    /********************************************************/
+  /********************************************************/
+  /* OK, we are done with the regular stuff. Time for i/o */
+  /********************************************************/
 
 #ifdef WITH_LIGHTCONE
   /* Flush lightcone buffers if necessary */

@@ -319,8 +319,8 @@ static INLINE void runner_dopair_grav_pp_full_no_cache(
 
         /* Interact! */
         float f_ij, pot_ij, mass_from_j;
-        runner_iact_grav_pp_full(r2, h2, h_inv, h_inv_3, mass_j, &f_ij,
-                                 &pot_ij, &mass_from_j, hsml_i2);
+        runner_iact_grav_pp_full(r2, h2, h_inv, h_inv_3, mass_j, &f_ij, &pot_ij,
+                                 &mass_from_j, hsml_i2);
 
         /* Store it back */
         a_x += f_ij * dx;

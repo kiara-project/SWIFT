@@ -82,7 +82,8 @@ struct chemistry_part_data {
   float iron_mass_fraction_from_SNIa;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! SFR density (physical) within smoothing kernel needed for G0 calculation */
+  /*! SFR density (physical) within smoothing kernel needed for G0 calculation
+   */
   float local_sfr_density;
 #endif
 };

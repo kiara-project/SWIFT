@@ -590,7 +590,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
  */
 __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
     struct part *restrict p) {
-  
+
   p->rho_gradient[0] = 0.f;
   p->rho_gradient[1] = 0.f;
   p->rho_gradient[2] = 0.f;
@@ -611,7 +611,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
   const float h_inv = 1.0f / h;                       /* 1/h */
   const float h_inv_dim = pow_dimension(h_inv);       /* 1/h^d */
   const float h_inv_dim_plus_one = h_inv_dim * h_inv; /* 1/h^(d+1) */
-  
+
   const float rho_inv = 1.f / p->rho;
   p->rho_gradient[0] *= h_inv_dim_plus_one * rho_inv;
   p->rho_gradient[1] *= h_inv_dim_plus_one * rho_inv;
@@ -1020,7 +1020,7 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->decoupled = 0;
   p->to_be_decoupled = 0;
   p->to_be_recoupled = 0;
-  
+
   p->viscosity.v_sig = 0.f;
 }
 

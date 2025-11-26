@@ -63,16 +63,17 @@ void hydro_props_init(struct hydro_props *p,
   /* ------ Smoothing lengths parameters ---------- */
 
   /* Kernel properties */
-  p->eta_neighbours = 
+  p->eta_neighbours =
       parser_get_opt_param_float(params, "SPH:resolution_eta", 0.f);
 
   /* Target number of neighbours (optional) */
-  p->target_neighbours = 
-        parser_get_opt_param_float(params, "SPH:target_neighbours", 0.f);
+  p->target_neighbours =
+      parser_get_opt_param_float(params, "SPH:target_neighbours", 0.f);
 
-  if (p->eta_neighbours <= 0.f && p->target_neighbours <=0.f) {
-    error("You must set either SPH:resolution_eta or SPH:target_neighbours "
-          "in the parameter file.");
+  if (p->eta_neighbours <= 0.f && p->target_neighbours <= 0.f) {
+    error(
+        "You must set either SPH:resolution_eta or SPH:target_neighbours "
+        "in the parameter file.");
   }
 
   /* Tolerance for the smoothing length Newton-Raphson scheme */
@@ -83,8 +84,7 @@ void hydro_props_init(struct hydro_props *p,
   /* Target number of neighbours */
   if (p->eta_neighbours > 0.f) {
     p->target_neighbours = pow_dimension(p->eta_neighbours) * kernel_norm;
-  }
-  else {
+  } else {
     p->eta_neighbours =
         powf(p->target_neighbours / kernel_norm, hydro_dimension_inv);
   }
@@ -96,17 +96,19 @@ void hydro_props_init(struct hydro_props *p,
 
 #ifdef MAGMA2_SPH
 #ifndef const_kernel_target_neighbours
-  error("When using MAGMA2 SPH, the constant "
-        "const_kernel_target_neighbours must be defined in the header file "
-        "hydro_parameters.h. This is a compile-time constant and must be set "
-        "to the desired number of neighbours in the parameter file.");
+  error(
+      "When using MAGMA2 SPH, the constant "
+      "const_kernel_target_neighbours must be defined in the header file "
+      "hydro_parameters.h. This is a compile-time constant and must be set "
+      "to the desired number of neighbours in the parameter file.");
 #else
   if (fabsf((float)const_kernel_target_neighbours - p->target_neighbours) >
       0.05f * p->target_neighbours) {
-    error("When using MAGMA2 SPH, the compiled constant "
-          "const_kernel_target_neighbours (%g) must be within 5 percent of "
-          "the desired number of neighbours (%g) in the parameter file.",
-          (float)const_kernel_target_neighbours, p->target_neighbours);
+    error(
+        "When using MAGMA2 SPH, the compiled constant "
+        "const_kernel_target_neighbours (%g) must be within 5 percent of "
+        "the desired number of neighbours (%g) in the parameter file.",
+        (float)const_kernel_target_neighbours, p->target_neighbours);
   }
 #endif
 #endif
@@ -231,20 +233,18 @@ void hydro_props_init(struct hydro_props *p,
   p->minimal_internal_energy = u_min / mean_molecular_weight;
 
   /* ------ Time-step information ------ */
-  
+
   p->dt_min = parser_get_param_float(params, "TimeIntegration:dt_min");
 
   /* ------ Conversion factors & gas definitions ---------- */
 
 #ifdef WITH_FOF_GALAXIES
   /* Read the temperature threshold for cold gas for galaxy finding */
-  p->cold_gas_temperature_threshold =
-      parser_get_opt_param_float(
-          params, "SPH:cold_gas_temperature_threshold", 1.e5f);
+  p->cold_gas_temperature_threshold = parser_get_opt_param_float(
+      params, "SPH:cold_gas_temperature_threshold", 1.e5f);
 
-  p->cold_gas_n_H_threshold_cgs =
-      parser_get_opt_param_float(
-          params, "SPH:cold_gas_n_H_threshold_cgs", 0.13);
+  p->cold_gas_n_H_threshold_cgs = parser_get_opt_param_float(
+      params, "SPH:cold_gas_n_H_threshold_cgs", 0.13);
 
   const double k_B = phys_const->const_boltzmann_k;
   const double m_p = phys_const->const_proton_mass;

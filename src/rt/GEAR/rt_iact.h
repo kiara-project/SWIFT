@@ -362,16 +362,16 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
      * step. */
     /* Make sure mindt larger than 0 to avoid mindt=-1 case. */
     if (mindt > 0.f) {
-    rti->flux[g].energy -= totflux[0] * mindt;
-    rti->flux[g].flux[0] -= totflux[1] * mindt;
-    rti->flux[g].flux[1] -= totflux[2] * mindt;
-    rti->flux[g].flux[2] -= totflux[3] * mindt;
-    if (mode == 1 || (rtj->flux_dt < 0.f)) {
-      rtj->flux[g].energy += totflux[0] * mindt;
-      rtj->flux[g].flux[0] += totflux[1] * mindt;
-      rtj->flux[g].flux[1] += totflux[2] * mindt;
-      rtj->flux[g].flux[2] += totflux[3] * mindt;
-    }
+      rti->flux[g].energy -= totflux[0] * mindt;
+      rti->flux[g].flux[0] -= totflux[1] * mindt;
+      rti->flux[g].flux[1] -= totflux[2] * mindt;
+      rti->flux[g].flux[2] -= totflux[3] * mindt;
+      if (mode == 1 || (rtj->flux_dt < 0.f)) {
+        rtj->flux[g].energy += totflux[0] * mindt;
+        rtj->flux[g].flux[0] += totflux[1] * mindt;
+        rtj->flux[g].flux[1] += totflux[2] * mindt;
+        rtj->flux[g].flux[2] += totflux[3] * mindt;
+      }
     }
   }
 }

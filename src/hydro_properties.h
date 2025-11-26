@@ -113,9 +113,9 @@ struct hydro_props {
   float mu_ionised;
 
   /* ------ Time-stepping information -------------- */
-  
+
   float dt_min;
-  
+
   /* ------ Gas definitions ------------------------ */
 
 #ifdef WITH_FOF_GALAXIES
@@ -159,7 +159,6 @@ struct hydro_props {
 
   /*! MHD parameters */
   struct mhd_global_data mhd;
-
 };
 
 void hydro_props_print(const struct hydro_props *p);

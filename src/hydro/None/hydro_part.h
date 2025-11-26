@@ -94,7 +94,7 @@ struct part {
   long long id;
 
   /*! Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+  struct gpart *gpart;
 
   /*! Particle position. */
   double x[3];
@@ -157,10 +157,10 @@ struct part {
 
   /*! Flag to indicate that the decoupling task will run */
   unsigned char to_be_decoupled;
-  
+
   /*! Flag to indicate that the recoupling task will run */
   unsigned char to_be_recoupled;
-  
+
   /*! Additional data used by the MHD scheme */
   struct mhd_part_data mhd_data;
 

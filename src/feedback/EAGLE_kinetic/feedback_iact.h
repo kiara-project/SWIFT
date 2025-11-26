@@ -182,7 +182,7 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
 
   /* Ignore wind in density computation */
   if (pj->decoupled) return;
-  
+
   /* Get the the number of SNII kinetic energy injections per stellar
    * particle at this time-step */
   const int N_of_SNII_kinetic_events =

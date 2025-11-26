@@ -281,7 +281,8 @@ void cell_recursively_activate_decoupling(struct cell *c, struct scheduler *s,
 
 /* Rennehan */
 /**
- * @brief Activate the decoupling tasks (and implicit links) in a cell hierarchy.
+ * @brief Activate the decoupling tasks (and implicit links) in a cell
+ * hierarchy.
  *
  * @param c The #cell.
  * @param s The #scheduler.
@@ -327,7 +328,8 @@ void cell_recursively_activate_recoupling(struct cell *c, struct scheduler *s,
 
 /* Rennehan */
 /**
- * @brief Activate the recoupling tasks (and implicit links) in a cell hierarchy.
+ * @brief Activate the recoupling tasks (and implicit links) in a cell
+ * hierarchy.
  *
  * @param c The #cell.
  * @param s The #scheduler.

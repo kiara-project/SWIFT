@@ -107,7 +107,7 @@ struct part {
   long long id;
 
   /*! Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+  struct gpart *gpart;
 
   /*! Particle position. */
   double x[3];
@@ -197,10 +197,10 @@ struct part {
 
   /*! Flag to indicate that the decoupling task will run */
   unsigned char to_be_decoupled;
-  
+
   /*! Flag to indicate that the recoupling task will run */
   unsigned char to_be_recoupled;
-  
+
   /*! Additional data used for adaptive softening */
   struct adaptive_softening_part_data adaptive_softening_data;
 
@@ -218,7 +218,7 @@ struct part {
 
   /* Additional data used by the SF routines */
   struct star_formation_part_data sf_data;
-  
+
 #ifdef WITH_FOF_GALAXIES
   /*! Additional data used by the FoF */
   struct galaxy_data galaxy_data;

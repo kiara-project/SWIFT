@@ -2,7 +2,7 @@
  * This file is part of SWIFT.
  * Copyright (c) 2018 Matthieu Schaller (schaller@strw.leidenuniv.nl)
  *               2022 Doug Rennehan (douglas.rennehan@gmail.com)
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -43,8 +43,10 @@
 #define SWR_idx(A, B) ((A) * NM + B)
 #define SN2E_idx(A, B, C) ((A) * NZSN * NM + (B) * NM + C)
 
-#define LINEAR_INTERPOLATION(x1, y1, x2, y2, x) (((y2 - y1)/(x2 - x1))*(x - x1) + y1)
-#define LOG_INTERPOLATION(x, x2, x1) ((log10(x2) - log10(x))/(log10(x2) - log10(x1)))
+#define LINEAR_INTERPOLATION(x1, y1, x2, y2, x) \
+  (((y2 - y1) / (x2 - x1)) * (x - x1) + y1)
+#define LOG_INTERPOLATION(x, x2, x1) \
+  ((log10(x2) - log10(x)) / (log10(x2) - log10(x1)))
 
 enum kiara_metal_boosting {
   kiara_metal_boosting_off,
@@ -95,7 +97,6 @@ enum chem5_element {
   chem5_NXSN
 };
 
-
 /**
  * @brief Stores the yield tables
  */
@@ -131,7 +132,8 @@ struct feedback_props {
   /*! Are we depositing energy from SNIa directly from Chem5? */
   int with_SNIa_energy_from_chem5;
 
-  /*! If time since last chemical enrichment is above this value times the current stellar age, recompute */
+  /*! If time since last chemical enrichment is above this value times the
+   * current stellar age, recompute */
   float stellar_enrichment_frequency;
 
   /* ------------ Yield tables    ----------------- */
@@ -204,7 +206,7 @@ struct feedback_props {
   /*! Normalization for the mass loading curve */
   float FIRE_eta_normalization;
 
-  /*! The location (in internal mass units) where the break in the 
+  /*! The location (in internal mass units) where the break in the
    * mass loading curve occurs */
   float FIRE_eta_break;
 
@@ -219,10 +221,10 @@ struct feedback_props {
 
   /*! The wind speed of stellar feedback suppressed above this z */
   float wind_velocity_suppression_redshift;
-  
+
   /*! The mass loading factor of stellar feedback suppressed above this z */
   float wind_eta_suppression_redshift;
-  
+
   /*! Maxiumum multiple of SNII energy that is available to launch winds */
   float SNII_energy_multiplier;
 
@@ -235,7 +237,7 @@ struct feedback_props {
   /*! For KIARA, weight the launch probability by the particles's SFR (0/1) */
   int use_sfr_weighted_launch;
 
-  /*! Flag to set feedback boost at low Z: 
+  /*! Flag to set feedback boost at low Z:
    * 0=Off, 1=vwind boost, 2=eta boost, 3=both boost */
   int metal_dependent_vwind;
 
@@ -247,7 +249,7 @@ struct feedback_props {
 
   /*! Floor for the eta suppression factor */
   float eta_suppression_factor_floor;
-  
+
   /*! Added scatter to the wind velocities */
   float kick_velocity_scatter;
 
@@ -288,7 +290,7 @@ struct feedback_props {
   float max_energy_increase_factor;
 
   /*! Minimum internal energy loss factor from momentum exchange */
-  //float min_energy_decrease_factor;
+  // float min_energy_decrease_factor;
 
   /*! Flag to add heat to destroy cold gas in the ISM from SNIa gas */
   int SNIa_add_heat_to_ISM;
@@ -357,7 +359,7 @@ struct feedback_props {
 
 #if COOLING_GRACKLE_MODE >= 2
   /* ------------ Dust Efficiency Tables --------------- */
-  
+
   /*! dust condensation efficiency for C/O>1 */
   double delta_AGBCOG1[chemistry_element_count];
 
@@ -370,7 +372,7 @@ struct feedback_props {
   /*! max fraction of metals locked into dust */
   float max_dust_fraction;
 
-  /*! Rolling value for number of SNe is smoothed over this timescale 
+  /*! Rolling value for number of SNe is smoothed over this timescale
    * in Myr (0 for instantaneous) */
   float SNe_smoothing_time_in_Myr;
 #endif

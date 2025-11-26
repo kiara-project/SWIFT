@@ -195,153 +195,158 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
     av_energy[group] = 0.;
     photon_number_integral[group] = 0.;
   }
-  
-  /* TODO: BPASS photon group properties are hard code in now, 
-   * need to think a better way to read in. 
+
+  /* TODO: BPASS photon group properties are hard code in now,
+   * need to think a better way to read in.
    * Current values are using the values in first year review. */
-  if (rt_props->stellar_spectrum_type == 2){
-	/* Energy weighted cross section. unit cm^2 */
-	cse[0][0] = 3.21e-18, cse[0][1] = 0, cse[0][2] = 0;
-	cse[1][0] = 6.99e-19, cse[1][1] = 5.14e-18, cse[1][2] = 0;
-	cse[2][0] = 1.19e-19, cse[2][1] = 1.64e-18, cse[2][2] = 4.64e-19;
+  if (rt_props->stellar_spectrum_type == 2) {
+    /* Energy weighted cross section. unit cm^2 */
+    cse[0][0] = 3.21e-18, cse[0][1] = 0, cse[0][2] = 0;
+    cse[1][0] = 6.99e-19, cse[1][1] = 5.14e-18, cse[1][2] = 0;
+    cse[2][0] = 1.19e-19, cse[2][1] = 1.64e-18, cse[2][2] = 4.64e-19;
 
-	/* Number weighted cross section. unit cm^2 */
-	csn[0][0] = 3.46e-18, csn[0][1] = 0, csn[0][2] = 0;
-	csn[1][0] = 7.55e-19, csn[1][1] = 5.42e-18, csn[1][2] = 0;
-	csn[2][0] = 1.19e-19, csn[2][1] = 1.65e-18, csn[2][2] = 4.55e-19;
+    /* Number weighted cross section. unit cm^2 */
+    csn[0][0] = 3.46e-18, csn[0][1] = 0, csn[0][2] = 0;
+    csn[1][0] = 7.55e-19, csn[1][1] = 5.42e-18, csn[1][2] = 0;
+    csn[2][0] = 1.19e-19, csn[2][1] = 1.65e-18, csn[2][2] = 4.55e-19;
 
-	/* Average photon energy. unit erg */
-	av_energy[0] = 2.864693e-11;
-	av_energy[1] = 4.955534e-11;
-	av_energy[2] = 8.834406e-11;
+    /* Average photon energy. unit erg */
+    av_energy[0] = 2.864693e-11;
+    av_energy[1] = 4.955534e-11;
+    av_energy[2] = 8.834406e-11;
 
   } else {
 
-  double integral_E[RT_NGROUPS];
-  double integral_N[RT_NGROUPS];
-  double integral_sigma_E[RT_NGROUPS][rt_ionizing_species_count];
-  double integral_sigma_E_over_hnu[RT_NGROUPS][rt_ionizing_species_count];
+    double integral_E[RT_NGROUPS];
+    double integral_N[RT_NGROUPS];
+    double integral_sigma_E[RT_NGROUPS][rt_ionizing_species_count];
+    double integral_sigma_E_over_hnu[RT_NGROUPS][rt_ionizing_species_count];
 
-  /* Grab constants and conversions in cgs */
-  /* ------------------------------------- */
-  const double T_cgs = units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+    /* Grab constants and conversions in cgs */
+    /* ------------------------------------- */
+    const double T_cgs = units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
-  const float dimension_kB[5] = {1, 2, -2, 0, -1}; /* [g cm^2 s^-2 K^-1] */
-  const double kB_to_cgs =
-      units_general_cgs_conversion_factor(us, dimension_kB);
-  const double kB_cgs = phys_const->const_boltzmann_k * kB_to_cgs;
+    const float dimension_kB[5] = {1, 2, -2, 0, -1}; /* [g cm^2 s^-2 K^-1] */
+    const double kB_to_cgs =
+        units_general_cgs_conversion_factor(us, dimension_kB);
+    const double kB_cgs = phys_const->const_boltzmann_k * kB_to_cgs;
 
-  const float dimension_h[5] = {1, 2, -1, 0, 0}; /* [g cm^2 s^-1] */
-  const double h_to_cgs = units_general_cgs_conversion_factor(us, dimension_h);
-  const double h_planck_cgs = phys_const->const_planck_h * h_to_cgs;
+    const float dimension_h[5] = {1, 2, -1, 0, 0}; /* [g cm^2 s^-1] */
+    const double h_to_cgs =
+        units_general_cgs_conversion_factor(us, dimension_h);
+    const double h_planck_cgs = phys_const->const_planck_h * h_to_cgs;
 
-  const double c_cgs = phys_const->const_speed_light_c *
-                       units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
+    const double c_cgs = phys_const->const_speed_light_c *
+                         units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
 
-  /* Prepare parameter struct for integration functions */
-  /* -------------------------------------------------- */
-  const int spectype = rt_props->stellar_spectrum_type;
-  const double maxfreq_const_spectrum =
-      rt_props->const_stellar_spectrum_max_frequency;
-  const double T_bb = rt_props->stellar_spectrum_blackbody_T * T_cgs;
-  struct rt_photoion_cs_parameters cs_params = rt_init_photoion_cs_params_cgs();
+    /* Prepare parameter struct for integration functions */
+    /* -------------------------------------------------- */
+    const int spectype = rt_props->stellar_spectrum_type;
+    const double maxfreq_const_spectrum =
+        rt_props->const_stellar_spectrum_max_frequency;
+    const double T_bb = rt_props->stellar_spectrum_blackbody_T * T_cgs;
+    struct rt_photoion_cs_parameters cs_params =
+        rt_init_photoion_cs_params_cgs();
 
-  struct rt_spectrum_integration_params integration_params = {
-      /*species=*/0,
-      /*spectrum_type=*/spectype,
-      /*freq_max for const spectrum=*/maxfreq_const_spectrum,
-      /*T=*/T_bb,
-      /*kB=*/kB_cgs,
-      /*h_planck=*/h_planck_cgs,
-      /*c=*/c_cgs,
-      /*cross section params=*/&cs_params};
+    struct rt_spectrum_integration_params integration_params = {
+        /*species=*/0,
+        /*spectrum_type=*/spectype,
+        /*freq_max for const spectrum=*/maxfreq_const_spectrum,
+        /*T=*/T_bb,
+        /*kB=*/kB_cgs,
+        /*h_planck=*/h_planck_cgs,
+        /*c=*/c_cgs,
+        /*cross section params=*/&cs_params};
 
-  /* Set up Integration Limits */
-  /* ------------------------- */
+    /* Set up Integration Limits */
+    /* ------------------------- */
 
-  /* Get start and end points of the integrals */
-  double nu_start[RT_NGROUPS];
-  double nu_stop[RT_NGROUPS];
-  for (int group = 0; group < RT_NGROUPS; group++)
-    nu_start[group] = rt_props->photon_groups[group];
-  for (int group = 0; group < RT_NGROUPS - 1; group++)
-    nu_stop[group] = rt_props->photon_groups[group + 1];
+    /* Get start and end points of the integrals */
+    double nu_start[RT_NGROUPS];
+    double nu_stop[RT_NGROUPS];
+    for (int group = 0; group < RT_NGROUPS; group++)
+      nu_start[group] = rt_props->photon_groups[group];
+    for (int group = 0; group < RT_NGROUPS - 1; group++)
+      nu_stop[group] = rt_props->photon_groups[group + 1];
 
-  if (RT_NGROUPS == 1) {
-    /* If we only have one group, start integrating from the Hydrogen
-     * ionization frequency, not from zero. The reasoning here is that
-     * typically you define the *ionizing* radiation as stellar emission
-     * rates, not the *total* radiation. */
-    nu_start[0] = cs_params.E_ion[rt_ionizing_species_HI] / h_planck_cgs;
-    if (engine_rank == 0)
-      message(
-          "WARNING: with only 1 photon group, I'll start integrating"
-          " the cross sections at the first ionizing frequency %.3g",
-          nu_start[0]);
-  } else {
-    /* don't start at exactly 0 to avoid unlucky divisions */
-    if (nu_start[0] == 0.) nu_start[0] = min(1e-20, 1e-12 * nu_start[1]);
-  }
-
-  /* Get frequency at which we stop integrating */
-  double nu_stop_final;
-  if (rt_props->stellar_spectrum_type == 0) {
-    nu_stop_final = rt_props->const_stellar_spectrum_max_frequency;
-  } else if (rt_props->stellar_spectrum_type == 1) {
-    nu_stop_final = 10. * blackbody_peak_frequency(T_bb, kB_cgs, h_planck_cgs);
-  } else if (rt_props->stellar_spectrum_type == 2) {
-    nu_stop_final = rt_props->const_stellar_spectrum_max_frequency;
-    /* TODO: set it as the const spectrum now. Later we need to add the real value we use. */
-  } else {
-    nu_stop_final = -1.;
-    error("Unknown stellar spectrum type %d", rt_props->stellar_spectrum_type);
-  }
-  nu_stop[RT_NGROUPS - 1] = nu_stop_final;
-
-  /* Compute Integrals */
-  /* ----------------- */
-  for (int g = 0; g < RT_NGROUPS; g++) {
-    /* This is independent of species. */
-    integral_E[g] = rt_cross_sections_integrate_gsl(
-        spectrum_integrand, nu_start[g], nu_stop[g], RT_INTEGRAL_NPOINTS,
-        &integration_params);
-    integral_N[g] = rt_cross_sections_integrate_gsl(
-        spectrum_over_hnu_integrand, nu_start[g], nu_stop[g],
-        RT_INTEGRAL_NPOINTS, &integration_params);
-
-    for (int s = 0; s < rt_ionizing_species_count; s++) {
-      integration_params.species = s;
-      integral_sigma_E[g][s] = rt_cross_sections_integrate_gsl(
-          spectrum_times_sigma_integrand, nu_start[g], nu_stop[g],
-          RT_INTEGRAL_NPOINTS, &integration_params);
-      integral_sigma_E_over_hnu[g][s] = rt_cross_sections_integrate_gsl(
-          spectrum_times_sigma_over_hnu_integrand, nu_start[g], nu_stop[g],
-          RT_INTEGRAL_NPOINTS, &integration_params);
-    }
-  }
-
-  /* Now compute the actual average cross sections */
-  /* --------------------------------------------- */
-  for (int g = 0; g < RT_NGROUPS; g++) {
-    photon_number_integral[g] = integral_N[g];
-    if (integral_N[g] > 0.) {
-      av_energy[g] = integral_E[g] / integral_N[g];
+    if (RT_NGROUPS == 1) {
+      /* If we only have one group, start integrating from the Hydrogen
+       * ionization frequency, not from zero. The reasoning here is that
+       * typically you define the *ionizing* radiation as stellar emission
+       * rates, not the *total* radiation. */
+      nu_start[0] = cs_params.E_ion[rt_ionizing_species_HI] / h_planck_cgs;
+      if (engine_rank == 0)
+        message(
+            "WARNING: with only 1 photon group, I'll start integrating"
+            " the cross sections at the first ionizing frequency %.3g",
+            nu_start[0]);
     } else {
-      av_energy[g] = 0.;
+      /* don't start at exactly 0 to avoid unlucky divisions */
+      if (nu_start[0] == 0.) nu_start[0] = min(1e-20, 1e-12 * nu_start[1]);
     }
-    for (int s = 0; s < rt_ionizing_species_count; s++) {
-      if (integral_E[g] > 0.) {
-        cse[g][s] = integral_sigma_E[g][s] / integral_E[g];
-        csn[g][s] = integral_sigma_E_over_hnu[g][s] / integral_N[g];
-      } else {
-        /* No radiation = no interaction */
-        cse[g][s] = 0.;
-        csn[g][s] = 0.;
+
+    /* Get frequency at which we stop integrating */
+    double nu_stop_final;
+    if (rt_props->stellar_spectrum_type == 0) {
+      nu_stop_final = rt_props->const_stellar_spectrum_max_frequency;
+    } else if (rt_props->stellar_spectrum_type == 1) {
+      nu_stop_final =
+          10. * blackbody_peak_frequency(T_bb, kB_cgs, h_planck_cgs);
+    } else if (rt_props->stellar_spectrum_type == 2) {
+      nu_stop_final = rt_props->const_stellar_spectrum_max_frequency;
+      /* TODO: set it as the const spectrum now. Later we need to add the real
+       * value we use. */
+    } else {
+      nu_stop_final = -1.;
+      error("Unknown stellar spectrum type %d",
+            rt_props->stellar_spectrum_type);
+    }
+    nu_stop[RT_NGROUPS - 1] = nu_stop_final;
+
+    /* Compute Integrals */
+    /* ----------------- */
+    for (int g = 0; g < RT_NGROUPS; g++) {
+      /* This is independent of species. */
+      integral_E[g] = rt_cross_sections_integrate_gsl(
+          spectrum_integrand, nu_start[g], nu_stop[g], RT_INTEGRAL_NPOINTS,
+          &integration_params);
+      integral_N[g] = rt_cross_sections_integrate_gsl(
+          spectrum_over_hnu_integrand, nu_start[g], nu_stop[g],
+          RT_INTEGRAL_NPOINTS, &integration_params);
+
+      for (int s = 0; s < rt_ionizing_species_count; s++) {
+        integration_params.species = s;
+        integral_sigma_E[g][s] = rt_cross_sections_integrate_gsl(
+            spectrum_times_sigma_integrand, nu_start[g], nu_stop[g],
+            RT_INTEGRAL_NPOINTS, &integration_params);
+        integral_sigma_E_over_hnu[g][s] = rt_cross_sections_integrate_gsl(
+            spectrum_times_sigma_over_hnu_integrand, nu_start[g], nu_stop[g],
+            RT_INTEGRAL_NPOINTS, &integration_params);
       }
     }
-  }
 
-  }//end for the simple spectrum calculation.
+    /* Now compute the actual average cross sections */
+    /* --------------------------------------------- */
+    for (int g = 0; g < RT_NGROUPS; g++) {
+      photon_number_integral[g] = integral_N[g];
+      if (integral_N[g] > 0.) {
+        av_energy[g] = integral_E[g] / integral_N[g];
+      } else {
+        av_energy[g] = 0.;
+      }
+      for (int s = 0; s < rt_ionizing_species_count; s++) {
+        if (integral_E[g] > 0.) {
+          cse[g][s] = integral_sigma_E[g][s] / integral_E[g];
+          csn[g][s] = integral_sigma_E_over_hnu[g][s] / integral_N[g];
+        } else {
+          /* No radiation = no interaction */
+          cse[g][s] = 0.;
+          csn[g][s] = 0.;
+        }
+      }
+    }
+
+  }  // end for the simple spectrum calculation.
 
   /* for (int g = 0; g < RT_NGROUPS; g++) { */
   /*   printf("\nGroup %d\n", g); */
@@ -405,54 +410,57 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
  * @param file_name bpass hdf5 file name char
  * @param dataset_name each photon group data set name within the hdf5 file
  **/
-double **read_Bpass_from_hdf5(char *file_name, char *dataset_name){
-    double** Table;
+double **read_Bpass_from_hdf5(char *file_name, char *dataset_name) {
+  double **Table;
 
-    // Open the HDF5 file
-    hid_t file_id = H5Fopen(file_name, H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (file_id < 0) error("Error: Could not open file %s.\n", file_name);
+  // Open the HDF5 file
+  hid_t file_id = H5Fopen(file_name, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (file_id < 0) error("Error: Could not open file %s.\n", file_name);
 
+  // Open the dataset for HI group
+  hid_t dataset_id = H5Dopen2(file_id, dataset_name, H5P_DEFAULT);
+  if (dataset_id < 0)
+    error("Error: Could not open dataset %s.\n", dataset_name);
 
-    // Open the dataset for HI group
-    hid_t dataset_id = H5Dopen2(file_id, dataset_name, H5P_DEFAULT);
-    if (dataset_id < 0) error("Error: Could not open dataset %s.\n", dataset_name);
-    
-    /* read element name array into temporary array */
-    hid_t dataspace = H5Dget_space(dataset_id);
+  /* read element name array into temporary array */
+  hid_t dataspace = H5Dget_space(dataset_id);
 
-    // Get the dimensions of the dataset
-    hsize_t dims[2]; // Assuming a 2D dataset
-    H5Sget_simple_extent_dims(dataspace, dims, NULL);
+  // Get the dimensions of the dataset
+  hsize_t dims[2];  // Assuming a 2D dataset
+  H5Sget_simple_extent_dims(dataspace, dims, NULL);
 
-    // Use a buffer to read HDF5 dataset
-    double *buffer = malloc(dims[0] * dims[1] * sizeof(double));
-    herr_t status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
-    if (status < 0) error("Error: Could not read dataset.\n");
+  // Use a buffer to read HDF5 dataset
+  double *buffer = malloc(dims[0] * dims[1] * sizeof(double));
+  herr_t status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                          H5P_DEFAULT, buffer);
+  if (status < 0) error("Error: Could not read dataset.\n");
 
-    // Allocate memory for ionizing_HI_table
-    Table = malloc(dims[0] * sizeof(double *));
-    for (hsize_t i = 0; i < dims[0]; i++) {
-        Table[i] = malloc(dims[1] * sizeof(double));
+  // Allocate memory for ionizing_HI_table
+  Table = malloc(dims[0] * sizeof(double *));
+  for (hsize_t i = 0; i < dims[0]; i++) {
+    Table[i] = malloc(dims[1] * sizeof(double));
+  }
+
+  // Copy the element names into their final destination
+  for (hsize_t i = 0; i < dims[0]; i++) {
+    for (hsize_t j = 0; j < dims[1]; j++) {
+      Table[i][j] = buffer[i * dims[1] + j];
+      if (fabs(Table[i][j]) < 0)
+        error("Negative photon number in the table! row:%llu, column:%llu\n", i,
+              j);
     }
+  }
 
-    // Copy the element names into their final destination
-    for (hsize_t i = 0; i < dims[0]; i++){
-         for (hsize_t j = 0; j < dims[1]; j++) {
-            Table[i][j] = buffer[i * dims[1] + j];
-	    if (fabs(Table[i][j])< 0) error("Negative photon number in the table! row:%llu, column:%llu\n", i, j);
-         }
-    } 
+  // Free allocated memory
+  free(buffer);
 
-    // Free allocated memory
-    free(buffer);
+  // Close HDF5 dataset
+  status = H5Sclose(dataspace);
+  if (status < 0) error("error closing dataspace");
+  status = H5Dclose(dataset_id);
+  if (status < 0) error("error closing dataset");
+  status = H5Fclose(file_id);
+  if (status < 0) error("error closing file");
 
-    // Close HDF5 dataset
-    status = H5Sclose(dataspace);
-    if (status < 0) error("error closing dataspace");
-    status = H5Dclose(dataset_id);
-    if (status < 0) error("error closing dataset");
-    status = H5Fclose(file_id);
-    if (status < 0) error("error closing file");
-
-    return Table;
+  return Table;
 }

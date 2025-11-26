@@ -48,9 +48,11 @@
 #define GRACKLE_NPART 1
 #define GRACKLE_RANK 3
 #if COOLING_GRACKLE_MODE >= 2
-  #define N_SPECIES 46  /* This further includes properties for dust model */
+#define N_SPECIES 46 /* This further includes properties for dust model */
 #else
-  #define N_SPECIES 21  /* This includes extra values at end to hold rho,u,dudt,vx,vy,vz,u_floor,mZ,dummyvar */
+#define N_SPECIES                                 \
+  21 /* This includes extra values at end to hold \
+        rho,u,dudt,vx,vy,vz,u_floor,mZ,dummyvar */
 #endif
 
 /* define heating and cooling limits on thermal energy, per timestep */
@@ -58,7 +60,7 @@
 #define GRACKLE_COOLLIM 0.01f
 #define MAX_COLD_ISM_FRACTION 0.9f
 /* Minimum particle column length as a fraction of p->h.
- * Should be <= mean interparticle spacing. 
+ * Should be <= mean interparticle spacing.
  * For 48 Ngb mean spacing ~ 0.887
  * For 57 Ngb mean spacing ~ 0.837
  * For 114 Ngb mean spacing ~ 0.664
@@ -74,97 +76,92 @@ void cooling_update(const struct phys_const *phys_const,
                     struct cooling_function_data *cooling, struct space *s,
                     const double time);
 
-void cooling_print_fractions(const struct xpart* restrict xp);
-void cooling_first_init_part(const struct phys_const* restrict phys_const,
-                             const struct unit_system* restrict us,
-                             const struct hydro_props* hydro_properties,
-                             const struct cosmology* restrict cosmo,
-                             const struct cooling_function_data* cooling,
-                             struct part* restrict p,
-                             struct xpart* restrict xp);
-void cooling_post_init_part(const struct phys_const *restrict phys_const,
-    			    const struct unit_system *restrict us,
-    			    const struct hydro_props *hydro_props,
-    			    const struct cosmology *restrict cosmo,
-    			    const struct cooling_function_data *restrict cooling,
-    			    const struct part *restrict p, struct xpart *restrict xp);
+void cooling_print_fractions(const struct xpart *restrict xp);
+void cooling_first_init_part(const struct phys_const *restrict phys_const,
+                             const struct unit_system *restrict us,
+                             const struct hydro_props *hydro_properties,
+                             const struct cosmology *restrict cosmo,
+                             const struct cooling_function_data *cooling,
+                             struct part *restrict p,
+                             struct xpart *restrict xp);
+void cooling_post_init_part(
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct hydro_props *hydro_props,
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    const struct part *restrict p, struct xpart *restrict xp);
 
-void cooling_print_backend(const struct cooling_function_data* cooling);
+void cooling_print_backend(const struct cooling_function_data *cooling);
 
-void cooling_copy_to_grackle1(grackle_field_data* data, const struct part* p,
-                              const struct xpart* xp, gr_float rho,
+void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
+                              const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]);
-void cooling_copy_to_grackle2(grackle_field_data* data, const struct part* p,
-                              const struct xpart* xp, 
-                              const struct cooling_function_data* restrict cooling,
-			      const double dt, gr_float rho,
+void cooling_copy_to_grackle2(
+    grackle_field_data *data, const struct part *p, const struct xpart *xp,
+    const struct cooling_function_data *restrict cooling, const double dt,
+    gr_float rho, gr_float species_densities[N_SPECIES]);
+void cooling_copy_to_grackle3(grackle_field_data *data, const struct part *p,
+                              const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]);
-void cooling_copy_to_grackle3(grackle_field_data* data, const struct part* p,
-                              const struct xpart* xp, gr_float rho,
-                              gr_float species_densities[N_SPECIES]);
-void cooling_copy_from_grackle1(grackle_field_data* data, const struct part* p,
-                                struct xpart* xp, gr_float rho);
-void cooling_copy_from_grackle2(grackle_field_data* data, struct part* p,
-                                struct xpart* xp,
-                                const struct cooling_function_data* restrict cooling,
-                                gr_float rho);
-void cooling_copy_from_grackle3(grackle_field_data* data, const struct part* p,
-                                struct xpart* xp, gr_float rho);
-void cooling_copy_to_grackle(grackle_field_data* data,
-                             const struct unit_system* restrict us,
-                             const struct cosmology* restrict cosmo,
-			                       const struct cooling_function_data* restrict cooling,
-                             const struct part* p, const struct xpart* xp,
-			     const double dt, const double T_floor, 
-			     gr_float species_densities[N_SPECIES],
-			     int mode);
-void cooling_copy_from_grackle(grackle_field_data* data, struct part* p,
-                               struct xpart* xp, 
-                               const struct cooling_function_data* restrict cooling, 
-                               gr_float rho);
-void cooling_grackle_free_data(grackle_field_data* data);
-gr_float cooling_grackle_driver(const struct phys_const* restrict phys_const,
-                                const struct unit_system* restrict us,
-                                const struct cosmology* restrict cosmo,
-                                const struct hydro_props* hydro_properties,
-                                const struct cooling_function_data* restrict cooling,
-                                struct part* restrict p,
-                                struct xpart* restrict xp, double dt, 
-				double T_floor,
-				int mode);
+void cooling_copy_from_grackle1(grackle_field_data *data, const struct part *p,
+                                struct xpart *xp, gr_float rho);
+void cooling_copy_from_grackle2(
+    grackle_field_data *data, struct part *p, struct xpart *xp,
+    const struct cooling_function_data *restrict cooling, gr_float rho);
+void cooling_copy_from_grackle3(grackle_field_data *data, const struct part *p,
+                                struct xpart *xp, gr_float rho);
+void cooling_copy_to_grackle(
+    grackle_field_data *data, const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling, const struct part *p,
+    const struct xpart *xp, const double dt, const double T_floor,
+    gr_float species_densities[N_SPECIES], int mode);
+void cooling_copy_from_grackle(
+    grackle_field_data *data, struct part *p, struct xpart *xp,
+    const struct cooling_function_data *restrict cooling, gr_float rho);
+void cooling_grackle_free_data(grackle_field_data *data);
+gr_float cooling_grackle_driver(
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct hydro_props *hydro_properties,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, double dt,
+    double T_floor, int mode);
 
-gr_float cooling_time(const struct phys_const* restrict phys_const,
-                      const struct unit_system* restrict us,
-                      const struct hydro_props* hydro_properties,
-                      const struct cosmology* restrict cosmo,
-                      const struct cooling_function_data* restrict cooling,
-                      const struct part* restrict p, struct xpart* restrict xp,
-		                  const float rhocool, const float ucool);
+gr_float cooling_time(const struct phys_const *restrict phys_const,
+                      const struct unit_system *restrict us,
+                      const struct hydro_props *hydro_properties,
+                      const struct cosmology *restrict cosmo,
+                      const struct cooling_function_data *restrict cooling,
+                      const struct part *restrict p, struct xpart *restrict xp,
+                      const float rhocool, const float ucool);
 
 float cooling_get_temperature(
-    const struct phys_const* restrict phys_const,
-    const struct hydro_props* hydro_properties,
-    const struct unit_system* restrict us,
-    const struct cosmology* restrict cosmo,
-    const struct cooling_function_data* restrict cooling,
-    const struct part* restrict p, const struct xpart* restrict xp);
+    const struct phys_const *restrict phys_const,
+    const struct hydro_props *hydro_properties,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    const struct part *restrict p, const struct xpart *restrict xp);
 
 void firehose_cooling_and_dust(
-    const struct phys_const* restrict phys_const,
-    const struct unit_system* restrict us,
-    const struct cosmology* restrict cosmo,
-    const struct hydro_props* restrict hydro_props,
-    const struct cooling_function_data* restrict cooling,
-    struct part* restrict p, struct xpart* restrict xp, const double dt);
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct hydro_props *restrict hydro_props,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, const double dt);
 
-void cooling_cool_part(const struct phys_const* restrict phys_const,
-                       const struct unit_system* restrict us,
-                       const struct cosmology* restrict cosmo,
-                       const struct hydro_props* hydro_properties,
-                       const struct entropy_floor_properties* floor_props,
-		                   const struct pressure_floor_props *pressure_floor_props,
-                       const struct cooling_function_data* restrict cooling,
-                       struct part* restrict p, struct xpart* restrict xp,
+void cooling_cool_part(const struct phys_const *restrict phys_const,
+                       const struct unit_system *restrict us,
+                       const struct cosmology *restrict cosmo,
+                       const struct hydro_props *hydro_properties,
+                       const struct entropy_floor_properties *floor_props,
+                       const struct pressure_floor_props *pressure_floor_props,
+                       const struct cooling_function_data *restrict cooling,
+                       struct part *restrict p, struct xpart *restrict xp,
                        const double dt, const double dt_therm,
                        const double time);
 
@@ -172,59 +169,57 @@ void cooling_set_particle_subgrid_properties(
     const struct phys_const *phys_const, const struct unit_system *us,
     const struct cosmology *cosmo, const struct hydro_props *hydro_props,
     const struct entropy_floor_properties *floor_props,
-    const struct cooling_function_data *cooling, 
-    struct part *p, struct xpart *xp);
+    const struct cooling_function_data *cooling, struct part *p,
+    struct xpart *xp);
 
 float cooling_get_subgrid_temperature(const struct part *p,
                                       const struct xpart *xp);
 
 float cooling_get_subgrid_density(const struct part *p, const struct xpart *xp);
 
-float cooling_get_radiated_energy(const struct xpart* restrict xp);
+float cooling_get_radiated_energy(const struct xpart *restrict xp);
 
-double cooling_get_ycompton(const struct phys_const* phys_const,
-                            const struct hydro_props* hydro_props,
-                            const struct unit_system* us,
-                            const struct cosmology* cosmo,
-                            const struct cooling_function_data* cooling,
-                            const struct part* p, const struct xpart* xp);
+double cooling_get_ycompton(const struct phys_const *phys_const,
+                            const struct hydro_props *hydro_props,
+                            const struct unit_system *us,
+                            const struct cosmology *cosmo,
+                            const struct cooling_function_data *cooling,
+                            const struct part *p, const struct xpart *xp);
 
-float cooling_timestep(const struct cooling_function_data* restrict cooling,
-                       const struct phys_const* restrict phys_const,
-                       const struct cosmology* restrict cosmo,
-                       const struct unit_system* restrict us,
-                       const struct hydro_props* hydro_properties,
-                       const struct part* restrict p,
-                       const struct xpart* restrict xp);
+float cooling_timestep(const struct cooling_function_data *restrict cooling,
+                       const struct phys_const *restrict phys_const,
+                       const struct cosmology *restrict cosmo,
+                       const struct unit_system *restrict us,
+                       const struct hydro_props *hydro_properties,
+                       const struct part *restrict p,
+                       const struct xpart *restrict xp);
 
-void cooling_split_part(struct part* p, struct xpart* xp, double n);
+void cooling_split_part(struct part *p, struct xpart *xp, double n);
 
-void cooling_init_units(const struct unit_system* us,
-                        const struct phys_const* phys_const,
-                        struct cooling_function_data* cooling);
-void cooling_init_grackle(struct cooling_function_data* cooling);
+void cooling_init_units(const struct unit_system *us,
+                        const struct phys_const *phys_const,
+                        struct cooling_function_data *cooling);
+void cooling_init_grackle(struct cooling_function_data *cooling);
 
-void cooling_init_backend(struct swift_params* parameter_file,
-                          const struct unit_system* us,
-                          const struct phys_const* phys_const,
-                          const struct hydro_props* hydro_props,
-                          struct cooling_function_data* cooling);
+void cooling_init_backend(struct swift_params *parameter_file,
+                          const struct unit_system *us,
+                          const struct phys_const *phys_const,
+                          const struct hydro_props *hydro_props,
+                          struct cooling_function_data *cooling);
 
-void cooling_clean(struct cooling_function_data* cooling);
-void cooling_struct_dump(const struct cooling_function_data* cooling,
-                         FILE* stream);
-void cooling_struct_restore(struct cooling_function_data* cooling, FILE* stream,
-                            const struct cosmology* cosmo);
-float cooling_compute_G0(
-		const struct part *restrict p,
-		const float rho,
-		const struct cooling_function_data *cooling,
-		const double dt);
-void cooling_sputter_dust(
-    const struct unit_system* restrict us,
-    const struct cosmology* restrict cosmo,
-    const struct cooling_function_data* restrict cooling,
-    struct part* restrict p, struct xpart* restrict xp, const double dt);
+void cooling_clean(struct cooling_function_data *cooling);
+void cooling_struct_dump(const struct cooling_function_data *cooling,
+                         FILE *stream);
+void cooling_struct_restore(struct cooling_function_data *cooling, FILE *stream,
+                            const struct cosmology *cosmo);
+float cooling_compute_G0(const struct part *restrict p, const float rho,
+                         const struct cooling_function_data *cooling,
+                         const double dt);
+void cooling_sputter_dust(const struct unit_system *restrict us,
+                          const struct cosmology *restrict cosmo,
+                          const struct cooling_function_data *restrict cooling,
+                          struct part *restrict p, struct xpart *restrict xp,
+                          const double dt);
 
 /**
  * @brief Compute the electron pressure of a #part based on the cooling
@@ -241,15 +236,16 @@ void cooling_sputter_dust(
  * @param xp Pointer to the #xpart data.
  */
 INLINE static double cooling_get_electron_pressure(
-    const struct phys_const* phys_const, const struct hydro_props* hydro_props,
-    const struct unit_system* us, const struct cosmology* cosmo,
-    const struct cooling_function_data* cooling, const struct part* p,
-    const struct xpart* xp) {
+    const struct phys_const *phys_const, const struct hydro_props *hydro_props,
+    const struct unit_system *us, const struct cosmology *cosmo,
+    const struct cooling_function_data *cooling, const struct part *p,
+    const struct xpart *xp) {
   return 0;
 }
 
 /**
- * @brief Compute the specific thermal energy (physical) for a given temperature.
+ * @brief Compute the specific thermal energy (physical) for a given
+ * temperature.
  *
  * Converts T to u (internal physical units) for a given particle.
  *
@@ -259,10 +255,11 @@ INLINE static double cooling_get_electron_pressure(
  * @param p #part data.
  */
 INLINE static double cooling_convert_temp_to_u(
-    const double temperature, const double ne, const struct cooling_function_data* cooling, 
-    const struct part* p) {
+    const double temperature, const double ne,
+    const struct cooling_function_data *cooling, const struct part *p) {
 
-  const float X_H = chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
+  const float X_H =
+      chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
   const float yhelium = (1. - X_H) / (4. * X_H);
   const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
 
@@ -280,10 +277,11 @@ INLINE static double cooling_convert_temp_to_u(
  * @param p #part data.
  */
 INLINE static double cooling_convert_u_to_temp(
-    const double u, const double ne, const struct cooling_function_data* cooling, 
-    const struct part* p) {
+    const double u, const double ne,
+    const struct cooling_function_data *cooling, const struct part *p) {
 
-  const float X_H = chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
+  const float X_H =
+      chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
   const float yhelium = (1. - X_H) / (4. * X_H);
   const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
 
@@ -291,30 +289,35 @@ INLINE static double cooling_convert_u_to_temp(
 }
 
 /**
- * @brief Compute the cold ISM fraction at a given factor above subgrid threshold density
+ * @brief Compute the cold ISM fraction at a given factor above subgrid
+ * threshold density
  *
- * Compute the cold ISM fraction at a given factor above subgrid threshold density.
- * This uses a fit to the density vs. cold gas fraction relation from Springel+Hernquist 2003.
+ * Compute the cold ISM fraction at a given factor above subgrid threshold
+ * density. This uses a fit to the density vs. cold gas fraction relation from
+ * Springel+Hernquist 2003.
  *
  * @param dens_fac Density factor above threshold density
  * @param cooling #cooling_function_data struct.
  */
 INLINE static double cooling_compute_cold_ISM_fraction(
-    const double dens_fac, const struct cooling_function_data* cooling) {
+    const double dens_fac, const struct cooling_function_data *cooling) {
 
   float fc = cooling->cold_ISM_frac;
   if (dens_fac > 1.) {
-    fc = cooling->cold_ISM_frac + (1. - cooling->cold_ISM_frac) * (1. - exp(-log10(dens_fac)));
+    fc = cooling->cold_ISM_frac +
+         (1. - cooling->cold_ISM_frac) * (1. - exp(-log10(dens_fac)));
     fc = fmin(fc, MAX_COLD_ISM_FRACTION);
   }
   return fc;
 }
 
 /**
- * @brief Compute the subgrid density based on pressure equilibrium in a 2-phase ISM model
+ * @brief Compute the subgrid density based on pressure equilibrium in a 2-phase
+ * ISM model
  *
- * We set the subgrid density based on pressure equilibrium with overall particle.
- * The pressure is set by 1-cold_ISM_frac of the mass in the warm phase.
+ * We set the subgrid density based on pressure equilibrium with overall
+ * particle. The pressure is set by 1-cold_ISM_frac of the mass in the warm
+ * phase.
  *
  * @param rho SPH (non-subgrid) physical particle density.
  * @param temp SPH (non-subgrid) particle temperature.
@@ -325,12 +328,11 @@ INLINE static double cooling_compute_cold_ISM_fraction(
 INLINE static double cooling_compute_subgrid_density(
     const double rho, const double temp, const double subgrid_temp,
     const struct entropy_floor_properties *floor_props,
-    const struct cooling_function_data* cooling) {
+    const struct cooling_function_data *cooling) {
 
-  const double ism_frac = 
-      cooling_compute_cold_ISM_fraction(rho / floor_props->Jeans_density_threshold, 
-                                        cooling);
-  double subgrid_dens = 
+  const double ism_frac = cooling_compute_cold_ISM_fraction(
+      rho / floor_props->Jeans_density_threshold, cooling);
+  double subgrid_dens =
       (1.f - ism_frac) * rho * temp / (ism_frac * subgrid_temp);
 
   /* Cap at max value which should be something vaguely like GMC densities */
@@ -338,22 +340,23 @@ INLINE static double cooling_compute_subgrid_density(
   return subgrid_dens;
 }
 
-
 /**
- * @brief Copy all grackle fields into a new set.  THIS IS ONLY USED FOR DEBUGGING.
+ * @brief Copy all grackle fields into a new set.  THIS IS ONLY USED FOR
+ * DEBUGGING.
  *
  * @param my_fields The target (new) set of grackle particle properties.
  * @param old_fields The original (old) set of grackle particle properties.
  * @param field_size Number of particles to copy.
  */
 INLINE static void cooling_copy_grackle_fields(grackle_field_data *my_fields,
-                                               grackle_field_data *old_fields, 
+                                               grackle_field_data *old_fields,
                                                int field_size) {
   int i;
 
   for (i = 0; i < field_size; i++) {
 
-    printf("loop copy_grackle_fields %g %p\n",old_fields->density[0],my_fields->density);
+    printf("loop copy_grackle_fields %g %p\n", old_fields->density[0],
+           my_fields->density);
 
     my_fields->density[i] = old_fields->density[i];
     my_fields->HI_density[i] = old_fields->HI_density[i];
@@ -378,15 +381,19 @@ INLINE static void cooling_copy_grackle_fields(grackle_field_data *my_fields,
     // initilize internal energy (here 1000 K for no reason)
     my_fields->internal_energy[i] = old_fields->internal_energy[i];
 
-    my_fields->volumetric_heating_rate[i] = old_fields->volumetric_heating_rate[i];
+    my_fields->volumetric_heating_rate[i] =
+        old_fields->volumetric_heating_rate[i];
     my_fields->specific_heating_rate[i] = old_fields->specific_heating_rate[i];
     my_fields->temperature_floor[i] = old_fields->temperature_floor[i];
 
     my_fields->isrf_habing[i] = old_fields->isrf_habing[i];
     my_fields->RT_HI_ionization_rate[i] = old_fields->RT_HI_ionization_rate[i];
-    my_fields->RT_HeI_ionization_rate[i] = old_fields->RT_HeI_ionization_rate[i];
-    my_fields->RT_HeII_ionization_rate[i] = old_fields->RT_HeII_ionization_rate[i];
-    my_fields->RT_H2_dissociation_rate[i] = old_fields->RT_H2_dissociation_rate[i];
+    my_fields->RT_HeI_ionization_rate[i] =
+        old_fields->RT_HeI_ionization_rate[i];
+    my_fields->RT_HeII_ionization_rate[i] =
+        old_fields->RT_HeII_ionization_rate[i];
+    my_fields->RT_H2_dissociation_rate[i] =
+        old_fields->RT_H2_dissociation_rate[i];
     my_fields->RT_heating_rate[i] = old_fields->RT_heating_rate[i];
 
     if (grackle_data->use_dust_evol) {
@@ -420,36 +427,38 @@ INLINE static void cooling_copy_grackle_fields(grackle_field_data *my_fields,
 }
 
 /**
- * @brief Allocate a new set of grackle fields in memory. THIS IS ONLY USED FOR DEBUGGING.
+ * @brief Allocate a new set of grackle fields in memory. THIS IS ONLY USED FOR
+ * DEBUGGING.
  *
  * @param my_fields The target (new) set of grackle particle properties.
  * @param field_size Number of particles to copy.
  * @param dust_flag Are we using grackle's dust model (Jones, Smith, Dave 2024)?
  */
-INLINE static void cooling_grackle_malloc_fields(grackle_field_data *my_fields, int field_size, int dust_flag)
-{
-  my_fields->density         = malloc(field_size * sizeof(gr_float));
+INLINE static void cooling_grackle_malloc_fields(grackle_field_data *my_fields,
+                                                 int field_size,
+                                                 int dust_flag) {
+  my_fields->density = malloc(field_size * sizeof(gr_float));
   my_fields->internal_energy = malloc(field_size * sizeof(gr_float));
-  my_fields->x_velocity      = malloc(field_size * sizeof(gr_float));
-  my_fields->y_velocity      = malloc(field_size * sizeof(gr_float));
-  my_fields->z_velocity      = malloc(field_size * sizeof(gr_float));
+  my_fields->x_velocity = malloc(field_size * sizeof(gr_float));
+  my_fields->y_velocity = malloc(field_size * sizeof(gr_float));
+  my_fields->z_velocity = malloc(field_size * sizeof(gr_float));
   // for primordial_chemistry >= 1
-  my_fields->HI_density      = malloc(field_size * sizeof(gr_float));
-  my_fields->HII_density     = malloc(field_size * sizeof(gr_float));
-  my_fields->HeI_density     = malloc(field_size * sizeof(gr_float));
-  my_fields->HeII_density    = malloc(field_size * sizeof(gr_float));
-  my_fields->HeIII_density   = malloc(field_size * sizeof(gr_float));
-  my_fields->e_density       = malloc(field_size * sizeof(gr_float));
+  my_fields->HI_density = malloc(field_size * sizeof(gr_float));
+  my_fields->HII_density = malloc(field_size * sizeof(gr_float));
+  my_fields->HeI_density = malloc(field_size * sizeof(gr_float));
+  my_fields->HeII_density = malloc(field_size * sizeof(gr_float));
+  my_fields->HeIII_density = malloc(field_size * sizeof(gr_float));
+  my_fields->e_density = malloc(field_size * sizeof(gr_float));
   // for primordial_chemistry >= 2
-  my_fields->HM_density      = malloc(field_size * sizeof(gr_float));
-  my_fields->H2I_density     = malloc(field_size * sizeof(gr_float));
-  my_fields->H2II_density    = malloc(field_size * sizeof(gr_float));
+  my_fields->HM_density = malloc(field_size * sizeof(gr_float));
+  my_fields->H2I_density = malloc(field_size * sizeof(gr_float));
+  my_fields->H2II_density = malloc(field_size * sizeof(gr_float));
   // for primordial_chemistry >= 3
-  my_fields->DI_density      = malloc(field_size * sizeof(gr_float));
-  my_fields->DII_density     = malloc(field_size * sizeof(gr_float));
-  my_fields->HDI_density     = malloc(field_size * sizeof(gr_float));
+  my_fields->DI_density = malloc(field_size * sizeof(gr_float));
+  my_fields->DII_density = malloc(field_size * sizeof(gr_float));
+  my_fields->HDI_density = malloc(field_size * sizeof(gr_float));
   // for metal_cooling = 1
-  my_fields->metal_density   = malloc(field_size * sizeof(gr_float));
+  my_fields->metal_density = malloc(field_size * sizeof(gr_float));
 
   // volumetric heating rate (provide in units [erg s^-1 cm^-3])
   my_fields->volumetric_heating_rate = malloc(field_size * sizeof(gr_float));
@@ -457,7 +466,8 @@ INLINE static void cooling_grackle_malloc_fields(grackle_field_data *my_fields, 
   my_fields->specific_heating_rate = malloc(field_size * sizeof(gr_float));
   my_fields->temperature_floor = malloc(field_size * sizeof(gr_float));
 
-  // radiative transfer ionization / dissociation rate fields (provide in units [1/s])
+  // radiative transfer ionization / dissociation rate fields (provide in units
+  // [1/s])
   my_fields->RT_HI_ionization_rate = malloc(field_size * sizeof(gr_float));
   my_fields->RT_HeI_ionization_rate = malloc(field_size * sizeof(gr_float));
   my_fields->RT_HeII_ionization_rate = malloc(field_size * sizeof(gr_float));
@@ -471,109 +481,111 @@ INLINE static void cooling_grackle_malloc_fields(grackle_field_data *my_fields, 
   my_fields->isrf_habing = malloc(field_size * sizeof(gr_float));
 
   if (dust_flag) {
-      my_fields->dust_density = malloc(field_size * sizeof(gr_float));
-      my_fields->He_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->C_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->N_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->O_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Ne_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Mg_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Si_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->S_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Ca_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Fe_gas_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->He_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->C_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->N_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->O_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Ne_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Mg_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Si_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->S_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Ca_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->Fe_dust_metalDensity = malloc(field_size * sizeof(gr_float));
-      my_fields->SNe_ThisTimeStep = malloc(field_size * sizeof(gr_float));
+    my_fields->dust_density = malloc(field_size * sizeof(gr_float));
+    my_fields->He_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->C_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->N_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->O_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Ne_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Mg_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Si_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->S_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Ca_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Fe_gas_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->He_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->C_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->N_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->O_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Ne_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Mg_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Si_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->S_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Ca_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->Fe_dust_metalDensity = malloc(field_size * sizeof(gr_float));
+    my_fields->SNe_ThisTimeStep = malloc(field_size * sizeof(gr_float));
   }
   return;
 }
 
 /**
- * @brief Free a set of grackle fields from memory. THIS IS ONLY USED FOR DEBUGGING.
+ * @brief Free a set of grackle fields from memory. THIS IS ONLY USED FOR
+ * DEBUGGING.
  *
  * @param my_fields The target (new) set of grackle particle properties.
  * @param dust_flag Are we using grackle's dust model (Jones, Smith, Dave 2024)?
  */
-INLINE static void cooling_grackle_free_fields(grackle_field_data *my_fields, int dust_flag)
-{
-  free(my_fields->grid_dimension  );
-  free(my_fields->grid_start      );
-  free(my_fields->grid_end        );
+INLINE static void cooling_grackle_free_fields(grackle_field_data *my_fields,
+                                               int dust_flag) {
+  free(my_fields->grid_dimension);
+  free(my_fields->grid_start);
+  free(my_fields->grid_end);
 
-  free(my_fields->density         );
-  free(my_fields->internal_energy );
-  free(my_fields->x_velocity      );
-  free(my_fields->y_velocity      );
-  free(my_fields->z_velocity      );
+  free(my_fields->density);
+  free(my_fields->internal_energy);
+  free(my_fields->x_velocity);
+  free(my_fields->y_velocity);
+  free(my_fields->z_velocity);
   // for primordial_chemistry >= 1
-  free(my_fields->HI_density      );
-  free(my_fields->HII_density     );
-  free(my_fields->HeI_density     );
-  free(my_fields->HeII_density    );
-  free(my_fields->HeIII_density   );
-  free(my_fields->e_density       );
+  free(my_fields->HI_density);
+  free(my_fields->HII_density);
+  free(my_fields->HeI_density);
+  free(my_fields->HeII_density);
+  free(my_fields->HeIII_density);
+  free(my_fields->e_density);
   // for primordial_chemistry >= 2
-  free(my_fields->HM_density      );
-  free(my_fields->H2I_density     );
-  free(my_fields->H2II_density    );
+  free(my_fields->HM_density);
+  free(my_fields->H2I_density);
+  free(my_fields->H2II_density);
   // for primordial_chemistry >= 3
-  free(my_fields->DI_density      );
-  free(my_fields->DII_density     );
-  free(my_fields->HDI_density     );
+  free(my_fields->DI_density);
+  free(my_fields->DII_density);
+  free(my_fields->HDI_density);
   // for metal_cooling = 1
-  free(my_fields->metal_density   );
+  free(my_fields->metal_density);
 
   // volumetric heating rate (provide in units [erg s^-1 cm^-3])
-  free(my_fields->volumetric_heating_rate );
+  free(my_fields->volumetric_heating_rate);
   // specific heating rate (provide in units [egs s^-1 g^-1]
-  free(my_fields->specific_heating_rate );
-  free(my_fields->temperature_floor );
+  free(my_fields->specific_heating_rate);
+  free(my_fields->temperature_floor);
 
-  // radiative transfer ionization / dissociation rate fields (provide in units [1/s])
-  free(my_fields->RT_HI_ionization_rate );
-  free(my_fields->RT_HeI_ionization_rate );
-  free(my_fields->RT_HeII_ionization_rate );
-  free(my_fields->RT_H2_dissociation_rate );
+  // radiative transfer ionization / dissociation rate fields (provide in units
+  // [1/s])
+  free(my_fields->RT_HI_ionization_rate);
+  free(my_fields->RT_HeI_ionization_rate);
+  free(my_fields->RT_HeII_ionization_rate);
+  free(my_fields->RT_H2_dissociation_rate);
   // radiative transfer heating rate field (provide in units [erg s^-1 cm^-3])
-  free(my_fields->RT_heating_rate );
+  free(my_fields->RT_heating_rate);
 
   // H2 model
-  free(my_fields->H2_self_shielding_length );
-  free(my_fields->H2_custom_shielding_factor );
-  free(my_fields->isrf_habing );
+  free(my_fields->H2_self_shielding_length);
+  free(my_fields->H2_custom_shielding_factor);
+  free(my_fields->isrf_habing);
 
   if (dust_flag) {
-      free(my_fields->dust_density );
-      free(my_fields->He_gas_metalDensity );
-      free(my_fields->C_gas_metalDensity );
-      free(my_fields->N_gas_metalDensity );
-      free(my_fields->O_gas_metalDensity );
-      free(my_fields->Ne_gas_metalDensity );
-      free(my_fields->Mg_gas_metalDensity );
-      free(my_fields->Si_gas_metalDensity );
-      free(my_fields->S_gas_metalDensity );
-      free(my_fields->Ca_gas_metalDensity );
-      free(my_fields->Fe_gas_metalDensity );
-      free(my_fields->He_dust_metalDensity );
-      free(my_fields->C_dust_metalDensity );
-      free(my_fields->N_dust_metalDensity );
-      free(my_fields->O_dust_metalDensity );
-      free(my_fields->Ne_dust_metalDensity );
-      free(my_fields->Mg_dust_metalDensity );
-      free(my_fields->Si_dust_metalDensity );
-      free(my_fields->S_dust_metalDensity );
-      free(my_fields->Ca_dust_metalDensity );
-      free(my_fields->Fe_dust_metalDensity );
-      free(my_fields->SNe_ThisTimeStep );
+    free(my_fields->dust_density);
+    free(my_fields->He_gas_metalDensity);
+    free(my_fields->C_gas_metalDensity);
+    free(my_fields->N_gas_metalDensity);
+    free(my_fields->O_gas_metalDensity);
+    free(my_fields->Ne_gas_metalDensity);
+    free(my_fields->Mg_gas_metalDensity);
+    free(my_fields->Si_gas_metalDensity);
+    free(my_fields->S_gas_metalDensity);
+    free(my_fields->Ca_gas_metalDensity);
+    free(my_fields->Fe_gas_metalDensity);
+    free(my_fields->He_dust_metalDensity);
+    free(my_fields->C_dust_metalDensity);
+    free(my_fields->N_dust_metalDensity);
+    free(my_fields->O_dust_metalDensity);
+    free(my_fields->Ne_dust_metalDensity);
+    free(my_fields->Mg_dust_metalDensity);
+    free(my_fields->Si_dust_metalDensity);
+    free(my_fields->S_dust_metalDensity);
+    free(my_fields->Ca_dust_metalDensity);
+    free(my_fields->Fe_dust_metalDensity);
+    free(my_fields->SNe_ThisTimeStep);
   }
   return;
 }

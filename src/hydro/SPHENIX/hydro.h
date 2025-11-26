@@ -41,8 +41,8 @@
 #include "minmax.h"
 #include "pressure_floor.h"
 
-#include <float.h>
 #include <assert.h>
+#include <float.h>
 
 /**
  * @brief Returns the comoving internal energy of a particle at the last
@@ -573,7 +573,7 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->rho_gradient[0] = 0.f;
   p->rho_gradient[1] = 0.f;
   p->rho_gradient[2] = 0.f;
-  
+
   p->density.rho_dh = 0.f;
 
   p->density.rot_v[0] = 0.f;
@@ -653,7 +653,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   /* Finish matrix and volume computations for FVPM Radiative Transfer */
   fvpm_compute_volume_and_matrix(p, h_inv_dim);
 
-  #ifdef SWIFT_HYDRO_DENSITY_CHECKS
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
   p->n_density += kernel_root;
   p->n_density *= h_inv_dim;
 #endif
@@ -1255,7 +1255,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->decoupled = 0;
   p->to_be_decoupled = 0;
   p->to_be_recoupled = 0;
-
 }
 
 /**

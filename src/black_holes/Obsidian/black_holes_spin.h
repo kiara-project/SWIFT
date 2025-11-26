@@ -38,7 +38,7 @@
  */
 __attribute__((always_inline)) INLINE static float
 black_hole_gravitational_radius(float mass,
-                                const struct phys_const* constants) {
+                                const struct phys_const *constants) {
 
   const float r_G =
       mass * constants->const_newton_G /
@@ -121,8 +121,8 @@ __attribute__((always_inline)) INLINE static float black_hole_isco_radius(
  * @param constants Physical constants (in internal units).
  */
 __attribute__((always_inline)) INLINE static float
-black_hole_angular_momentum_magnitude(struct bpart* bp,
-                                      const struct phys_const* constants) {
+black_hole_angular_momentum_magnitude(struct bpart *bp,
+                                      const struct phys_const *constants) {
 
   const float J_BH =
       fabs(bp->subgrid_mass * bp->subgrid_mass * bp->spin *
@@ -136,7 +136,7 @@ black_hole_angular_momentum_magnitude(struct bpart* bp,
         J_BH);
   }
 #endif
-  bp->spin=0.03f;
+  bp->spin = 0.03f;
   return J_BH;
 }
 
@@ -144,13 +144,10 @@ black_hole_angular_momentum_magnitude(struct bpart* bp,
 
 /* spin direction */
 /*const float spin_vec[3] = {bp->spin * bp->angular_momentum_direction[0],
-			   bp->spin * bp->angular_momentum_direction[1],
-			   bp->spin * bp->angular_momentum_direction[2]}; */
-
-
+                           bp->spin * bp->angular_momentum_direction[1],
+                           bp->spin * bp->angular_momentum_direction[2]}; */
 
 /*-----------------end test---------------------*/
-
 
 /* jet kicks skipped */
 #endif /* SWIFT_SPIN_JET_BLACK_HOLES_SPIN_H */

@@ -157,7 +157,7 @@ __attribute__((always_inline)) INLINE static integertime_t get_part_timestep(
     if (e->policy & engine_policy_cooling)
       new_dt_cooling =
           cooling_timestep(e->cooling_func, e->physical_constants, e->cosmology,
-                          e->internal_units, e->hydro_properties, p, xp);
+                           e->internal_units, e->hydro_properties, p, xp);
   }
 
   /* Compute the next timestep (gravity condition) */
@@ -210,31 +210,22 @@ __attribute__((always_inline)) INLINE static integertime_t get_part_timestep(
   new_dt = min(new_dt, e->dt_max);
 
   if (new_dt < e->dt_min) {
-    error("part (id=%lld) at z=%g wants a time-step (%e) below dt_min (%e) u=%g "
-          "rho=%g h=%g delay=%d vx=%g vy=%g vz=%g ax=%g ay=%g az=%g "
-          "dt_hydro=%g dt_mhd=%g dt_cool=%g dt_grav=%g dt_h=%g dt_chem=%g "
-          "dt_forcing=%g", 
-          p->id,
-	        e->cosmology->z,
-          new_dt,
-          e->dt_min,
-          hydro_get_comoving_internal_energy(p, xp), 
-          p->rho,
-          p->h,
-          p->decoupled,
-          xp->v_full[0], 
-          xp->v_full[1], 
-          xp->v_full[2], 
-          p->a_hydro[0], 
-          p->a_hydro[1], 
-          p->a_hydro[2], 
-          new_dt_hydro * e->cosmology->time_step_factor,
-          new_dt_mhd * e->cosmology->time_step_factor,
-          new_dt_cooling * e->cosmology->time_step_factor,
-          new_dt_grav * e->cosmology->time_step_factor, 
-          dt_h_change * e->cosmology->time_step_factor,
-          new_dt_chemistry * e->cosmology->time_step_factor,
-          new_dt_forcing * e->cosmology->time_step_factor);
+    error(
+        "part (id=%lld) at z=%g wants a time-step (%e) below dt_min (%e) u=%g "
+        "rho=%g h=%g delay=%d vx=%g vy=%g vz=%g ax=%g ay=%g az=%g "
+        "dt_hydro=%g dt_mhd=%g dt_cool=%g dt_grav=%g dt_h=%g dt_chem=%g "
+        "dt_forcing=%g",
+        p->id, e->cosmology->z, new_dt, e->dt_min,
+        hydro_get_comoving_internal_energy(p, xp), p->rho, p->h, p->decoupled,
+        xp->v_full[0], xp->v_full[1], xp->v_full[2], p->a_hydro[0],
+        p->a_hydro[1], p->a_hydro[2],
+        new_dt_hydro * e->cosmology->time_step_factor,
+        new_dt_mhd * e->cosmology->time_step_factor,
+        new_dt_cooling * e->cosmology->time_step_factor,
+        new_dt_grav * e->cosmology->time_step_factor,
+        dt_h_change * e->cosmology->time_step_factor,
+        new_dt_chemistry * e->cosmology->time_step_factor,
+        new_dt_forcing * e->cosmology->time_step_factor);
   }
 
   /* Convert to integer time */
@@ -283,9 +274,9 @@ __attribute__((always_inline)) INLINE static integertime_t get_part_rt_timestep(
   if (!(e->policy & engine_policy_rt))
     return get_integer_timestep(num_time_bins);
 
-  float new_dt =
-      rt_compute_timestep(p, xp, e->rt_props, e->cosmology, e->hydro_properties,
-                          e->physical_constants, e->cooling_func, e->internal_units);
+  float new_dt = rt_compute_timestep(p, xp, e->rt_props, e->cosmology,
+                                     e->hydro_properties, e->physical_constants,
+                                     e->cooling_func, e->internal_units);
 
   if ((e->policy & engine_policy_cosmology))
     /* Apply the maximal displacement constraint (FLT_MAX if non-cosmological)*/
@@ -326,9 +317,9 @@ __attribute__((always_inline)) INLINE static integertime_t get_spart_timestep(
 
   /* Stellar time-step */
   float new_dt_stars = stars_compute_timestep(
-      sp, e->stars_properties, e->physical_constants,
-      e->internal_units, (e->policy & engine_policy_cosmology), e->cosmology,
-      e->ti_current, e->time, e->time_base);
+      sp, e->stars_properties, e->physical_constants, e->internal_units,
+      (e->policy & engine_policy_cosmology), e->cosmology, e->ti_current,
+      e->time, e->time_base);
 
   /* Gravity time-step */
   float new_dt_self = FLT_MAX, new_dt_ext = FLT_MAX;

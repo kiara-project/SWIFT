@@ -47,7 +47,7 @@
  */
 __attribute__((always_inline)) INLINE static void runner_iact_density(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const int decoupled_i = pi->decoupled;
@@ -66,8 +66,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 
   if (!decoupled_j) {
     kernel_deval(ui, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -78,8 +77,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 
   if (!decoupled_i) {
     kernel_deval(uj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -136,7 +134,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rot_v[1] += facj * curlvr[1];
   pj->density.rot_v[2] += facj * curlvr[2];
 
-  #ifdef SWIFT_HYDRO_DENSITY_CHECKS
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
   pi->n_density += wi;
   pj->n_density += wj;
   pi->N_density++;
@@ -158,7 +156,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, const struct part* restrict pj, const float a,
+    struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
 
   /* In the non-sym case only the neighbor matters */
@@ -232,7 +230,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const int decoupled_i = pi->decoupled;
@@ -281,18 +279,16 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
 
   if (!decoupled_j) {
     kernel_deval(ui, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
 
   const float uj = r / hj;
-  
+
   if (!decoupled_i) {
     kernel_deval(uj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -317,10 +313,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
-    pj->rho_gradient[j] +=
-        pi->mass * drho_ij * dx_ij * wj_dx * r_inv;
+    pi->rho_gradient[j] += pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
+    pj->rho_gradient[j] += pi->mass * drho_ij * dx_ij * wj_dx * r_inv;
   }
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
@@ -350,7 +344,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   /* In the non-sym case only the neighbor matters */
@@ -406,8 +400,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
+    pi->rho_gradient[j] += pj->mass * drho_ij * dx_ij * wi_dx * r_inv;
   }
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   pi->n_gradient += wi;
@@ -429,7 +422,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_force(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const int decoupled_i = pi->decoupled;
@@ -461,8 +454,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   float wi, wi_dx;
   if (!decoupled_j) {
     kernel_deval(xi, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -475,8 +467,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   float wj, wj_dx;
   if (!decoupled_i) {
     kernel_deval(xj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -598,13 +589,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, const struct part* restrict pj, const float a,
+    struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
 
   /* In the non-sym case both matter for force */
   const int decoupled_i = pi->decoupled;
   const int decoupled_j = pj->decoupled;
-          
+
   if (decoupled_i && decoupled_j) return;
 
   /* Cosmological factors entering the EoMs */
@@ -631,8 +622,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   float wi, wi_dx;
   if (!decoupled_j) {
     kernel_deval(xi, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -645,8 +635,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   float wj, wj_dx;
   if (!decoupled_i) {
     kernel_deval(xj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -659,7 +648,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* Get the time derivative for h. */
   pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
-  
+
   /* Only need the dh/dt term for the decoupled winds, otherwise can skip. */
   if (decoupled_i || decoupled_j) return;
 

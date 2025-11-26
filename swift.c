@@ -239,8 +239,7 @@ int main(int argc, char *argv[]) {
                   0),
       /* Rennehan: recoupling/decoupling of hydrodynamics */
       OPT_BOOLEAN('C', "hydro-decoupling", &with_hydro_decoupling,
-                  "Run with hydro decoupling/recoupling.", NULL, 0,
-                  0),
+                  "Run with hydro decoupling/recoupling.", NULL, 0, 0),
       OPT_BOOLEAN('D', "drift-all", &with_drift_all,
                   "Always drift all particles even the ones far from active "
                   "particles. This emulates Gadget-[23] and GIZMO's default "
@@ -933,7 +932,7 @@ int main(int argc, char *argv[]) {
     error("Cannot reconstruct m-poles every step over MPI (yet).");
 #endif
 
-    /* Temporary early aborts for modes not supported with hand-vec. */
+  /* Temporary early aborts for modes not supported with hand-vec. */
 #if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH) && \
     !defined(CHEMISTRY_NONE)
   error(
@@ -1271,7 +1270,7 @@ int main(int argc, char *argv[]) {
     } else
       bzero(&sink_properties, sizeof(struct sink_props));
 
-      /* Initialise the cooling function properties */
+    /* Initialise the cooling function properties */
 #ifdef COOLING_NONE
     if (with_cooling) {
       error(
@@ -1519,9 +1518,9 @@ int main(int argc, char *argv[]) {
     if (with_self_gravity)
       gravity_props_init(&gravity_properties, params, &prog_const, &cosmo,
                          with_cosmology, with_external_gravity,
-                         with_baryon_particles, with_BH_particles, with_DM_particles,
-                         with_neutrinos, with_DM_background_particles, periodic,
-                         s.dim, s.cdim);
+                         with_baryon_particles, with_BH_particles,
+                         with_DM_particles, with_neutrinos,
+                         with_DM_background_particles, periodic, s.dim, s.cdim);
 
     /* Initialize the neutrino response if used */
     bzero(&neutrino_response, sizeof(struct neutrino_response));
@@ -1642,7 +1641,8 @@ int main(int argc, char *argv[]) {
     if (with_timestep_sync) engine_policies |= engine_policy_timestep_sync;
     if (with_cooling) engine_policies |= engine_policy_cooling;
     /* Rennehan: decoupling/recoupling in hydro */
-    if (with_hydro_decoupling) engine_policies |= engine_policy_hydro_decoupling;
+    if (with_hydro_decoupling)
+      engine_policies |= engine_policy_hydro_decoupling;
     if (with_stars) engine_policies |= engine_policy_stars;
     if (with_star_formation) engine_policies |= engine_policy_star_formation;
     if (with_feedback) engine_policies |= engine_policy_feedback;
