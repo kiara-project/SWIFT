@@ -39,7 +39,6 @@ struct galaxy_data {
 
   /*! The specific star formation rate of the host galaxy */
   float ssfr;
-
 };
 
 #endif
@@ -56,7 +55,7 @@ struct fof_gpart_data {
   size_t group_size;
 
 #ifdef WITH_FOF_GALAXIES
-/*! The gas+stellar mass of the host galaxy */
+  /*! The gas+stellar mass of the host galaxy */
   float group_mass;
 
   /*! The stellar mass of the host galaxy */

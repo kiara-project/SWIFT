@@ -99,7 +99,7 @@ struct part {
   long long id;
 
   /* Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+  struct gpart *gpart;
 
   /* Particle position. */
   double x[3];
@@ -128,7 +128,7 @@ struct part {
     float v_sig;
 
   } viscosity;
-  
+
   /* Particle entropy. */
   float entropy;
 
@@ -187,10 +187,10 @@ struct part {
 
   /*! Flag to indicate that the decoupling task will run */
   unsigned char to_be_decoupled;
-  
+
   /*! Flag to indicate that the recoupling task will run */
   unsigned char to_be_recoupled;
-  
+
   /*! Additional data used for adaptive softening */
   struct adaptive_softening_part_data adaptive_softening_data;
 

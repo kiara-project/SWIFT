@@ -2,7 +2,7 @@
  * This file is part of SWIFT.
  * Copyright (c) 2018 Matthieu Schaller (schaller@strw.leidenuniv.nl)
  *               2022 Doug Rennehan (douglas.rennehan@gmail.com)
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -30,7 +30,6 @@
 #include "timers.h"
 #include "timestep_sync_part.h"
 
-
 /**
  * @brief calculates stellar mass in spart that died over the timestep, calls
  * functions to calculate feedback due to SNIa, SNII and AGB
@@ -44,18 +43,17 @@
  * @param dt length of current timestep
  * @param ti_begin The current integer time (for random number hashing).
  */
-void compute_stellar_evolution(const struct feedback_props* feedback_props,
-                               const struct phys_const* phys_const,
-                               const struct cosmology* cosmo, struct spart* sp,
-                               const struct unit_system* us, const double age,
+void compute_stellar_evolution(const struct feedback_props *feedback_props,
+                               const struct phys_const *phys_const,
+                               const struct cosmology *cosmo, struct spart *sp,
+                               const struct unit_system *us, const double age,
                                const double dt, const integertime_t ti_begin) {
 
   TIMER_TIC;
 
 #ifdef SIMBA_DEBUG_CHECKS
   if (sp->feedback_data.to_collect.ngb_rho <= 0) {
-    warning("Star %lld with mass %g has no neighbors!",
-            sp->id, sp->mass);
+    warning("Star %lld with mass %g has no neighbors!", sp->id, sp->mass);
     return;
   }
 #endif
@@ -63,8 +61,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
 #ifdef SWIFT_DEBUG_CHECKS
   if (age < 0.f) error("Negative age for a star.");
   if (sp->feedback_data.to_collect.ngb_rho <= 0)
-    error("Star %lld with mass %g has no neighbors!",
-            sp->id, sp->mass);
+    error("Star %lld with mass %g has no neighbors!", sp->id, sp->mass);
   if (sp->count_since_last_enrichment != 0 && engine_current_step > 0)
     error("Computing feedback on a star that should not");
 #endif
@@ -84,7 +81,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
           exp10(log10_min_metallicity));
 
   /* Get the individual abundances (mass fractions at birth time) */
-  const float* const abundances =
+  const float *const abundances =
       chemistry_get_star_metal_mass_fraction_for_feedback(sp);
 
   /* Properties collected in the stellar density loop. */
@@ -194,12 +191,12 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
  * @param hydro_props The already read-in properties of the hydro scheme.
  * @param cosmo The cosmological model.
  */
-void feedback_props_init(struct feedback_props* fp,
-                         const struct phys_const* phys_const,
-                         const struct unit_system* us,
-                         struct swift_params* params,
-                         const struct hydro_props* hydro_props,
-                         const struct cosmology* cosmo) {
+void feedback_props_init(struct feedback_props *fp,
+                         const struct phys_const *phys_const,
+                         const struct unit_system *us,
+                         struct swift_params *params,
+                         const struct hydro_props *hydro_props,
+                         const struct cosmology *cosmo) {
 
   /* Gather common conversion factors --------------------------------------- */
 
@@ -224,14 +221,15 @@ void feedback_props_init(struct feedback_props* fp,
   fp->rho_to_n_cgs =
       (X_H / m_p) * units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
 
-  fp->kms_to_internal = 1.0e5f / units_cgs_conversion_factor(us, UNIT_CONV_SPEED);
+  fp->kms_to_internal =
+      1.0e5f / units_cgs_conversion_factor(us, UNIT_CONV_SPEED);
 
   fp->kms_to_cms = 1.e5;
 
   fp->time_to_Myr = units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
-      (1.e6f * 365.25f * 24.f * 60.f * 60.f);
+                    (1.e6f * 365.25f * 24.f * 60.f * 60.f);
 
-  fp->length_to_kpc = 
+  fp->length_to_kpc =
       units_cgs_conversion_factor(us, UNIT_CONV_LENGTH) / 3.08567758e21f;
 
   /* Main operation modes ------------------------------------------------- */
@@ -271,7 +269,6 @@ void feedback_props_init(struct feedback_props* fp,
   fp->log10_imf_max_mass_msun = log10(fp->imf_max_mass_msun);
   fp->log10_imf_min_mass_msun = log10(fp->imf_min_mass_msun);
 
-
   /* Properties of the SNII model */
 
   /* Energy released by supernova type II */
@@ -295,7 +292,6 @@ void feedback_props_init(struct feedback_props* fp,
   fp->SNII_max_mass_msun = SNII_max_mass_msun;
   fp->log10_SNII_min_mass_msun = log10(SNII_min_mass_msun);
   fp->log10_SNII_max_mass_msun = log10(SNII_max_mass_msun);
-
 
   /* Properties of the SNII enrichment model -------------------------------- */
 
@@ -382,8 +378,8 @@ void feedback_props_init(struct feedback_props* fp,
 
   /* Properties of Simba kinetic winds -------------------------------------- */
 
-  fp->FIRE_velocity_normalization =
-      parser_get_param_double(params, "SIMBAFeedback:FIRE_velocity_normalization");
+  fp->FIRE_velocity_normalization = parser_get_param_double(
+      params, "SIMBAFeedback:FIRE_velocity_normalization");
   fp->FIRE_velocity_slope =
       parser_get_param_double(params, "SIMBAFeedback:FIRE_velocity_slope");
   fp->FIRE_eta_normalization =
@@ -396,19 +392,18 @@ void feedback_props_init(struct feedback_props* fp,
   fp->FIRE_eta_upper_slope =
       parser_get_param_double(params, "SIMBAFeedback:FIRE_eta_upper_slope");
 
-  fp->early_stellar_mass_norm =
-      parser_get_param_double(params, "SIMBAFeedback:early_stellar_mass_norm_Msun");
+  fp->early_stellar_mass_norm = parser_get_param_double(
+      params, "SIMBAFeedback:early_stellar_mass_norm_Msun");
   fp->early_stellar_mass_norm *= fp->solar_mass_to_mass;
-  fp->early_wind_suppression_enabled = 
-      parser_get_param_int(params, "SIMBAFeedback:early_wind_suppression_enabled");
-  fp->early_wind_suppression_scale_factor =
-      parser_get_param_double(params, 
-          "SIMBAFeedback:early_wind_suppression_scale_factor");
-  fp->early_wind_suppression_slope =
-      parser_get_param_double(params, "SIMBAFeedback:early_wind_suppression_slope");
+  fp->early_wind_suppression_enabled = parser_get_param_int(
+      params, "SIMBAFeedback:early_wind_suppression_enabled");
+  fp->early_wind_suppression_scale_factor = parser_get_param_double(
+      params, "SIMBAFeedback:early_wind_suppression_scale_factor");
+  fp->early_wind_suppression_slope = parser_get_param_double(
+      params, "SIMBAFeedback:early_wind_suppression_slope");
 
-  fp->minimum_galaxy_stellar_mass =
-      parser_get_param_double(params, "SIMBAFeedback:minimum_galaxy_stellar_mass_Msun");
+  fp->minimum_galaxy_stellar_mass = parser_get_param_double(
+      params, "SIMBAFeedback:minimum_galaxy_stellar_mass_Msun");
   fp->minimum_galaxy_stellar_mass *= fp->solar_mass_to_mass;
 
   fp->kick_velocity_scatter =
@@ -423,8 +418,9 @@ void feedback_props_init(struct feedback_props* fp,
     error("SIMBAFeedback:cold_wind_temperature_K must be strictly positive.");
   }
   /* Convert Kelvin to internal energy and internal units */
-  fp->cold_wind_internal_energy *= fp->temp_to_u_factor / 
-                                   units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+  fp->cold_wind_internal_energy *=
+      fp->temp_to_u_factor /
+      units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
   /* Initialise the IMF ------------------------------------------------- */
 
@@ -468,7 +464,7 @@ void feedback_props_init(struct feedback_props* fp,
 
   if (engine_rank == 0) {
     message("Feedback model is SIMBA");
-    message("Feedback FIRE velocity normalization: %g", 
+    message("Feedback FIRE velocity normalization: %g",
             fp->FIRE_velocity_normalization);
     message("Feedback FIRE velocity slope: %g", fp->FIRE_velocity_slope);
     message("Feedback velocity scatter: %g", fp->kick_velocity_scatter);
@@ -477,14 +473,14 @@ void feedback_props_init(struct feedback_props* fp,
     message("Feedback FIRE eta upper slope: %g", fp->FIRE_eta_upper_slope);
     message("Feedback FIRE eta lower slope: %g", fp->FIRE_eta_lower_slope);
 
-    message("Feedback early suppression enabled: %d", 
+    message("Feedback early suppression enabled: %d",
             fp->early_wind_suppression_enabled);
-    message("Feedback early stellar mass norm: %g Msun", 
+    message("Feedback early stellar mass norm: %g Msun",
             fp->early_stellar_mass_norm);
-    message("Feedback early suppression scale factor: %g", 
+    message("Feedback early suppression scale factor: %g",
             fp->early_wind_suppression_scale_factor);
-    message("Feedback early suppression slope: %g", fp->early_wind_suppression_slope);
-
+    message("Feedback early suppression slope: %g",
+            fp->early_wind_suppression_slope);
   }
 }
 
@@ -495,7 +491,7 @@ void feedback_props_init(struct feedback_props* fp,
  *
  * @param fp the feedback data structure.
  */
-void feedback_clean(struct feedback_props* fp) {
+void feedback_clean(struct feedback_props *fp) {
 
   swift_free("imf-tables", fp->imf);
   swift_free("imf-tables", fp->imf_mass_bin);
@@ -545,7 +541,7 @@ void feedback_clean(struct feedback_props* fp) {
  * @param feedback the struct
  * @param stream the file stream
  */
-void feedback_struct_dump(const struct feedback_props* feedback, FILE* stream) {
+void feedback_struct_dump(const struct feedback_props *feedback, FILE *stream) {
 
   /* To make sure everything is restored correctly, we zero all the pointers to
      tables. If they are not restored correctly, we would crash after restart on
@@ -579,7 +575,7 @@ void feedback_struct_dump(const struct feedback_props* feedback, FILE* stream) {
   feedback_copy.imf_mass_bin = NULL;
   feedback_copy.imf_mass_bin_log10 = NULL;
 
-  restart_write_blocks((void*)&feedback_copy, sizeof(struct feedback_props), 1,
+  restart_write_blocks((void *)&feedback_copy, sizeof(struct feedback_props), 1,
                        stream, "feedback", "feedback function");
 }
 
@@ -593,9 +589,9 @@ void feedback_struct_dump(const struct feedback_props* feedback, FILE* stream) {
  * @param feedback the struct
  * @param stream the file stream
  */
-void feedback_struct_restore(struct feedback_props* feedback, FILE* stream) {
-  restart_read_blocks((void*)feedback, sizeof(struct feedback_props), 1, stream,
-                      NULL, "feedback function");
+void feedback_struct_restore(struct feedback_props *feedback, FILE *stream) {
+  restart_read_blocks((void *)feedback, sizeof(struct feedback_props), 1,
+                      stream, NULL, "feedback function");
 
   if (strlen(feedback->yield_table_path) != 0)
     feedback_restore_tables(feedback);

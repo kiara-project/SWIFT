@@ -39,7 +39,7 @@ struct bpart {
   long long id;
 
   /*! Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+  struct gpart *gpart;
 
   /*! Particle position. */
   double x[3];
@@ -103,7 +103,7 @@ struct bpart {
 
   /*! Internal energy of the gas surrounding the black hole. */
   float internal_energy_gas;
-  
+
   /*! The mass of hot gas surrounding the black hole */
   float hot_gas_mass;
 
@@ -127,16 +127,16 @@ struct bpart {
 
   /*! The amount of jet mass kicked this time step */
   float jet_mass_kicked_this_step;
-  
+
   /*! The mass loading in the jet for the variable velocity scheme */
   float jet_mass_loading;
-  
+
   /*! The amount of unresolved mass available to kick */
   float unresolved_mass_reservoir;
 
   /*! The amount of unresolved mass kicked this step */
   float unresolved_mass_kicked_this_step;
-  
+
   /*! Energy to dump this step via the ADAF hot-wind, kernel-weighted */
   float adaf_energy_to_dump;
 
@@ -145,17 +145,18 @@ struct bpart {
 
   /*! sum(mi * wi) weights for accretion/feedback */
   float kernel_wt_sum;
-  
+
   /*! sum(mi * wi) weights for adaf heating */
   float adaf_wt_sum;
-  
+
   /*! The mass of cold disk around the black hole */
   float cold_disk_mass;
-  
+
   /*! Mass in accretion disk from which BH accretes */
   float accretion_disk_mass;
 
-  /*! The mass-weighted internal energy surrounding the black hole (unsmoothed) */
+  /*! The mass-weighted internal energy surrounding the black hole (unsmoothed)
+   */
   float hot_gas_internal_energy;
 
   /*! Smoothed sound speed of the gas surrounding the black hole. */
@@ -163,7 +164,7 @@ struct bpart {
 
   /*! Total gravitational gas mass within the kernel */
   float gravitational_ngb_mass;
-  
+
   /*! Subgrid physical sound speed of the gas (updated when using the subgrid
    * Bondi model) */
   float sound_speed_subgrid_gas;
@@ -174,7 +175,7 @@ struct bpart {
 
   /*! The real angular momentum of the gas in the kernel */
   float angular_momentum_gas[3];
-  
+
   /*! Circular velocity of the gas around the black hole at the smoothing
    * radius (calculated as j_gas / h_BH, where j is specific ang. mom.) */
   float circular_velocity_gas[3];
@@ -187,7 +188,7 @@ struct bpart {
 
   /*! Integer number of gravitational neighbors */
   int num_gravitational_ngbs;
-  
+
   /*! Number of seeds in this BH (i.e. itself + the merged ones) */
   int cumulative_number_seeds;
 
@@ -228,7 +229,7 @@ struct bpart {
 
   /*! Jet efficiency */
   float jet_efficiency;
-  
+
   /*! direction of jets */
   float jet_direction[3];
 
@@ -252,7 +253,7 @@ struct bpart {
 
   /*! The radiative luminosity of the black hole */
   float radiative_luminosity;
-  
+
   /*! How much energy has been given away in this timestep? */
   float delta_energy_this_timestep;
 
@@ -306,7 +307,7 @@ struct bpart {
 
   /*! Tracer structure */
   struct tracers_bpart_data tracers_data;
-  
+
 #ifdef SWIFT_DEBUG_CHECKS
 
   /* Time of the last drift */

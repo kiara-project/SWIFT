@@ -85,8 +85,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 
   if (!decoupled_j) {
     kernel_deval(ui, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -107,8 +106,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   const float uj = r * hj_inv;
   if (!decoupled_i) {
     kernel_deval(uj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -508,16 +506,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
 
   if (!decoupled_j) {
     kernel_deval(ui, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
 
   if (!decoupled_i) {
     kernel_deval(uj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -527,10 +523,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        mj * drho_ij * dx_ij * wi_dx * r_inv;
-    pj->rho_gradient[j] +=
-        mi * drho_ij * dx_ij * wj_dx * r_inv;
+    pi->rho_gradient[j] += mj * drho_ij * dx_ij * wi_dx * r_inv;
+    pj->rho_gradient[j] += mi * drho_ij * dx_ij * wj_dx * r_inv;
   }
 }
 
@@ -577,8 +571,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        mj * drho_ij * dx_ij * wi_dx * r_inv;
+    pi->rho_gradient[j] += mj * drho_ij * dx_ij * wi_dx * r_inv;
   }
 }
 
@@ -633,8 +626,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   const float xi = r * hi_inv;
   if (!decoupled_j) {
     kernel_deval(xi, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -646,8 +638,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   const float xj = r * hj_inv;
   if (!decoupled_i) {
     kernel_deval(xj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }
@@ -783,8 +774,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   const float xi = r * hi_inv;
   if (!decoupled_j) {
     kernel_deval(xi, &wi, &wi_dx);
-  }
-  else {
+  } else {
     wi = 0.f;
     wi_dx = 0.f;
   }
@@ -796,8 +786,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   const float xj = r * hj_inv;
   if (!decoupled_i) {
     kernel_deval(xj, &wj, &wj_dx);
-  }
-  else {
+  } else {
     wj = 0.f;
     wj_dx = 0.f;
   }

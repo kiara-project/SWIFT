@@ -39,7 +39,7 @@ struct bpart {
   long long id;
 
   /*! Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+  struct gpart *gpart;
 
   /*! Particle position. */
   double x[3];
@@ -103,7 +103,7 @@ struct bpart {
 
   /*! Total large-scale accretion rate */
   float total_accretion_rate;
-  
+
   /*! Density of the gas surrounding the black hole. */
   float rho_gas;
 

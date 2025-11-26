@@ -19,13 +19,13 @@
 #ifndef SWIFT_RT_GEAR_THERMOCHEMISTRY_H
 #define SWIFT_RT_GEAR_THERMOCHEMISTRY_H
 
-#include "part.h"
-#include "rt_properties.h"
-#include "hydro_properties.h"
-#include "physical_constants.h"
-#include "units.h"
-#include "cosmology.h"
 #include "cooling.h"
+#include "cosmology.h"
+#include "hydro_properties.h"
+#include "part.h"
+#include "physical_constants.h"
+#include "rt_properties.h"
+#include "units.h"
 
 /**
  * @file src/rt/GEAR/rt_thermochemistry.h
@@ -43,13 +43,14 @@
  * @param us unit system struct
  * @param cosmo cosmology struct
  */
-void rt_tchem_first_init_part(
-    struct part* restrict p, struct xpart* restrict xp, const struct rt_props* rt_props,
-    const struct hydro_props* hydro_props,
-    const struct phys_const* restrict phys_const,
-    const struct unit_system* restrict us,
-    const struct cooling_function_data* cooling,
-    const struct cosmology* restrict cosmo);
+void rt_tchem_first_init_part(struct part *restrict p,
+                              struct xpart *restrict xp,
+                              const struct rt_props *rt_props,
+                              const struct hydro_props *hydro_props,
+                              const struct phys_const *restrict phys_const,
+                              const struct unit_system *restrict us,
+                              const struct cooling_function_data *cooling,
+                              const struct cosmology *restrict cosmo);
 
 /**
  * @brief Main function for the thermochemistry step.
@@ -64,14 +65,14 @@ void rt_tchem_first_init_part(
  * @param dt The time-step of this particle.
  * @param depth recursion depth
  */
-void rt_do_thermochemistry(
-    struct part* restrict p, struct xpart* restrict xp,
-    struct rt_props* rt_props, const struct cosmology* restrict cosmo,
-    const struct hydro_props* hydro_props,
-    const struct phys_const* restrict phys_const,
-    const struct cooling_function_data* restrict cooling,
-    const struct unit_system* restrict us, const double dt, 
-    const double dt_therm, int depth);
+void rt_do_thermochemistry(struct part *restrict p, struct xpart *restrict xp,
+                           struct rt_props *rt_props,
+                           const struct cosmology *restrict cosmo,
+                           const struct hydro_props *hydro_props,
+                           const struct phys_const *restrict phys_const,
+                           const struct cooling_function_data *restrict cooling,
+                           const struct unit_system *restrict us,
+                           const double dt, const double dt_therm, int depth);
 
 /**
  * @brief Computes an upper boundary for the thermochemistry/cooling
@@ -86,12 +87,12 @@ void rt_do_thermochemistry(
  * @param us The internal system of units.
  */
 float rt_tchem_get_tchem_time(
-    const struct part* restrict p, const struct xpart* restrict xp,
-    struct rt_props* rt_props, const struct cosmology* restrict cosmo,
-    const struct hydro_props* hydro_props,
-    const struct phys_const* restrict phys_const,
-    const struct cooling_function_data* restrict cooling,
-    const struct unit_system* restrict us);
+    const struct part *restrict p, const struct xpart *restrict xp,
+    struct rt_props *rt_props, const struct cosmology *restrict cosmo,
+    const struct hydro_props *hydro_props,
+    const struct phys_const *restrict phys_const,
+    const struct cooling_function_data *restrict cooling,
+    const struct unit_system *restrict us);
 
 /**
  * @brief Main function for the thermochemistry step when coupling with
@@ -108,13 +109,13 @@ float rt_tchem_get_tchem_time(
  * @param depth recursion depth
  */
 void rt_do_thermochemistry_with_subgrid(
-    struct part* restrict p, struct xpart* restrict xp,
-    struct rt_props* rt_props, const struct cosmology* restrict cosmo,
-    const struct hydro_props* hydro_props,
-    const struct entropy_floor_properties* floor_props,
-    const struct phys_const* restrict phys_const,
-    const struct cooling_function_data* restrict cooling,
-    const struct unit_system* restrict us, const double dt,
+    struct part *restrict p, struct xpart *restrict xp,
+    struct rt_props *rt_props, const struct cosmology *restrict cosmo,
+    const struct hydro_props *hydro_props,
+    const struct entropy_floor_properties *floor_props,
+    const struct phys_const *restrict phys_const,
+    const struct cooling_function_data *restrict cooling,
+    const struct unit_system *restrict us, const double dt,
     const double dt_therm, int depth);
 
 #endif /* SWIFT_RT_GEAR_THERMOCHEMISTRY_H */

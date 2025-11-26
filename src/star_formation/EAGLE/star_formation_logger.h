@@ -236,7 +236,7 @@ INLINE static void star_formation_logger_log_active_part(
 
   /* No SFR logging for wind particles. */
   if (p->decoupled) return;
-  
+
   /* Add the SFR to the logger file */
   sf->SFR_active += p->sf_data.SFR;
 

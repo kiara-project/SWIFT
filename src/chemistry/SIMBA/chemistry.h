@@ -40,12 +40,12 @@
 /**
  * @brief Return a string containing the name of a given #chemistry_element.
  */
-__attribute__((always_inline)) INLINE static const char*
+__attribute__((always_inline)) INLINE static const char *
 chemistry_get_element_name(enum chemistry_element elem) {
 
-  static const char* chemistry_element_names[chemistry_element_count] = {
-      "Hydrogen", "Helium",    "Carbon",  "Nitrogen", "Oxygen",
-      "Neon",     "Magnesium", "Silicon", "Sulfur", "Calcium", "Iron"};
+  static const char *chemistry_element_names[chemistry_element_count] = {
+      "Hydrogen",  "Helium",  "Carbon", "Nitrogen", "Oxygen", "Neon",
+      "Magnesium", "Silicon", "Sulfur", "Calcium",  "Iron"};
 
   return chemistry_element_names[elem];
 }
@@ -60,9 +60,9 @@ chemistry_get_element_name(enum chemistry_element elem) {
  * @param cd #chemistry_global_data containing chemistry informations.
  */
 __attribute__((always_inline)) INLINE static void chemistry_init_part(
-    struct part* restrict p, const struct chemistry_global_data* cd) {
+    struct part *restrict p, const struct chemistry_global_data *cd) {
 
-  struct chemistry_part_data* cpd = &p->chemistry_data;
+  struct chemistry_part_data *cpd = &p->chemistry_data;
 #if COOLING_GRACKLE_MODE >= 2
   cpd->local_sfr_density = 0.f;
 #endif
@@ -78,14 +78,15 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
  * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void chemistry_end_density(
-    struct part* restrict p, const struct chemistry_global_data* cd,
-    const struct cosmology* cosmo) {
+    struct part *restrict p, const struct chemistry_global_data *cd,
+    const struct cosmology *cosmo) {
 
-  struct chemistry_part_data* cpd = &p->chemistry_data;
+  struct chemistry_part_data *cpd = &p->chemistry_data;
 #if COOLING_GRACKLE_MODE >= 2
   /* Add self contribution to SFR */
   cpd->local_sfr_density += max(0.f, p->sf_data.SFR);
-  const float inverse_volume = 0.238732 * pow_dimension(1.f/p->h); /* 1./(4/3 pi) */
+  const float inverse_volume =
+      0.238732 * pow_dimension(1.f / p->h); /* 1./(4/3 pi) */
   /* Convert to physical density from comoving */
   cpd->local_sfr_density *= inverse_volume * cosmo->a3_inv;
 #endif
@@ -100,12 +101,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
  * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void
-chemistry_part_has_no_neighbours(struct part* restrict p,
-                                 struct xpart* restrict xp,
-                                 const struct chemistry_global_data* cd,
-                                 const struct cosmology* cosmo) {
+chemistry_part_has_no_neighbours(struct part *restrict p,
+                                 struct xpart *restrict xp,
+                                 const struct chemistry_global_data *cd,
+                                 const struct cosmology *cosmo) {
 
-  struct chemistry_part_data* cpd = &p->chemistry_data;
+  struct chemistry_part_data *cpd = &p->chemistry_data;
 #if COOLING_GRACKLE_MODE >= 2
   /* If there is no nearby SF, set to zero */
   cpd->local_sfr_density = 0.f;
@@ -124,11 +125,11 @@ chemistry_part_has_no_neighbours(struct part* restrict p,
  * @param xp Pointer to the extended particle data.
  */
 __attribute__((always_inline)) INLINE static void chemistry_first_init_part(
-    const struct phys_const* restrict phys_const,
-    const struct unit_system* restrict us,
-    const struct cosmology* restrict cosmo,
-    const struct chemistry_global_data* data, struct part* restrict p,
-    struct xpart* restrict xp) {
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct chemistry_global_data *data, struct part *restrict p,
+    struct xpart *restrict xp) {
 
   /* Initialize mass fractions for total metals and each metal individually */
   if (data->initial_metal_mass_fraction_total != -1) {
@@ -151,7 +152,7 @@ __attribute__((always_inline)) INLINE static void chemistry_first_init_part(
  * @param sp Pointer to the sparticle data.
  */
 __attribute__((always_inline)) INLINE static void chemistry_first_init_spart(
-    const struct chemistry_global_data* data, struct spart* restrict sp) {
+    const struct chemistry_global_data *data, struct spart *restrict sp) {
 
   /* Initialize mass fractions for total metals and each metal individually */
   if (data->initial_metal_mass_fraction_total != -1) {
@@ -172,7 +173,7 @@ __attribute__((always_inline)) INLINE static void chemistry_first_init_spart(
  * @param sink Pointer to the sink particle data.
  */
 __attribute__((always_inline)) INLINE static void chemistry_first_init_sink(
-    const struct chemistry_global_data* data, struct sink* restrict sink) {}
+    const struct chemistry_global_data *data, struct sink *restrict sink) {}
 
 /**
  * @brief Initialises the chemistry properties.
@@ -182,10 +183,10 @@ __attribute__((always_inline)) INLINE static void chemistry_first_init_sink(
  * @param phys_const The physical constants in internal units.
  * @param data The properties to initialise.
  */
-static INLINE void chemistry_init_backend(struct swift_params* parameter_file,
-                                          const struct unit_system* us,
-                                          const struct phys_const* phys_const,
-                                          struct chemistry_global_data* data) {
+static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
+                                          const struct unit_system *us,
+                                          const struct phys_const *phys_const,
+                                          struct chemistry_global_data *data) {
 
   /* Read the total metallicity */
   data->initial_metal_mass_fraction_total = parser_get_opt_param_float(
@@ -246,7 +247,7 @@ static INLINE void chemistry_init_backend(struct swift_params* parameter_file,
  * model.
  */
 static INLINE void chemistry_print_backend(
-    const struct chemistry_global_data* data) {
+    const struct chemistry_global_data *data) {
 
   message("Chemistry model is 'SIMBA' tracking %d elements.",
           chemistry_element_count);
@@ -264,10 +265,9 @@ static INLINE void chemistry_print_backend(
  * @param dt Time step (in physical units).
  */
 __attribute__((always_inline)) INLINE static void chemistry_end_force(
-    struct part* restrict p, struct xpart *xp,
-    const struct cosmology* cosmo,
-    const int with_cosmology, const double time, 
-    const struct chemistry_global_data* cd, const double dt) {}
+    struct part *restrict p, struct xpart *xp, const struct cosmology *cosmo,
+    const int with_cosmology, const double time,
+    const struct chemistry_global_data *cd, const double dt) {}
 
 /**
  * @brief Computes the chemistry-related time-step constraint.
@@ -282,11 +282,11 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
  * @param p Pointer to the particle data.
  */
 __attribute__((always_inline)) INLINE static float chemistry_timestep(
-    const struct phys_const* restrict phys_const,
-    const struct cosmology* restrict cosmo,
-    const struct unit_system* restrict us,
-    const struct hydro_props* hydro_props,
-    const struct chemistry_global_data* cd, const struct part* restrict p) {
+    const struct phys_const *restrict phys_const,
+    const struct cosmology *restrict cosmo,
+    const struct unit_system *restrict us,
+    const struct hydro_props *hydro_props,
+    const struct chemistry_global_data *cd, const struct part *restrict p) {
   return FLT_MAX;
 }
 
@@ -301,8 +301,8 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
  * @param gas_mass The mass of the gas particle.
  */
 __attribute__((always_inline)) INLINE static void chemistry_bpart_from_part(
-    struct chemistry_bpart_data* bp_data,
-    const struct chemistry_part_data* p_data, const double gas_mass) {
+    struct chemistry_bpart_data *bp_data,
+    const struct chemistry_part_data *p_data, const double gas_mass) {
 
   bp_data->metal_mass_total = p_data->metal_mass_fraction_total * gas_mass;
   for (int i = 0; i < chemistry_element_count; ++i) {
@@ -332,8 +332,8 @@ __attribute__((always_inline)) INLINE static void chemistry_bpart_from_part(
  * @param gas_mass The mass of the gas particle.
  */
 __attribute__((always_inline)) INLINE static void chemistry_add_part_to_bpart(
-    struct chemistry_bpart_data* bp_data,
-    const struct chemistry_part_data* p_data, const double gas_mass) {
+    struct chemistry_bpart_data *bp_data,
+    const struct chemistry_part_data *p_data, const double gas_mass) {
 
   bp_data->metal_mass_total += p_data->metal_mass_fraction_total * gas_mass;
   for (int i = 0; i < chemistry_element_count; ++i) {
@@ -370,8 +370,8 @@ __attribute__((always_inline)) INLINE static void chemistry_add_part_to_bpart(
  *        particle that is removed.
  */
 __attribute__((always_inline)) INLINE static void
-chemistry_transfer_part_to_bpart(struct chemistry_bpart_data* bp_data,
-                                 struct chemistry_part_data* p_data,
+chemistry_transfer_part_to_bpart(struct chemistry_bpart_data *bp_data,
+                                 struct chemistry_part_data *p_data,
                                  const double nibble_mass,
                                  const double nibble_fraction) {
 
@@ -405,8 +405,8 @@ chemistry_transfer_part_to_bpart(struct chemistry_bpart_data* bp_data,
  * @param swallowed_data The black hole data to use.
  */
 __attribute__((always_inline)) INLINE static void chemistry_add_bpart_to_bpart(
-    struct chemistry_bpart_data* bp_data,
-    const struct chemistry_bpart_data* swallowed_data) {
+    struct chemistry_bpart_data *bp_data,
+    const struct chemistry_bpart_data *swallowed_data) {
 
   bp_data->metal_mass_total += swallowed_data->metal_mass_total;
   for (int i = 0; i < chemistry_element_count; ++i) {
@@ -430,7 +430,7 @@ __attribute__((always_inline)) INLINE static void chemistry_add_bpart_to_bpart(
  * @param n The number of pieces to split into.
  */
 __attribute__((always_inline)) INLINE static void chemistry_split_part(
-    struct part* p, const double n) {
+    struct part *p, const double n) {
   p->chemistry_data.mass_from_SNIa /= n;
   p->chemistry_data.mass_from_SNII /= n;
   p->chemistry_data.mass_from_AGB /= n;
@@ -447,7 +447,7 @@ __attribute__((always_inline)) INLINE static void chemistry_split_part(
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_fraction_for_feedback(
-    const struct part* restrict p) {
+    const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction_total;
 }
@@ -458,8 +458,8 @@ chemistry_get_total_metal_mass_fraction_for_feedback(
  *
  * @param p Pointer to the particle data.
  */
-__attribute__((always_inline)) INLINE static float const*
-chemistry_get_metal_mass_fraction_for_feedback(const struct part* restrict p) {
+__attribute__((always_inline)) INLINE static float const *
+chemistry_get_metal_mass_fraction_for_feedback(const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction;
 }
@@ -474,7 +474,7 @@ chemistry_get_metal_mass_fraction_for_feedback(const struct part* restrict p) {
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_star_total_metal_mass_fraction_for_feedback(
-    const struct spart* restrict sp) {
+    const struct spart *restrict sp) {
 
   return sp->chemistry_data.metal_mass_fraction_total;
 }
@@ -487,9 +487,9 @@ chemistry_get_star_total_metal_mass_fraction_for_feedback(
  *
  * @param sp Pointer to the particle data.
  */
-__attribute__((always_inline)) INLINE static float const*
+__attribute__((always_inline)) INLINE static float const *
 chemistry_get_star_metal_mass_fraction_for_feedback(
-    const struct spart* restrict sp) {
+    const struct spart *restrict sp) {
 
   return sp->chemistry_data.metal_mass_fraction;
 }
@@ -504,7 +504,7 @@ chemistry_get_star_metal_mass_fraction_for_feedback(
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_fraction_for_cooling(
-    const struct part* restrict p) {
+    const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction_total;
 }
@@ -517,8 +517,8 @@ chemistry_get_total_metal_mass_fraction_for_cooling(
  *
  * @param p Pointer to the particle data.
  */
-__attribute__((always_inline)) INLINE static float const*
-chemistry_get_metal_mass_fraction_for_cooling(const struct part* restrict p) {
+__attribute__((always_inline)) INLINE static float const *
+chemistry_get_metal_mass_fraction_for_cooling(const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction;
 }
@@ -533,7 +533,7 @@ chemistry_get_metal_mass_fraction_for_cooling(const struct part* restrict p) {
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_fraction_for_star_formation(
-    const struct part* restrict p) {
+    const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction_total;
 }
@@ -546,9 +546,9 @@ chemistry_get_total_metal_mass_fraction_for_star_formation(
  *
  * @param p Pointer to the particle data.
  */
-__attribute__((always_inline)) INLINE static float const*
+__attribute__((always_inline)) INLINE static float const *
 chemistry_get_metal_mass_fraction_for_star_formation(
-    const struct part* restrict p) {
+    const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction;
 }
@@ -560,7 +560,7 @@ chemistry_get_metal_mass_fraction_for_star_formation(
  * @param p Pointer to the particle data.
  */
 __attribute__((always_inline)) INLINE static float
-chemistry_get_total_metal_mass_for_stats(const struct part* restrict p) {
+chemistry_get_total_metal_mass_for_stats(const struct part *restrict p) {
 
   return p->chemistry_data.metal_mass_fraction_total * hydro_get_mass(p);
 }
@@ -572,7 +572,7 @@ chemistry_get_total_metal_mass_for_stats(const struct part* restrict p) {
  * @param sp Pointer to the star particle data.
  */
 __attribute__((always_inline)) INLINE static float
-chemistry_get_star_total_metal_mass_for_stats(const struct spart* restrict sp) {
+chemistry_get_star_total_metal_mass_for_stats(const struct spart *restrict sp) {
 
   return sp->chemistry_data.metal_mass_fraction_total * sp->mass;
 }
@@ -584,7 +584,7 @@ chemistry_get_star_total_metal_mass_for_stats(const struct spart* restrict sp) {
  * @param bp Pointer to the BH particle data.
  */
 __attribute__((always_inline)) INLINE static float
-chemistry_get_bh_total_metal_mass_for_stats(const struct bpart* restrict bp) {
+chemistry_get_bh_total_metal_mass_for_stats(const struct bpart *restrict bp) {
 
   return bp->chemistry_data.metal_mass_total;
 }
@@ -597,7 +597,7 @@ chemistry_get_bh_total_metal_mass_for_stats(const struct bpart* restrict bp) {
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_star_total_metal_mass_fraction_for_luminosity(
-    const struct spart* restrict sp) {
+    const struct spart *restrict sp) {
 
   return sp->chemistry_data.metal_mass_fraction_total;
 }

@@ -2,7 +2,7 @@
  * This file is part of SWIFT.
  * Copyright (c) 2018 Matthieu Schaller (schaller@strw.leidenuniv.nl)
  *               2022 Doug Rennehan (douglas.rennehan@gmail.com)
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -110,7 +110,6 @@ runner_iact_nonsym_feedback_density(const float r2, const float dx[3],
   const float rho = hydro_get_comoving_density(pj);
   if (rho != 0.f)
     si->feedback_data.to_collect.enrichment_weight_inv += wi / rho;
-
 }
 
 __attribute__((always_inline)) INLINE static void
@@ -183,8 +182,8 @@ runner_iact_nonsym_feedback_apply(
 
   /* Never apply feedback if Omega_frac is bigger than or equal to unity */
   if (Omega_frac > 1.0) {
-    warning("Problem with neighbors: Omega_frac=%g wi=%g rho_j=%g",
-            Omega_frac, wi, rho_j);
+    warning("Problem with neighbors: Omega_frac=%g wi=%g rho_j=%g", Omega_frac,
+            wi, rho_j);
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -356,7 +355,6 @@ runner_iact_nonsym_feedback_apply(
   /* Do the energy injection. */
   hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new_enrich);
   hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new_enrich);
-
 }
 
 #endif /* SWIFT_SIMBA_FEEDBACK_IACT_H */

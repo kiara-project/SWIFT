@@ -84,7 +84,6 @@ struct entropy_floor_properties {
 
   /*! Pressure of the Cool floor at the density thresh. in internal units */
   float Cool_pressure_norm;
-
 };
 
 /**
@@ -164,7 +163,7 @@ static INLINE float entropy_floor(
 }
 
 /**
- * @brief Compute the temperature in K from the Jeans 
+ * @brief Compute the temperature in K from the Jeans
  * entropy floor at a given density
  *
  * This is the temperature exactly corresponding to the imposed EoS shape.
@@ -194,7 +193,8 @@ static INLINE float entropy_floor_gas_temperature(
 
     const float jeans_slope = props->Jeans_gamma_effective - 1.f;
 
-    temperature = props->Jeans_temperature_norm *
+    temperature =
+        props->Jeans_temperature_norm *
         pow(rho_phys * props->Jeans_density_threshold_inv, jeans_slope);
   }
 
@@ -202,7 +202,7 @@ static INLINE float entropy_floor_gas_temperature(
 }
 
 /**
- * @brief Compute the temperature in K from the 
+ * @brief Compute the temperature in K from the
  * Cooling entropy floor at a given density
  *
  * This is the temperature exactly corresponding to the imposed EoS shape.
@@ -234,7 +234,7 @@ static INLINE float entropy_floor_Cool_temperature(
     const float cool_slope = props->Cool_gamma_effective - 1.f;
 
     temperature = props->Cool_temperature_norm *
-        pow(rho_phys * props->Cool_density_threshold_inv, cool_slope);
+                  pow(rho_phys * props->Cool_density_threshold_inv, cool_slope);
   }
 
   return temperature;
@@ -262,9 +262,9 @@ static INLINE float entropy_floor_temperature(
   /* Physical density in internal units */
   const float rho_phys = hydro_get_physical_density(p, cosmo);
 
-  float temperature_Jeans = 
+  float temperature_Jeans =
       entropy_floor_gas_temperature(rho_phys, rho_com, cosmo, props);
-  float temperature_Cool = 
+  float temperature_Cool =
       entropy_floor_Cool_temperature(rho_phys, rho_com, cosmo, props);
 
   return max(temperature_Jeans, temperature_Cool);

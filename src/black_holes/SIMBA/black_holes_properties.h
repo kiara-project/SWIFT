@@ -133,10 +133,11 @@ struct black_holes_props {
    */
   float f_accretion;
 
-  /*! Number of dynamical times over which gas is accreted from accretion disk */
+  /*! Number of dynamical times over which gas is accreted from accretion disk
+   */
   float accretion_disk_timescale;
 
-  /*! Method to compute torque accretion rate: 0=Mgas/tdyn on cold gas; 
+  /*! Method to compute torque accretion rate: 0=Mgas/tdyn on cold gas;
    * 1=Mgas/tdyn on corot gas; 2=Simba-style(HQ11) */
   int torque_accretion_method;
 
@@ -199,7 +200,8 @@ struct black_holes_props {
   /*! factor setting maximum jet velcoity as multiplier of jet_velocity */
   float jet_velocity_max_multiplier;
 
-  /*! Power law scaling of v_jet with MBH; set =0 for constant value at jet_velocity */
+  /*! Power law scaling of v_jet with MBH; set =0 for constant value at
+   * jet_velocity */
   float jet_velocity_scaling_with_mass;
 
   /*! The temperature of the jet. Set < 0.f for halo virial temperature */
@@ -345,7 +347,8 @@ struct black_holes_props {
   /*! Convert Kelvin to internal temperature */
   double T_K_to_int;
 
-  /* ------------ Stellar feedback properties for eta computation --------------- */
+  /* ------------ Stellar feedback properties for eta computation
+   * --------------- */
 
   /*! Normalization for the mass loading curve */
   float FIRE_eta_normalization;
@@ -413,9 +416,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->time_to_Myr = bp->time_to_yr * 1.e-6;
 
   if (engine_rank == 0) {
-    message("TIME_TO_YR CONVERSION: %g %g %g", bp->time_to_yr, bp->time_to_Myr, 
-	          units_cgs_conversion_factor(us, UNIT_CONV_TIME) / 
-                (1.e6 * 365.25 * 24. * 60. * 60.) );
+    message("TIME_TO_YR CONVERSION: %g %g %g", bp->time_to_yr, bp->time_to_Myr,
+            units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
+                (1.e6 * 365.25 * 24. * 60. * 60.));
   }
 
   /* Some useful conversion values */
@@ -522,9 +525,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->suppress_growth =
       parser_get_param_int(params, "SIMBAAGN:suppress_growth");
 
-  if (bp->suppress_growth == BH_suppress_OutflowsOnAllGas || 
-          bp->suppress_growth == BH_suppress_OutflowsOnSFGas || 
-          BH_suppress_ExpOutflowsOnTotal > 0) {
+  if (bp->suppress_growth == BH_suppress_OutflowsOnAllGas ||
+      bp->suppress_growth == BH_suppress_OutflowsOnSFGas ||
+      BH_suppress_ExpOutflowsOnTotal > 0) {
     bp->FIRE_eta_normalization =
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_normalization");
     bp->FIRE_eta_break =
@@ -534,11 +537,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_lower_slope");
     bp->FIRE_eta_upper_slope =
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_upper_slope");
-    bp->minimum_galaxy_stellar_mass =
-      parser_get_param_float(params, 
-          "KIARAFeedback:minimum_galaxy_stellar_mass_Msun");
+    bp->minimum_galaxy_stellar_mass = parser_get_param_float(
+        params, "KIARAFeedback:minimum_galaxy_stellar_mass_Msun");
     bp->minimum_galaxy_stellar_mass /= bp->mass_to_solar_mass;
-     /* Get the star formation efficiency */
+    /* Get the star formation efficiency */
     bp->star_formation_efficiency = parser_get_param_float(
         params, "KIARAStarFormation:star_formation_efficiency");
   }
@@ -605,34 +607,27 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->f_Edd = parser_get_param_float(params, "SIMBAAGN:max_eddington_fraction");
 
-  bp->bondi_fraction_thresh_always_jet = 
-      parser_get_opt_param_float(params, 
-          "SIMBAAGN:bondi_fraction_thresh_always_jet", FLT_MAX);
+  bp->bondi_fraction_thresh_always_jet = parser_get_opt_param_float(
+      params, "SIMBAAGN:bondi_fraction_thresh_always_jet", FLT_MAX);
 
-  bp->mass_thresh_always_jet = 
-      parser_get_opt_param_float(params, 
-          "SIMBAAGN:mass_thresh_always_jet", FLT_MAX);
+  bp->mass_thresh_always_jet = parser_get_opt_param_float(
+      params, "SIMBAAGN:mass_thresh_always_jet", FLT_MAX);
 
-  bp->accr_rate_thresh_always_jet = 
-      parser_get_opt_param_float(params, 
-          "SIMBAAGN:accr_rate_thresh_always_jet", FLT_MAX);
+  bp->accr_rate_thresh_always_jet = parser_get_opt_param_float(
+      params, "SIMBAAGN:accr_rate_thresh_always_jet", FLT_MAX);
   /* Convert from Mo/yr to internal units */
-  bp->accr_rate_thresh_always_jet *= 
-      bp->time_to_yr / bp->mass_to_solar_mass;
+  bp->accr_rate_thresh_always_jet *= bp->time_to_yr / bp->mass_to_solar_mass;
 
-  bp->jet_velocity_spread_alpha =
-      parser_get_opt_param_float(params, 
-          "SIMBAAGN:jet_velocity_spread_alpha", 0.8f);
+  bp->jet_velocity_spread_alpha = parser_get_opt_param_float(
+      params, "SIMBAAGN:jet_velocity_spread_alpha", 0.8f);
 
-  bp->jet_velocity_spread_beta =
-      parser_get_opt_param_float(params, 
-          "SIMBAAGN:jet_velocity_spread_beta", 0.4f);
+  bp->jet_velocity_spread_beta = parser_get_opt_param_float(
+      params, "SIMBAAGN:jet_velocity_spread_beta", 0.4f);
 
   /* Feedback parameters ---------------------------------- */
 
-  bp->jet_maximum_temperature =
-      parser_get_opt_param_float(params, "SIMBAAGN:jet_maximum_temperature", 
-                                 1.e8f);
+  bp->jet_maximum_temperature = parser_get_opt_param_float(
+      params, "SIMBAAGN:jet_maximum_temperature", 1.e8f);
 
   bp->jet_heating_velocity_threshold =
       parser_get_param_float(params, "SIMBAAGN:jet_heating_velocity_threshold");
@@ -650,7 +645,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   if (bp->xray_kinetic_fraction < 0.f || bp->xray_kinetic_fraction > 1.f) {
     error("xray_kinetic_fraction must be between 0 <= f_xray <= 1.");
   }
-  
+
   bp->xray_heating_n_H_threshold_cgs = parser_get_opt_param_float(
       params, "SIMBAAGN:xray_heating_n_H_threshold_cgs", 0.13f);
 
@@ -669,10 +664,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_velocity = parser_get_param_float(params, "SIMBAAGN:jet_velocity");
   bp->jet_velocity *= bp->kms_to_internal;
 
-  bp->jet_velocity_scaling_with_mass = 
+  bp->jet_velocity_scaling_with_mass =
       parser_get_param_float(params, "SIMBAAGN:jet_velocity_scaling_with_mass");
 
-  bp->jet_velocity_max_multiplier = 
+  bp->jet_velocity_max_multiplier =
       parser_get_param_float(params, "SIMBAAGN:jet_velocity_max_multiplier");
 
   bp->scale_jet_temperature =
@@ -680,23 +675,24 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->jet_temperature =
       parser_get_param_float(params, "SIMBAAGN:jet_temperature");
-  if ((bp->scale_jet_temperature <= 1 && bp->jet_temperature < 100.) || 
-          (bp->scale_jet_temperature == 2 && bp->jet_temperature > 100.)) {
-    error("Parameter SIMBAAGN:jet_temperature=%g doesn't look right!  "
-          " for scale_jet_temperature==1 it should be a temperature like 1e7, "
-          "whereas if scale_jet_temperature==2 it should be a multiplier for "
-          "Tvir like ~1-10 or so", 
-          bp->jet_temperature);
+  if ((bp->scale_jet_temperature <= 1 && bp->jet_temperature < 100.) ||
+      (bp->scale_jet_temperature == 2 && bp->jet_temperature > 100.)) {
+    error(
+        "Parameter SIMBAAGN:jet_temperature=%g doesn't look right!  "
+        " for scale_jet_temperature==1 it should be a temperature like 1e7, "
+        "whereas if scale_jet_temperature==2 it should be a multiplier for "
+        "Tvir like ~1-10 or so",
+        bp->jet_temperature);
   }
-      
+
   bp->eddington_fraction_lower_boundary = parser_get_param_float(
       params, "SIMBAAGN:eddington_fraction_lower_boundary");
 
   bp->jet_mass_min_Msun =
       parser_get_opt_param_float(params, "SIMBAAGN:jet_mass_min_Msun", 4.5e7f);
 
-  bp->jet_mass_spread_Msun =
-      parser_get_opt_param_float(params, "SIMBAAGN:jet_mass_spread_Msun", 5.0e6f);
+  bp->jet_mass_spread_Msun = parser_get_opt_param_float(
+      params, "SIMBAAGN:jet_mass_spread_Msun", 5.0e6f);
 
   bp->wind_momentum_flux =
       parser_get_param_float(params, "SIMBAAGN:wind_momentum_flux");
@@ -800,7 +796,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
                       units_cgs_conversion_factor(us, UNIT_CONV_TIME);
 
   if (engine_rank == 0) {
-    message("Black holes kernel: %s with eta=%f (%.2f neighbours).", 
+    message("Black holes kernel: %s with eta=%f (%.2f neighbours).",
             kernel_name, bp->eta_neighbours, bp->target_neighbours);
 
     message("Black holes relative tolerance in h: %.5f (+/- %.4f neighbours).",

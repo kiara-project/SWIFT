@@ -101,8 +101,8 @@ struct rt_props {
 
   /* Storage for integrated photoionization cross sections */
   /* Note: they are always in cgs. */
-  double** energy_weighted_cross_sections;
-  double** number_weighted_cross_sections;
+  double **energy_weighted_cross_sections;
+  double **number_weighted_cross_sections;
   /* Mean photon energy in frequency bin for user provided spectrum. In erg.*/
   double average_photon_energy[RT_NGROUPS];
   /* Integral over photon numbers of user provided spectrum. */
@@ -111,12 +111,12 @@ struct rt_props {
   /* Location of Stellar spectrum tables. */
   char stellar_table_path[200];
 
-  /* Storeage for the BPASS photon number table in a 3d array with three photon 
-   * group 2d tables. 
+  /* Storeage for the BPASS photon number table in a 3d array with three photon
+   * group 2d tables.
    * ionizing_tables[0] = ionizing_HI_table
    * ionizing_tables[1] = ionizing_HeI_table
    * ionizing_tables[2] = ionizing_HeII_table*/
-  double*** ionizing_tables;
+  double ***ionizing_tables;
 
   /* Photon escape fraction from stellar emission model. */
   double f_esc;
@@ -176,9 +176,9 @@ struct rt_props {
  * @param phys_const physical constants struct
  * @param us internal units struct
  **/
-void rt_cross_sections_init(struct rt_props* restrict rt_props,
-                            const struct phys_const* restrict phys_const,
-                            const struct unit_system* restrict us);
+void rt_cross_sections_init(struct rt_props *restrict rt_props,
+                            const struct phys_const *restrict phys_const,
+                            const struct unit_system *restrict us);
 
 /* Function to read the table. */
 double **read_Bpass_from_hdf5(char *file_name, char *dataset_name);
@@ -192,7 +192,7 @@ double **read_Bpass_from_hdf5(char *file_name, char *dataset_name);
  * @param rtp The #rt_props
  */
 __attribute__((always_inline)) INLINE static void rt_props_print(
-    const struct rt_props* rtp) {
+    const struct rt_props *rtp) {
 
   /* Only the master print */
   if (engine_rank != 0) return;
@@ -219,8 +219,7 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
   } else if (rtp->stellar_emission_model ==
              rt_stellar_emission_model_IlievTest) {
     message("Using Iliev+06 Test 4 stellar emission model.");
-  } else if (rtp->stellar_emission_model ==
-             rt_stellar_emission_model_BPASS) {
+  } else if (rtp->stellar_emission_model == rt_stellar_emission_model_BPASS) {
     message("Using BPASS stellar emission model.");
   } else {
     error("Unknown stellar emission model %d", rtp->stellar_emission_model);
@@ -249,9 +248,9 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
  * @param cosmo The cosmological model.
  */
 __attribute__((always_inline)) INLINE static void rt_props_init(
-    struct rt_props* rtp, const struct phys_const* phys_const,
-    const struct unit_system* us, struct swift_params* params,
-    struct cosmology* cosmo) {
+    struct rt_props *rtp, const struct phys_const *phys_const,
+    const struct unit_system *us, struct swift_params *params,
+    struct cosmology *cosmo) {
 
   /* Make sure we reset debugging counters correctly after
    * zeroth step. */
@@ -316,10 +315,9 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   } else if (rtp->stellar_emission_model ==
              rt_stellar_emission_model_IlievTest) {
     /* Nothing to do here */
-  } else if (rtp->stellar_emission_model ==
-             rt_stellar_emission_model_BPASS) {
+  } else if (rtp->stellar_emission_model == rt_stellar_emission_model_BPASS) {
     parser_get_param_string(params, "GEARRT:stellar_table_path",
-                          rtp->stellar_table_path);
+                            rtp->stellar_table_path);
   } else {
     error("Unknown stellar emission model %d", rtp->stellar_emission_model);
   }
@@ -442,11 +440,17 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
       parser_get_param_int(params, "GEARRT:stellar_spectrum_type");
 
   /* Check for BPASS setup. */
-  if (rtp->stellar_emission_model == rt_stellar_emission_model_BPASS && rtp->stellar_spectrum_type != 2) {
-        error("Warning: stellar_luminosity_model is BPASS, but stellar_spectrum_type is not 2!\n");
-    } else if (rtp->stellar_emission_model != rt_stellar_emission_model_BPASS && rtp->stellar_spectrum_type == 2) {
-        error( "Warning: stellar_spectrum_type is 2, but stellar_luminosity_model is not BPASS!\n");
-    }
+  if (rtp->stellar_emission_model == rt_stellar_emission_model_BPASS &&
+      rtp->stellar_spectrum_type != 2) {
+    error(
+        "Warning: stellar_luminosity_model is BPASS, but stellar_spectrum_type "
+        "is not 2!\n");
+  } else if (rtp->stellar_emission_model != rt_stellar_emission_model_BPASS &&
+             rtp->stellar_spectrum_type == 2) {
+    error(
+        "Warning: stellar_spectrum_type is 2, but stellar_luminosity_model is "
+        "not BPASS!\n");
+  }
 
   if (rtp->stellar_spectrum_type == 0) {
     /* Constant spectrum: Read additional parameter */
@@ -461,14 +465,14 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
     rtp->stellar_spectrum_blackbody_T /=
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
   } else if (rtp->stellar_spectrum_type == 2) {
-    /* TODO: currently we use the const stellar spectrum to calculate photon group properties. 
-     * We need to change it to use BPASS model value. */
+    /* TODO: currently we use the const stellar spectrum to calculate photon
+     * group properties. We need to change it to use BPASS model value. */
     rtp->const_stellar_spectrum_max_frequency = parser_get_param_float(
         params, "GEARRT:stellar_spectrum_const_max_frequency_Hz");
 
     /* Read the photon escape fraction value. */
-    rtp->f_esc = parser_get_param_float(
-        params, "GEARRT:photon_escape_fraction");
+    rtp->f_esc =
+        parser_get_param_float(params, "GEARRT:photon_escape_fraction");
 
     /* Read the table from BPASS. */
     char *fname = malloc(256);
@@ -479,18 +483,18 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
     sprintf(fname, "%s", rtp->stellar_table_path);
 
     int num_tables = 3;
-    rtp->ionizing_tables = malloc(num_tables * sizeof(double**));
+    rtp->ionizing_tables = malloc(num_tables * sizeof(double **));
 
     rtp->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
     rtp->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
     rtp->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
 
     /* print table check. */
-    //for (hsize_t i = 0; i < 13; i++){
-    //     for (hsize_t j = 0; j < 22; j++) {
-    //          printf("%.2f\n", rtp->ionizing_tables[0][i][j]); 
+    // for (hsize_t i = 0; i < 13; i++){
+    //      for (hsize_t j = 0; j < 22; j++) {
+    //           printf("%.2f\n", rtp->ionizing_tables[0][i][j]);
     //	 }
-    // }
+    //  }
 
     /* free the data name. */
     free(fname);
@@ -544,8 +548,8 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
 }
 
 __attribute__((always_inline)) INLINE static void rt_props_update(
-    struct rt_props* rtp, const struct unit_system* us,
-    struct cosmology* cosmo) {
+    struct rt_props *rtp, const struct unit_system *us,
+    struct cosmology *cosmo) {
   update_grackle_units_cosmo(&(rtp->grackle_units), us, cosmo);
 }
 
@@ -557,9 +561,9 @@ __attribute__((always_inline)) INLINE static void rt_props_update(
  * @param stream the file stream
  */
 __attribute__((always_inline)) INLINE static void rt_struct_dump(
-    const struct rt_props* props, FILE* stream) {
+    const struct rt_props *props, FILE *stream) {
 
-  restart_write_blocks((void*)props, sizeof(struct rt_props), 1, stream,
+  restart_write_blocks((void *)props, sizeof(struct rt_props), 1, stream,
                        "RT props", "RT properties struct");
   /* The RT parameters, in particular the reduced speed of light, are
    * not defined at compile time. So we need to read them in again. */
@@ -578,10 +582,10 @@ __attribute__((always_inline)) INLINE static void rt_struct_dump(
  * @param cosmo the #cosmology
  */
 __attribute__((always_inline)) INLINE static void rt_struct_restore(
-    struct rt_props* props, FILE* stream, const struct phys_const* phys_const,
-    const struct unit_system* us, const struct cosmology* restrict cosmo) {
+    struct rt_props *props, FILE *stream, const struct phys_const *phys_const,
+    const struct unit_system *us, const struct cosmology *restrict cosmo) {
 
-  restart_read_blocks((void*)props, sizeof(struct rt_props), 1, stream, NULL,
+  restart_read_blocks((void *)props, sizeof(struct rt_props), 1, stream, NULL,
                       "RT properties struct");
   /* Set up stuff that needs array allocation */
   rt_init_grackle(&props->grackle_units, &props->grackle_chemistry_data,
@@ -594,22 +598,22 @@ __attribute__((always_inline)) INLINE static void rt_struct_restore(
   rt_cross_sections_init(props, phys_const, us);
 
   /* Read the table from BPASS. */
-    char *fname = malloc(256);
-    char *dataset_name_HI = "/Table_HI/block0_values";
-    char *dataset_name_HeI = "/Table_HeI/block0_values";
-    char *dataset_name_HeII = "/Table_HeII/block0_values";
-    /* Read stellar table filename. */
-    sprintf(fname, "%s", props->stellar_table_path);
+  char *fname = malloc(256);
+  char *dataset_name_HI = "/Table_HI/block0_values";
+  char *dataset_name_HeI = "/Table_HeI/block0_values";
+  char *dataset_name_HeII = "/Table_HeII/block0_values";
+  /* Read stellar table filename. */
+  sprintf(fname, "%s", props->stellar_table_path);
 
-    int num_tables = 3;
-    props->ionizing_tables = malloc(num_tables * sizeof(double**));
+  int num_tables = 3;
+  props->ionizing_tables = malloc(num_tables * sizeof(double **));
 
-    props->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
-    props->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
-    props->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
+  props->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
+  props->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
+  props->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
 
-    /* free the data name. */
-    free(fname);
+  /* free the data name. */
+  free(fname);
 
   /* The RT parameters, in particular the reduced speed of light, are
    * not defined at compile time. So we need to write them down. */

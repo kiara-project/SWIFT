@@ -847,8 +847,8 @@ void space_convert_rt_quantities_mapper(void *restrict map_data, int count,
    * creation */
   for (int k = 0; k < count; k++) {
     if (parts[k].time_bin <= num_time_bins)
-      rt_convert_quantities(&parts[k], &xp[k], rt_props, hydro_props, phys_const, iu,
-                            cool_func, cosmo);
+      rt_convert_quantities(&parts[k], &xp[k], rt_props, hydro_props,
+                            phys_const, iu, cool_func, cosmo);
   }
 }
 
@@ -1330,16 +1330,14 @@ void space_init(struct space *s, struct swift_params *params,
                                engine_max_parts_per_cooling_default);
 
   /* Rennehan: decoupling tasks */
-  engine_max_parts_per_decoupling =
-      parser_get_opt_param_int(params, 
-                               "Scheduler:engine_max_parts_per_decoupling",
-                               engine_max_parts_per_decoupling);
+  engine_max_parts_per_decoupling = parser_get_opt_param_int(
+      params, "Scheduler:engine_max_parts_per_decoupling",
+      engine_max_parts_per_decoupling);
 
   /* Rennehan: recoupling tasks */
-  engine_max_parts_per_recoupling =
-      parser_get_opt_param_int(params, 
-                               "Scheduler:engine_max_parts_per_recoupling",
-                               engine_max_parts_per_recoupling);
+  engine_max_parts_per_recoupling = parser_get_opt_param_int(
+      params, "Scheduler:engine_max_parts_per_recoupling",
+      engine_max_parts_per_recoupling);
 
   engine_redistribute_alloc_margin = parser_get_opt_param_double(
       params, "Scheduler:engine_redist_alloc_margin",
@@ -2673,13 +2671,11 @@ void space_struct_dump(struct space *s, FILE *stream) {
                        "engine_max_parts_per_cooling",
                        "engine_max_parts_per_cooling");
   /* Rennehan: decoupling tasks */
-  restart_write_blocks(&engine_max_parts_per_decoupling, sizeof(int), 1, 
-                       stream,
+  restart_write_blocks(&engine_max_parts_per_decoupling, sizeof(int), 1, stream,
                        "engine_max_parts_per_decoupling",
                        "engine_max_parts_per_decoupling");
   /* Rennehan: recoupling tasks */
-  restart_write_blocks(&engine_max_parts_per_recoupling, sizeof(int), 1, 
-                       stream,
+  restart_write_blocks(&engine_max_parts_per_recoupling, sizeof(int), 1, stream,
                        "engine_max_parts_per_recoupling",
                        "engine_max_parts_per_recoupling");
   restart_write_blocks(&engine_star_resort_task_depth, sizeof(int), 1, stream,

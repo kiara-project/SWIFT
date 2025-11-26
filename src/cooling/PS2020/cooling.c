@@ -743,15 +743,14 @@ void cooling_cool_part(const struct phys_const *phys_const,
                        const float dt_therm, const double time) {
 
   /* If decoupled, use hydro density/temperature until recoupled */
-  if (p->decoupled ||
-      p->feedback_data.cooling_shutoff_delay_time > 0.f) {
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
 
     /* The density is just the physical density */
     p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
 
     /* Likewise the temperature is just the temperature of the particle */
-    p->cooling_data.subgrid_temp = cooling_get_temperature( 
-          phys_const, hydro_properties, us, cosmo, cooling, p, xp);
+    p->cooling_data.subgrid_temp = cooling_get_temperature(
+        phys_const, hydro_properties, us, cosmo, cooling, p, xp);
 
     return;
   }
@@ -1548,7 +1547,10 @@ void cooling_init_backend(struct swift_params *parameter_file,
   /* Get the minimal temperature allowed */
   cooling->Tmin = hydro_props->minimal_temperature;
   if (cooling->Tmin < 10.)
-    error("PS2020 cooling cannot handle a minimal temperature below 10 K (Tmin=%g)",hydro_props->minimal_temperature);
+    error(
+        "PS2020 cooling cannot handle a minimal temperature below 10 K "
+        "(Tmin=%g)",
+        hydro_props->minimal_temperature);
 
   /* Recover the minimal energy allowed (in internal units) */
   const double u_min = hydro_props->minimal_internal_energy;
