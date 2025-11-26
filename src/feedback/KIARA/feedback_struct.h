@@ -22,7 +22,6 @@
 
 #include "chemistry_struct.h"
 
-
 /**
  * @brief Feedback fields carried by each hydro particles
  */
@@ -38,13 +37,13 @@ struct feedback_part_data {
 
   /*! The ID of the star particle that is kicking this particle */
   long long kick_id;
-  
+
   /*! The direction vector for wind kicks */
   float wind_direction[3];
-  
+
   /*! The number of times the SF mass limiter was applied */
   int mass_limiter_count;
-  
+
   /*! The number of times the SF heat limiter was applied */
   int heating_limiter_count;
 
@@ -75,7 +74,7 @@ struct feedback_spart_data {
 
   /*! Total mass (unweighted) of neighbouring gas particles eligible for wind */
   float wind_ngb_mass;
-  
+
   /*! Mass released */
   double mass;
 
@@ -93,13 +92,13 @@ struct feedback_spart_data {
 
   /*! Number of particles launched over the stars' lifetime */
   int N_launched;
-  
+
   /*! Total mass left to be ejected in winds by this star */
   float mass_to_launch;
 
   /*! Total mass kicked over the stars' lifetime */
   float total_mass_kicked;
-  
+
   /*! Kick velocity for gas launched by this star COMOVING */
   float wind_velocity;
 
@@ -113,7 +112,8 @@ struct feedback_spart_data {
   /*! Number of SNe (of any type) going off within star during this step */
   double SNe_ThisTimeStep;
 
-  /*! Cumulative number of SNe that have gone off in this star from chem5 (for debugging) */
+  /*! Cumulative number of SNe that have gone off in this star from chem5 (for
+   * debugging) */
   double SNe_Total;
 
   /*! Total dust mass change for each element */

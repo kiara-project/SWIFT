@@ -51,9 +51,9 @@ INLINE static void stars_read_particles(struct spart *sparts,
   list[5] = io_make_input_field("Masses", FLOAT, 1, COMPULSORY, UNIT_CONV_MASS,
                                 sparts, mass_init);
   float def_value = -1.f;
-  list[6] =
-      io_make_input_field_default("StellarFormationTime", FLOAT, 1, OPTIONAL,
-                                  UNIT_CONV_NO_UNITS, sparts, birth_time, def_value);
+  list[6] = io_make_input_field_default("StellarFormationTime", FLOAT, 1,
+                                        OPTIONAL, UNIT_CONV_NO_UNITS, sparts,
+                                        birth_time, def_value);
   list[7] = io_make_input_field("BirthDensities", FLOAT, 1, OPTIONAL,
                                 UNIT_CONV_DENSITY, sparts, birth_density);
   list[8] =
@@ -190,11 +190,11 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "we store the physical density at the birth redshift, no conversion is "
       "needed)");
 
-  list[8] = io_make_output_field("BirthTemperatures", 
-      FLOAT, 1, UNIT_CONV_TEMPERATURE,
-      0.f, sparts, birth_temperature,
-      "Temperatures at the time of birth of the gas "
-      "particles that turned into stars");
+  list[8] =
+      io_make_output_field("BirthTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE,
+                           0.f, sparts, birth_temperature,
+                           "Temperatures at the time of birth of the gas "
+                           "particles that turned into stars");
 
   list[9] = io_make_output_field_convert_spart(
       "Luminosities", FLOAT, luminosity_bands_count, UNIT_CONV_NO_UNITS, 0.f,
@@ -288,12 +288,12 @@ INLINE static void stars_props_init(struct stars_props *sp,
   const double Myr = 1e6 * 365.25 * 24. * 60. * 60.;
   const double conv_fac = units_cgs_conversion_factor(us, UNIT_CONV_TIME);
 
-  sp->time_step_factor_young = parser_get_opt_param_float(
-      params, "Stars:time_step_factor_young", 1.f);
-  sp->time_step_factor_old = parser_get_opt_param_float(
-      params, "Stars:time_step_factor_old", 1.f);
-  const double min_time_step_Myr = parser_get_opt_param_float(
-      params, "Stars:min_time_step_Myr", 30.);
+  sp->time_step_factor_young =
+      parser_get_opt_param_float(params, "Stars:time_step_factor_young", 1.f);
+  sp->time_step_factor_old =
+      parser_get_opt_param_float(params, "Stars:time_step_factor_old", 1.f);
+  const double min_time_step_Myr =
+      parser_get_opt_param_float(params, "Stars:min_time_step_Myr", 30.);
   const double max_time_step_young_Myr = parser_get_opt_param_float(
       params, "Stars:max_timestep_young_Myr", FLT_MAX);
   const double max_time_step_old_Myr =

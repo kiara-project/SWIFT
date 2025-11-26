@@ -167,9 +167,8 @@ void runner_do_kick1(struct runner *r, struct cell *c, const int timer) {
               ti_current);
 #endif
 
-	/* Rennehan: Here we recouple the wind particles */
-        feedback_recouple_part(p, xp, e, with_cosmology, cosmo,
-                               feedback_props);
+        /* Rennehan: Here we recouple the wind particles */
+        feedback_recouple_part(p, xp, e, with_cosmology, cosmo, feedback_props);
 
         /* Time intervals for this half-kick */
         const double dt_kick_grav = kick_get_grav_kick_dt(
