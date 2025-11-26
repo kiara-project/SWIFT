@@ -41,7 +41,7 @@
  */
 __attribute__((always_inline)) INLINE static float stars_compute_timestep(
     const struct spart *const sp, const struct stars_props *stars_properties,
-    // const struct feedback_props *feedback_props,
+    const struct feedback_props *feedback_props,
     const struct phys_const *phys_const, const struct unit_system *us,
     const int with_cosmology, const struct cosmology *cosmo,
     const integertime_t ti_current, const double time, const double time_base) {

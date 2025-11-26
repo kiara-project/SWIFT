@@ -1402,7 +1402,14 @@ void runner_do_limiter(struct runner *r, struct cell *c, int force,
           warning(
               "Not limiting particle with id %lld because it needs to be "
               "synced tdel=%g dec=%d.",
-              p->id, p->feedback_data.decoupling_delay_time, p->decoupled);
+              p->id,
+          // MATTHIEU: TODO: Fix this
+#ifdef FEEDBACK_KIARA
+              p->feedback_data.decoupling_delay_time, p->decoupled
+#else
+              0., 0
+#endif
+          );
           continue;
         }
 
