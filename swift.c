@@ -428,7 +428,7 @@ int main(int argc, char *argv[]) {
     with_stars = 1;
     with_star_formation = 1;
     with_cooling = 1;
-    //with_hydro_decoupling = 1;
+    // with_hydro_decoupling = 1;
     with_feedback = 1;
     with_black_holes = 1;
     with_fof = 1;
@@ -862,7 +862,7 @@ int main(int argc, char *argv[]) {
     error("Cannot reconstruct m-poles every step over MPI (yet).");
 #endif
 
-    /* Temporary early aborts for modes not supported with hand-vec. */
+  /* Temporary early aborts for modes not supported with hand-vec. */
 #if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH) && \
     !defined(CHEMISTRY_NONE)
   error(
@@ -1200,7 +1200,7 @@ int main(int argc, char *argv[]) {
     } else
       bzero(&sink_properties, sizeof(struct sink_props));
 
-      /* Initialise the cooling function properties */
+    /* Initialise the cooling function properties */
 #ifdef COOLING_NONE
     if (with_cooling) {
       error(

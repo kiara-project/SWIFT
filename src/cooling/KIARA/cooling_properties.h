@@ -19,7 +19,6 @@
 #ifndef SWIFT_COOLING_PROPERTIES_KIARA_H
 #define SWIFT_COOLING_PROPERTIES_KIARA_H
 
-
 /* include grackle */
 #include <grackle.h>
 
@@ -73,7 +72,7 @@ struct cooling_function_data {
    * GEAR) */
   int self_shielding_method;
 
-  /*! What to do with adiabatic du/dt when in ISM mode: 0=no adiabatic heating, 
+  /*! What to do with adiabatic du/dt when in ISM mode: 0=no adiabatic heating,
    * 1=evolve in grackle, 2=use to evaporate cold ism */
   int ism_adiabatic_heating_method;
 
@@ -83,7 +82,8 @@ struct cooling_function_data {
   /*! max fractional change in quantities in single grackle substep */
   double timestep_accuracy;
 
-  /*! parameter to control how fast grackle damps oscillatory behaviour (lower=more aggressive) */
+  /*! parameter to control how fast grackle damps oscillatory behaviour
+   * (lower=more aggressive) */
   int grackle_damping_interval;
 
   /*! Duration for switching off cooling after an event (e.g. supernovae) */
@@ -92,10 +92,12 @@ struct cooling_function_data {
   /*! track dust growth and destruction (only available in KIARA) */
   int use_grackle_dust_evol;
 
-  /*! track H2 formation; this is set within the code based on selection options */
+  /*! track H2 formation; this is set within the code based on selection options
+   */
   int use_grackle_h2_form;
 
-  /*! G0 conversion factors, scales to MW value based on local/global galaxy props */
+  /*! G0 conversion factors, scales to MW value based on local/global galaxy
+   * props */
   double G0_factor1;
   double G0_factor2;
   double G0_factorSNe;
@@ -108,28 +110,34 @@ struct cooling_function_data {
   double dust_growth_densref;
   double dust_growth_tauref;
 
-  /*! For dust model, need self-enrichment up to a small metallicity to kick-start dust */
+  /*! For dust model, need self-enrichment up to a small metallicity to
+   * kick-start dust */
   double self_enrichment_metallicity;
 
   /*! For subgrid model (eg KIARA) need a subgrid ISM fraction */
   double cold_ISM_frac;
 
-  /*! For Grackle subgrid model, choose way to determine G0: 1=Local SFR density; 2=Global sSFR */
+  /*! For Grackle subgrid model, choose way to determine G0: 1=Local SFR
+   * density; 2=Global sSFR */
   int G0_computation_method;
 
-  /*! For Grackle subgrid model, set max density to avoid pointlessly over-iterating in Grackle */
+  /*! For Grackle subgrid model, set max density to avoid pointlessly
+   * over-iterating in Grackle */
   double max_subgrid_density;
 
-  /*! For Grackle subgrid model, inverse of threshold nH above which multi-phase ISM model kicks in */
+  /*! For Grackle subgrid model, inverse of threshold nH above which multi-phase
+   * ISM model kicks in */
   double subgrid_threshold_n_H_inv;
 
   /*! For Grackle subgrid model, temperature at threshold nH */
   double subgrid_threshold_T;
 
-  /*! For Grackle subgrid model, Power-law eqn of state for warm ISM component above threshold n_H */
+  /*! For Grackle subgrid model, Power-law eqn of state for warm ISM component
+   * above threshold n_H */
   double subgrid_warm_ism_EOS;
 
-  /*! For Grackle subgrid model, factor above entropy floor allowed to be in subgrid mode */
+  /*! For Grackle subgrid model, factor above entropy floor allowed to be in
+   * subgrid mode */
   double entropy_floor_margin;
 
   /*! Option to use Cloudy lookup tables when outside ISM */

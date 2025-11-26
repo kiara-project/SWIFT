@@ -236,7 +236,7 @@ INLINE static void star_formation_logger_log_active_part(
 
   /* No SFR logging for wind particles. */
   if (p->decoupled) return;
-  
+
   /* Add the SFR to the logger file */
   sf->SFR_active += max(p->sf_data.SFR, 0.f);
 
@@ -258,7 +258,7 @@ INLINE static void star_formation_logger_log_inactive_part(
 
   /* No SFR logging for wind particles. */
   if (p->decoupled) return;
-  
+
   /* Add the SFR to the logger file */
   sf->SFR_inactive += max(p->sf_data.SFR, 0.f);
 }

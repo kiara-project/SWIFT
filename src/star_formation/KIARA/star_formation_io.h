@@ -33,8 +33,8 @@
  *
  * @return num_fields The number of i/o fields to read.
  */
-INLINE static int star_formation_read_particles(struct spart* sparts,
-                                                struct io_props* list) {
+INLINE static int star_formation_read_particles(struct spart *sparts,
+                                                struct io_props *list) {
   return 0;
 }
 
@@ -48,29 +48,30 @@ INLINE static int star_formation_read_particles(struct spart* sparts,
  * @return Returns the number of fields to write.
  */
 __attribute__((always_inline)) INLINE static int star_formation_write_particles(
-    const struct part* parts, const struct xpart* xparts,
-    struct io_props* list) {
+    const struct part *parts, const struct xpart *xparts,
+    struct io_props *list) {
 
   int num = 0;
 
   list[num] = io_make_output_field(
-      "StarFormationRates", FLOAT, 1, UNIT_CONV_MASS_PER_UNIT_TIME, 0.f, parts, sf_data.SFR,
+      "StarFormationRates", FLOAT, 1, UNIT_CONV_MASS_PER_UNIT_TIME, 0.f, parts,
+      sf_data.SFR,
       "If positive, star formation rates of the particles. If negative, stores "
       "the last time/scale-factor at which the gas particle was star-forming. "
       "If zero, the particle was never star-forming.");
   num++;
 
 #if COOLING_GRACKLE_MODE < 2
-  /* If using Kiara/Grackle then this is output in cooling_io since it is tracked in Grackle */
+  /* If using Kiara/Grackle then this is output in cooling_io since it is
+   * tracked in Grackle */
   list[num] = io_make_output_field(
-      "MolecularHydrogenFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, 
-      sf_data.H2_fraction,
-      "The H2 fraction of the gas particle. ");
+      "MolecularHydrogenFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      sf_data.H2_fraction, "The H2 fraction of the gas particle. ");
   num++;
 #endif
 
   list[num] = io_make_output_field(
-      "InterstellarRadiationField", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, 
+      "InterstellarRadiationField", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
       sf_data.G0,
       "The interstellar radiation field strength in Habing units. ");
   num++;
@@ -87,8 +88,8 @@ __attribute__((always_inline)) INLINE static int star_formation_write_particles(
  * @return Returns the number of fields to write.
  */
 __attribute__((always_inline)) INLINE static int
-star_formation_write_sparticles(const struct spart* sparts,
-                                struct io_props* list) {
+star_formation_write_sparticles(const struct spart *sparts,
+                                struct io_props *list) {
   return 0;
 }
 #endif /* SWIFT_STAR_FORMATION_KIARA_IO_H */
