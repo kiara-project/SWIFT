@@ -989,7 +989,7 @@ runner_iact_nonsym_bh_gas_feedback(
   float jet_ramp = 0.f;
   
   /* Ramp-up above threshold luminosity */
-  if (bi->radiative_luminosity > bh_props->lum_thresh_always_jet 
+  if (bi->radiative_luminosity > 1.e45 * bh_props->lum_thresh_always_jet 
 	  && bh_props->lum_thresh_always_jet > 0.f) {
     jet_ramp = fmin(bi->radiative_luminosity / bh_props->lum_thresh_always_jet - 1.f, 1.f);
   }

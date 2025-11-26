@@ -462,9 +462,9 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->adaf_energy_to_dump = 0.f;
   bp->adaf_energy_used_this_step = 0.f;
   /* CBP - allow for jet direction to follow angular momentum direction*/
-  bp->jet_direction[0] = bp->angular_momentum_direction[0];
-  bp->jet_direction[1] = bp->angular_momentum_direction[1];
-  bp->jet_direction[2] = bp->angular_momentum_direction[2];
+  /*bp->jet_direction[0] = bp->angular_momentum_direction[0];*/
+  /*bp->jet_direction[1] = bp->angular_momentum_direction[1];*/
+  /*bp->jet_direction[2] = bp->angular_momentum_direction[2];*/
   /* End of CBP update */
 
 }
@@ -546,6 +546,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
     bp->adaf_energy_used_this_step = 0.f;
   }
 }
+
 
 /**
  * @brief Predict additional particle fields forward in time when drifting
@@ -880,6 +881,42 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
   bpi->mass += bpj->mass;
   bpi->gpart->mass += bpj->mass;
   bpi->subgrid_mass += bpj->subgrid_mass;
+
+
+  /* ---------------- NLT added ------------------------------ */
+
+
+  /* Evolve the black hole spin. */
+  /*black_hole_merger_spin_evolve(bpi, bpj, constants);
+
+   We need to see if the new spin is positive or negative, by implementing
+     King et al. (2005) condition of (counter-)alignment. */
+  /*const float gas_spec_ang_mom_norm = sqrtf(
+      bpi->swallowed_angular_momentum[0] * bpi->swallowed_angular_momentum[0] +
+      bpi->swallowed_angular_momentum[1] * bpi->swallowed_angular_momentum[1] +
+      bpi->swallowed_angular_momentum[2] * bpi->swallowed_angular_momentum[2]);
+
+  float dot_product = -1.;
+  if (gas_spec_ang_mom_norm > 0.) {
+    dot_product = 1. / gas_spec_ang_mom_norm *
+                  (bpi->swallowed_angular_momentum[0] *
+                       bpi->angular_momentum_direction[0] +
+                   bpi->swallowed_angular_momentum[1] *
+                       bpi->angular_momentum_direction[1] +
+                   bpi->swallowed_angular_momentum[2] *
+                       bpi->angular_momentum_direction[2]);
+  } else {
+    dot_product = 0.;
+  }
+
+  if (black_hole_angular_momentum_magnitude(bpi, constants) * dot_product <
+      -0.5 * black_hole_warp_angular_momentum(bpi, constants, props)) {
+    bpi->spin = -1. * fabsf(bpi->spin);
+  } else {
+    bpi->spin = fabsf(bpi->spin);
+  }
+  */
+  /* ----------------- end NLT--------------------- */
 
   /* Collect the swallowed angular momentum */
   bpi->swallowed_angular_momentum[0] += bpj->swallowed_angular_momentum[0];
