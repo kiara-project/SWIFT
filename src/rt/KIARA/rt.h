@@ -347,7 +347,8 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
  * of a given particle (during timestep tasks)
  *
  * @param p Particle to work on.
- * @param rt_props RT properties struct
+ * @param xp Particle extra data.
+ * @param rt_props RT properties struct.
  * @param cosmo The current cosmological model.
  * @param hydro_props The #hydro_props.
  * @param phys_const The physical constants in internal units.
