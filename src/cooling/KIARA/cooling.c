@@ -293,7 +293,7 @@ __attribute__((always_inline)) INLINE static float cooling_compute_self_shieldin
  * @param dt The cooling timestep.
  * 
  */
-__attribute__((always_inline)) INLINE float cooling_compute_G0(
+__attribute__((always_inline)) INLINE static float cooling_compute_G0(
 		const struct part *restrict p,
 		const float rho,
 		const struct cooling_function_data *cooling,
@@ -1279,7 +1279,7 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  */
-__attribute__((always_inline)) INLINE void cooling_init_chemistry(
+void cooling_init_chemistry(
                        const struct cooling_function_data* restrict cooling,
                        struct part* restrict p) {
 

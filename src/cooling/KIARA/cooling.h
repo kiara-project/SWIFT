@@ -354,7 +354,7 @@ INLINE static double cooling_compute_subgrid_density(
  * @param phys_const The physical constant in internal units.
  * @param cosmo The current cosmological model.
  */
-__attribute__((always_inline)) INLINE float warm_ISM_temperature(
+__attribute__((always_inline)) INLINE static float warm_ISM_temperature(
     const struct part *restrict p, const struct cooling_function_data *cooling,
     const struct phys_const* phys_const, const struct cosmology* cosmo) {
 
