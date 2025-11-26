@@ -36,6 +36,7 @@
 #ifdef WITH_FOF_GALAXIES
 #include "fof_struct.h"
 #endif
+#include "fvpm_geometry_struct.h"
 #include "hydro_parameters.h"
 #include "mhd_struct.h"
 #include "particle_splitting_struct.h"
@@ -346,6 +347,9 @@ struct part {
 
   /*! Flag to indicate particle is decoupled */
   int decoupled;
+
+  /*! Geometrical quantities used for Finite Volume Particle Method RT. */
+  struct fvpm_geometry_struct geometry;
 
 #ifdef SWIFT_DEBUG_CHECKS
 

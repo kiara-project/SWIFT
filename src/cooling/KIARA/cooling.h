@@ -138,7 +138,7 @@ void cooling_do_grackle_cooling(
     const struct entropy_floor_properties *floor_props,
     const struct cooling_function_data *restrict cooling,
     struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
-    const double dt, const double dt_therm, const double time);
+    const double dt, const double dt_therm);
 gr_float cooling_time(const struct phys_const *restrict phys_const,
                       const struct unit_system *restrict us,
                       const struct hydro_props *hydro_properties,

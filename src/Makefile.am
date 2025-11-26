@@ -163,6 +163,13 @@ if HAVEGEARRT
 GEAR_RT_SOURCES += rt/GEAR/rt_interaction_cross_sections.c
 endif
 
+# source files for KIARA RT
+KIARA_RT_SOURCES =
+if HAVEKIARART
+KIARA_RT_SOURCES += rt/KIARA/rt_interaction_cross_sections.c
+KIARA_RT_SOURCES += rt/KIARA/rt_thermochemistry.c
+endif
+
 # source files for SPHM1RT cooling
 SPHM1RT_RT_SOURCES =
 if HAVESPHM1RTRT
@@ -231,6 +238,7 @@ AM_SOURCES += $(AGORA_FEEDBACK_SOURCES)
 AM_SOURCES += $(PS2020_COOLING_SOURCES)
 AM_SOURCES += $(SPHM1RT_RT_SOURCES)
 AM_SOURCES += $(GEAR_RT_SOURCES)
+AM_SOURCES += $(KIARA_RT_SOURCES)
 AM_SOURCES += $(KIARA_COOLING_SOURCES) $(KIARA_FEEDBACK_SOURCES)
 AM_SOURCES += swift_lustre_api.c
 
@@ -366,6 +374,32 @@ nobase_noinst_HEADERS += rt/GEAR/rt_struct.h
 nobase_noinst_HEADERS += rt/GEAR/rt_thermochemistry.h
 nobase_noinst_HEADERS += rt/GEAR/rt_thermochemistry_utils.h
 nobase_noinst_HEADERS += rt/GEAR/rt_unphysical.h
+nobase_noinst_HEADERS += rt/KIARA/rt_additions.h
+nobase_noinst_HEADERS += rt/KIARA/rt_blackbody.h
+nobase_noinst_HEADERS += rt/KIARA/rt_debugging.h
+nobase_noinst_HEADERS += rt/KIARA/rt_flux.h
+nobase_noinst_HEADERS += rt/KIARA/rt_getters.h
+nobase_noinst_HEADERS += rt/KIARA/rt_grackle_utils.h
+nobase_noinst_HEADERS += rt/KIARA/rt_gradients.h
+nobase_noinst_HEADERS += rt/KIARA/rt.h
+nobase_noinst_HEADERS += rt/KIARA/rt_iact.h
+nobase_noinst_HEADERS += rt/KIARA/rt_interaction_cross_sections.h
+nobase_noinst_HEADERS += rt/KIARA/rt_interaction_rates.h
+nobase_noinst_HEADERS += rt/KIARA/rt_io.h
+nobase_noinst_HEADERS += rt/KIARA/rt_ionization_equilibrium.h
+nobase_noinst_HEADERS += rt/KIARA/rt_parameters.h
+nobase_noinst_HEADERS += rt/KIARA/rt_properties.h
+nobase_noinst_HEADERS += rt/KIARA/rt_riemann_GLF.h
+nobase_noinst_HEADERS += rt/KIARA/rt_riemann_HLL_eigenvalues.h
+nobase_noinst_HEADERS += rt/KIARA/rt_riemann_HLL.h
+nobase_noinst_HEADERS += rt/KIARA/rt_slope_limiters_cell.h
+nobase_noinst_HEADERS += rt/KIARA/rt_slope_limiters_face.h
+nobase_noinst_HEADERS += rt/KIARA/rt_species.h
+nobase_noinst_HEADERS += rt/KIARA/rt_stellar_emission_model.h
+nobase_noinst_HEADERS += rt/KIARA/rt_struct.h
+nobase_noinst_HEADERS += rt/KIARA/rt_thermochemistry.h
+nobase_noinst_HEADERS += rt/KIARA/rt_thermochemistry_utils.h
+nobase_noinst_HEADERS += rt/KIARA/rt_unphysical.h
 nobase_noinst_HEADERS += rt/SPHM1RT/rt.h
 nobase_noinst_HEADERS += rt/SPHM1RT/rt_getters.h
 nobase_noinst_HEADERS += rt/SPHM1RT/rt_setters.h
@@ -501,9 +535,9 @@ nobase_noinst_HEADERS += feedback/GEAR/feedback_properties.h feedback/GEAR/feedb
 nobase_noinst_HEADERS += feedback/GEAR/initial_mass_function.h feedback/GEAR/supernovae_ia.h feedback/GEAR/supernovae_ii.h
 nobase_noinst_HEADERS += feedback/GEAR/lifetime.h feedback/GEAR/hdf5_functions.h feedback/GEAR/interpolation.h
 nobase_noinst_HEADERS += feedback/GEAR/feedback_debug.h
-#nobase_noinst_HEADERS += feedback/KIARA/feedback.h feedback/KIARA/feedback_struct.h
-#nobase_noinst_HEADERS += feedback/KIARA/feedback_properties.h feedback/KIARA/feedback_iact.h
-#nobase_noinst_HEADERS += feedback/KIARA/feedback_debug.h
+nobase_noinst_HEADERS += feedback/KIARA/feedback.h feedback/KIARA/feedback_struct.h
+nobase_noinst_HEADERS += feedback/KIARA/feedback_properties.h feedback/KIARA/feedback_iact.h
+nobase_noinst_HEADERS += feedback/KIARA/feedback_debug.h
 nobase_noinst_HEADERS += black_holes/Default/black_holes.h black_holes/Default/black_holes_io.h
 nobase_noinst_HEADERS += black_holes/Default/black_holes_part.h black_holes/Default/black_holes_iact.h
 nobase_noinst_HEADERS += black_holes/Default/black_holes_properties.h
