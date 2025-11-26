@@ -37,7 +37,7 @@
  */
 __attribute__((always_inline)) INLINE static void cooling_write_flavour(
     hid_t h_grp, hid_t h_grp_columns,
-    const struct cooling_function_data* cooling) {
+    const struct cooling_function_data *cooling) {
 
 #if COOLING_GRACKLE_MODE == 0
   io_write_attribute_s(h_grp, "Cooling Model", "Grackle0");
@@ -53,68 +53,69 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
 }
 #endif
 
-INLINE static void convert_part_HI_mass(const struct engine* e,
-                                        const struct part* p,
-                                        const struct xpart* xp, float* ret) {
+INLINE static void convert_part_HI_mass(const struct engine *e,
+                                        const struct part *p,
+                                        const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HI_frac;
 }
 
-INLINE static void convert_part_H2_mass(const struct engine* e,
-                                        const struct part* p,
-                                        const struct xpart* xp, float* ret) {
+INLINE static void convert_part_H2_mass(const struct engine *e,
+                                        const struct part *p,
+                                        const struct xpart *xp, float *ret) {
 
   float H2_frac = 0.;
-  //const float X_H = chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
+  // const float X_H =
+  // chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
 #if COOLING_GRACKLE_MODE >= 2
   H2_frac = xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac;
   *ret = hydro_get_mass(p) * p->cooling_data.subgrid_fcold * H2_frac;
 #else
-  if ( p->sf_data.SFR > 0 ) H2_frac = 1. - xp->cooling_data.HI_frac;
+  if (p->sf_data.SFR > 0) H2_frac = 1. - xp->cooling_data.HI_frac;
   *ret = hydro_get_mass(p) * H2_frac;
 #endif
 }
 
-INLINE static void convert_part_HII_mass(const struct engine* e,
-                                        const struct part* p,
-                                        const struct xpart* xp, float* ret) {
+INLINE static void convert_part_HII_mass(const struct engine *e,
+                                         const struct part *p,
+                                         const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HII_frac;
 }
 
-INLINE static void convert_part_HeI_mass(const struct engine* e,
-                                        const struct part* p,
-                                        const struct xpart* xp, float* ret) {
+INLINE static void convert_part_HeI_mass(const struct engine *e,
+                                         const struct part *p,
+                                         const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HeI_frac;
 }
 
-INLINE static void convert_part_HeII_mass(const struct engine* e,
-                                        const struct part* p,
-                                        const struct xpart* xp, float* ret) {
+INLINE static void convert_part_HeII_mass(const struct engine *e,
+                                          const struct part *p,
+                                          const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HeII_frac;
 }
 
-INLINE static void convert_part_HeIII_mass(const struct engine* e,
-                                        const struct part* p,
-                                        const struct xpart* xp, float* ret) {
+INLINE static void convert_part_HeIII_mass(const struct engine *e,
+                                           const struct part *p,
+                                           const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HeIII_frac;
 }
 
-INLINE static void convert_part_e_density(const struct engine* e,
-                                          const struct part* p,
-                                          const struct xpart* xp, float* ret) {
+INLINE static void convert_part_e_density(const struct engine *e,
+                                          const struct part *p,
+                                          const struct xpart *xp, float *ret) {
 
   *ret = (float)xp->cooling_data.e_frac;
 }
 
 #ifdef RT_NONE
-INLINE static void convert_mass_fractions(const struct engine* engine,
-                                             const struct part* part,
-                                             const struct xpart* xpart,
-                                             float* ret) {
+INLINE static void convert_mass_fractions(const struct engine *engine,
+                                          const struct part *part,
+                                          const struct xpart *xpart,
+                                          float *ret) {
 
   ret[0] = (float)xpart->cooling_data.HI_frac;
   ret[1] = (float)xpart->cooling_data.HII_frac;
@@ -131,8 +132,8 @@ INLINE static void convert_mass_fractions(const struct engine* engine,
  * @return Returns the number of fields to write.
  */
 __attribute__((always_inline)) INLINE static int cooling_write_particles(
-    const struct part* parts, const struct xpart* xparts,
-    struct io_props* list) {
+    const struct part *parts, const struct xpart *xparts,
+    struct io_props *list) {
 
   int num = 0;
 
@@ -141,99 +142,88 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   list[num] = io_make_output_field_convert_part(
       "AtomicHydrogenMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
       convert_part_HI_mass, "Atomic hydrogen (HI) masses.");
-  num ++;
+  num++;
 
   list[num] = io_make_output_field_convert_part(
       "IonizedHydrogenMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
       convert_part_HII_mass, "Ionized hydrogen (HII) masses.");
-  num ++;
+  num++;
 
-  list[num] =
-      io_make_output_field_convert_part(
+  list[num] = io_make_output_field_convert_part(
       "MolecularHydrogenMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
       convert_part_H2_mass, "Molecular hydrogen (H2) masses.");
-  num ++;
+  num++;
 
-  list[num] =
-      io_make_output_field_convert_part(
+  list[num] = io_make_output_field_convert_part(
       "HeIMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
       convert_part_HeII_mass, "HeI masses.");
-  num ++;
+  num++;
 
-  list[num] =
-      io_make_output_field_convert_part(
+  list[num] = io_make_output_field_convert_part(
       "HeIIMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
       convert_part_HeII_mass, "HeII masses.");
-  num ++;
+  num++;
 
-  list[num] =
-      io_make_output_field_convert_part(
+  list[num] = io_make_output_field_convert_part(
       "HeIIIMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
       convert_part_HeIII_mass, "HeIII masses.");
-  num ++;
+  num++;
 
   list[num] = io_make_output_field_convert_part(
       "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NUMBER_DENSITY, -3.f,
-      parts, xparts, convert_part_e_density,
-      "Electron number densities");
-  num ++;
+      parts, xparts, convert_part_e_density, "Electron number densities");
+  num++;
 
 #if COOLING_GRACKLE_MODE >= 2
-  list[num] =
-      io_make_output_field("SubgridTemperatures", 
-                           FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
-      			           cooling_data.subgrid_temp, 
-                           "Temperature of subgrid ISM in K");
-  num ++;
-
-  list[num] =
-      io_make_output_field("SubgridDensities", 
-                           FLOAT, 1, UNIT_CONV_DENSITY, -3.f, parts,
-      			           cooling_data.subgrid_dens, 
-                           "Mass density in physical units of subgrid ISM");
-  num ++;
-
-  list[num] =
-      io_make_output_field("SubgridColdISMFraction", 
-                           FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
-      			           cooling_data.subgrid_fcold, 
-                           "Fraction of particle mass in cold subgrid ISM");
-  num ++;
-
-  list[num] =
-      io_make_output_field("DustMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, 
-                           cooling_data.dust_mass, "Total mass in dust");
-  num ++;
-
   list[num] = io_make_output_field(
-      "DustMassFractions", FLOAT, chemistry_element_count,
-      UNIT_CONV_NO_UNITS, 0.f, parts, cooling_data.dust_mass_fraction,
-      "Fractions of the particles' masses that are in dust for a given element");
+      "SubgridTemperatures", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      cooling_data.subgrid_temp, "Temperature of subgrid ISM in K");
   num++;
 
   list[num] =
-      io_make_output_field("DustTemperatures", 
-                           FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
-                           cooling_data.dust_temperature, 
-                           "Dust temperature in subgrid dust model, in K");
-  num ++;
+      io_make_output_field("SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY,
+                           -3.f, parts, cooling_data.subgrid_dens,
+                           "Mass density in physical units of subgrid ISM");
+  num++;
+
+  list[num] = io_make_output_field(
+      "SubgridColdISMFraction", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      cooling_data.subgrid_fcold,
+      "Fraction of particle mass in cold subgrid ISM");
+  num++;
 
   list[num] =
-      io_make_output_field("CoolingTime", 
-                           FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
-                           cooling_data.mixing_layer_cool_time, 
-                           "Cooling time for particle; if it's currently a firehose wind"
-			   "particle (delay_time>0), this is the mixing layer cooling time");
-  num ++;
+      io_make_output_field("DustMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts,
+                           cooling_data.dust_mass, "Total mass in dust");
+  num++;
+
+  list[num] = io_make_output_field("DustMassFractions", FLOAT,
+                                   chemistry_element_count, UNIT_CONV_NO_UNITS,
+                                   0.f, parts, cooling_data.dust_mass_fraction,
+                                   "Fractions of the particles' masses that "
+                                   "are in dust for a given element");
+  num++;
+
+  list[num] =
+      io_make_output_field("DustTemperatures", FLOAT, 1, UNIT_CONV_NO_UNITS,
+                           0.f, parts, cooling_data.dust_temperature,
+                           "Dust temperature in subgrid dust model, in K");
+  num++;
+
+  list[num] = io_make_output_field(
+      "CoolingTime", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
+      cooling_data.mixing_layer_cool_time,
+      "Cooling time for particle; if it's currently a firehose wind"
+      "particle (delay_time>0), this is the mixing layer cooling time");
+  num++;
 #endif
 #endif
 
 #ifdef RT_NONE
   list[num] = io_make_output_field_convert_part(
-      "IonMassFractions", FLOAT, 2, UNIT_CONV_NO_UNITS, 0, parts,
-      xparts, convert_mass_fractions,
-      "Mass fractions of all constituent species");
-  num ++;
+      "IonMassFractions", FLOAT, 2, UNIT_CONV_NO_UNITS, 0, parts, xparts,
+      convert_mass_fractions, "Mass fractions of all constituent species");
+  num++;
 #endif
   return num;
 }
@@ -246,8 +236,8 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
  * @param phys_const The #phys_const.
  */
 __attribute__((always_inline)) INLINE static void cooling_read_parameters(
-    struct swift_params* parameter_file, struct cooling_function_data* cooling,
-    const struct phys_const* phys_const, const struct unit_system* us) {
+    struct swift_params *parameter_file, struct cooling_function_data *cooling,
+    const struct phys_const *phys_const, const struct unit_system *us) {
 
   parser_get_param_string(parameter_file, "KIARACooling:cloudy_table",
                           cooling->cloudy_table);
@@ -280,101 +270,82 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
       parameter_file, "KIARACooling:ism_adiabatic_heating_method", 1);
 
   /* Initial step convergence */
-  cooling->max_step =
-      parser_get_opt_param_int(parameter_file, 
-                               "KIARACooling:grackle_max_steps", 
-                               500);
+  cooling->max_step = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:grackle_max_steps", 500);
 
-  cooling->timestep_accuracy =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:timestep_accuracy", 0.2);
+  cooling->timestep_accuracy = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:timestep_accuracy", 0.2);
 
-  cooling->grackle_damping_interval = 
-      parser_get_opt_param_double(parameter_file, 
-                                "KIARACooling:grackle_damping_interval", 5);
+  cooling->grackle_damping_interval = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:grackle_damping_interval", 5);
 
-  cooling->thermal_time =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:thermal_time_myr", 0.);
+  cooling->thermal_time = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:thermal_time_myr", 0.);
   cooling->thermal_time *= phys_const->const_year * 1e6;
 
-  /* flag to turn on dust evolution option, only works for GRACKLE_CHEMISTRY>=2 (KIARA) */
-  cooling->use_grackle_dust_evol =
-      parser_get_opt_param_int(parameter_file, 
-                               "KIARACooling:use_grackle_dust_evol", 1);
+  /* flag to turn on dust evolution option, only works for GRACKLE_CHEMISTRY>=2
+   * (KIARA) */
+  cooling->use_grackle_dust_evol = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:use_grackle_dust_evol", 1);
 #if COOLING_GRACKLE_MODE <= 1
   message("WARNING: Dust evol not implemented in SIMBA; use KIARA instead.");
   cooling->use_grackle_dust_evol = 0;
 #endif
 
-  /* These are dust parameters for KIARA's dust model (MODE>=2); irrelevant otherwise */
-  cooling->dust_destruction_eff =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:dust_destruction_eff", 0.3);
+  /* These are dust parameters for KIARA's dust model (MODE>=2); irrelevant
+   * otherwise */
+  cooling->dust_destruction_eff = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_destruction_eff", 0.3);
 
-  cooling->dust_sne_coeff =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:dust_sne_coeff", 1.0);
+  cooling->dust_sne_coeff = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_sne_coeff", 1.0);
 
-  cooling->dust_sne_shockspeed =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:dust_sne_shockspeed", 100.0);
+  cooling->dust_sne_shockspeed = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_sne_shockspeed", 100.0);
 
-  cooling->dust_grainsize =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:dust_grainsize", 0.1);
+  cooling->dust_grainsize = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_grainsize", 0.1);
 
-  cooling->dust_growth_densref =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:dust_growth_densref", 2.3e-20);
+  cooling->dust_growth_densref = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_growth_densref", 2.3e-20);
 
-  cooling->dust_growth_tauref =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:dust_growth_tauref", 1.0);
+  cooling->dust_growth_tauref = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_growth_tauref", 1.0);
 
-  cooling->cold_ISM_frac =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:cold_ISM_frac", 1.0);
+  cooling->cold_ISM_frac = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:cold_ISM_frac", 1.0);
 
-  cooling->G0_computation_method =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:G0_computation_method", 3);
+  cooling->G0_computation_method = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:G0_computation_method", 3);
 
-  cooling->max_subgrid_density =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:max_subgrid_density_g_p_cm3", 
-                                  FLT_MAX);
+  cooling->max_subgrid_density = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:max_subgrid_density_g_p_cm3", FLT_MAX);
   /* convert to internal units */
-  cooling->max_subgrid_density /= units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
+  cooling->max_subgrid_density /=
+      units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
 
-  cooling->subgrid_threshold_n_H_inv =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:subgrid_threshold_n_H_cgs", 0.13);
+  cooling->subgrid_threshold_n_H_inv = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:subgrid_threshold_n_H_cgs", 0.13);
   /* convert to internal units, take inverse to save compute time */
-  cooling->subgrid_threshold_n_H_inv /= units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
-  cooling->subgrid_threshold_n_H_inv = 1.f / cooling->subgrid_threshold_n_H_inv; 
+  cooling->subgrid_threshold_n_H_inv /=
+      units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+  cooling->subgrid_threshold_n_H_inv = 1.f / cooling->subgrid_threshold_n_H_inv;
 
-  cooling->subgrid_threshold_T =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:subgrid_threshold_T_K", 1.e4);
+  cooling->subgrid_threshold_T = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:subgrid_threshold_T_K", 1.e4);
   /* convert to internal units */
-  cooling->subgrid_threshold_T /= units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+  cooling->subgrid_threshold_T /=
+      units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
-  cooling->subgrid_warm_ism_EOS =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:subgrid_warm_ism_EOS", 0.f);
+  cooling->subgrid_warm_ism_EOS = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:subgrid_warm_ism_EOS", 0.f);
 
-  cooling->entropy_floor_margin =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:entropy_floor_margin_dex", 
-                                  1.0);
+  cooling->entropy_floor_margin = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:entropy_floor_margin_dex", 1.0);
   cooling->entropy_floor_margin = pow(10.f, cooling->entropy_floor_margin);
 
-  cooling->self_enrichment_metallicity =
-      parser_get_opt_param_double(parameter_file, 
-                                  "KIARACooling:self_enrichment_metallicity", 
-                                  0.f);
-
+  cooling->self_enrichment_metallicity = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:self_enrichment_metallicity", 0.f);
 }
 
 #endif /* SWIFT_COOLING_KIARA_IO_H */

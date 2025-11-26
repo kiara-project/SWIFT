@@ -19,9 +19,9 @@
 #ifndef SWIFT_CHEMISTRY_STRUCT_KIARA_H
 #define SWIFT_CHEMISTRY_STRUCT_KIARA_H
 
-#define FIREHOSE_COOLLIM            0.1f    /* -u_new / u */
-#define FIREHOSE_HEATLIM            10.f    /* +u_new / u */
-#define FIREHOSE_EPSILON_TOLERANCE  1.e-6   /* Minimum rel. difference to add */
+#define FIREHOSE_COOLLIM 0.1f            /* -u_new / u */
+#define FIREHOSE_HEATLIM 10.f            /* +u_new / u */
+#define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
 
 /**
  * @brief The individual elements traced in the KIARA model.
@@ -73,13 +73,13 @@ struct chemistry_global_data {
 
   /*! The timestep beta value from Parshikov & Medin 2002 equation 41 */
   float diffusion_beta;
-  
+
   /*! The minimum time step size in internal units for diffusion */
   float time_step_min;
-  
+
   /*! A limiter for how much Z/Z_init can be transferred (~0.25) */
   float max_fractional_Z_transfer;
-  
+
   /*! The metal diffusion coefficient (Smag ~0.23) */
   float C_Smagorinsky;
 
@@ -101,14 +101,16 @@ struct chemistry_global_data {
   /*! Firehose wind model mixing mass threshold for recoupling */
   float firehose_recoupling_fmix;
 
-  /*! Firehose threshold relative velocity (km/s) above which model is turned off */
+  /*! Firehose threshold relative velocity (km/s) above which model is turned
+   * off */
   float firehose_max_velocity;
 
-  /*! Firehose maximum fraction of particles' mass that can be mixed in a single step */
+  /*! Firehose maximum fraction of particles' mass that can be mixed in a single
+   * step */
   float firehose_max_fmix_per_step;
 
   /*! Dust sputtering constant */
-  float dust_sputtering_const; 
+  float dust_sputtering_const;
 
   /*! Conversion factor from internal mass unit to solar mass */
   double mass_to_solar_mass;
@@ -118,7 +120,7 @@ struct chemistry_global_data {
   double rho_to_n_cgs;
 
   /*! Converts temperature to internal energy */
-  float temp_to_u_factor; 
+  float temp_to_u_factor;
 
   /*! Converst temperature to internal units */
   float T_to_internal;
@@ -178,7 +180,8 @@ struct chemistry_part_data {
   float shear_tensor[3][3];
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! SFR density (physical) within smoothing kernel needed for G0 calculation */
+  /*! SFR density (physical) within smoothing kernel needed for G0 calculation
+   */
   float local_sfr_density;
 #endif
 
@@ -202,7 +205,7 @@ struct chemistry_part_data {
 
   /*! Firehose exchanged metal fractions */
   float dm_Z[chemistry_element_count];
-  
+
   /*! Firehose exchanged dust mass */
   float dm_dust;
 
@@ -249,7 +252,7 @@ struct chemistry_bpart_data {
 
   /*! Iron mass coming from SNIa */
   float iron_mass_from_SNIa;
-  
+
   /*! Metallicity of converted part. */
   float formation_metallicity;
 };

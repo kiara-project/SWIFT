@@ -1883,7 +1883,7 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
         struct xpart *xpj = &xparts_j[sort_j[pjd].i];
 #endif
-	const char depth_j = pj->depth_h;
+        const char depth_j = pj->depth_h;
 
         /* Skip inhibited particles. */
         if (part_is_inhibited(pj, e)) continue;
@@ -1968,8 +1968,8 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
             runner_iact_timebin(r2, dx, hi, hj, pi, pj, a, H);
             runner_iact_rt_timebin(r2, dx, hi, hj, pi, pj, a, H);
-            runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H, time_base,
-                                  t_current, cosmo, with_cosmology,
+            runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H,
+                                  time_base, t_current, cosmo, with_cosmology,
                                   e->physical_constants, e->chemistry);
 #endif
           } else {
@@ -2226,8 +2226,8 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
             runner_iact_timebin(r2, dx, hj, hi, pj, pi, a, H);
             runner_iact_rt_timebin(r2, dx, hj, hi, pj, pi, a, H);
-            runner_iact_diffusion(r2, dx, hj, hi, pj, pi, xpj, xpi, a, H, time_base,
-                                  t_current, cosmo, with_cosmology,
+            runner_iact_diffusion(r2, dx, hj, hi, pj, pi, xpj, xpi, a, H,
+                                  time_base, t_current, cosmo, with_cosmology,
                                   e->physical_constants, e->chemistry);
 #endif
           } else {
@@ -2456,8 +2456,8 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
           runner_iact_nonsym_timebin(r2, dx, hj, hi, pj, pi, a, H);
           runner_iact_nonsym_rt_timebin(r2, dx, hj, hi, pj, pi, a, H);
-          runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H, time_base,
-                                t_current, cosmo, with_cosmology,
+          runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H,
+                                time_base, t_current, cosmo, with_cosmology,
                                 e->physical_constants, chem_data);
 #endif
         }
@@ -2482,7 +2482,7 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
         struct xpart *restrict xpj = &xparts[pjd];
 #endif
-	const char depth_j = pj->depth_h;
+        const char depth_j = pj->depth_h;
 
         /* Skip inhibited particles. */
         if (part_is_inhibited(pj, e)) continue;
@@ -2543,8 +2543,8 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
           runner_iact_timebin(r2, dx, hi, hj, pi, pj, a, H);
           runner_iact_rt_timebin(r2, dx, hi, hj, pi, pj, a, H);
-          runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H, time_base,
-                                t_current, cosmo, with_cosmology,
+          runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H,
+                                time_base, t_current, cosmo, with_cosmology,
                                 e->physical_constants, chem_data);
 #endif
         } else if (doi) {
@@ -2726,7 +2726,7 @@ void DOSELF2(struct runner *r, const struct cell *c, const int limit_min_h,
     struct part *restrict pi = &parts[pid];
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
     struct xpart *restrict xpi = &xparts[pid];
-#endif    
+#endif
     const char depth_i = pi->depth_h;
 
     /* Skip inhibited particles. */
@@ -2878,8 +2878,8 @@ void DOSELF2(struct runner *r, const struct cell *c, const int limit_min_h,
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
           runner_iact_timebin(r2, dx, hi, hj, pi, pj, a, H);
           runner_iact_rt_timebin(r2, dx, hi, hj, pi, pj, a, H);
-          runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H, time_base,
-                                t_current, cosmo, with_cosmology, 
+          runner_iact_diffusion(r2, dx, hi, hj, pi, pj, xpi, xpj, a, H,
+                                time_base, t_current, cosmo, with_cosmology,
                                 e->physical_constants, chem_data);
 #endif
         } else if (doi) {
