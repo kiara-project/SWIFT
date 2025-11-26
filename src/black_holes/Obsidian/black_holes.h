@@ -1523,7 +1523,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   if (bp->state == BH_states_adaf) bp->v_kick = 0.f;
 
 #ifdef OBSIDIAN_DEBUG_CHECKS
-  float galaxy_sfr = fof_props->group_star_formation_rate[group_id];
+  // MATTHIEU: TODO: FIX THIS! 
+  float galaxy_sfr = 0.; //fof_props->group_star_formation_rate[group_id];
   tdyn_inv = (tdyn_inv > 0.f) ? tdyn_inv : FLT_MIN;
   message("BH_ACC: z=%g bid=%lld ms=%g dms=%g sfr=%g mbh=%g dmbh=%g state=%d "
           "torque=%g bondi=%g fEdd=%g facc=%g fsupp=%g mcold=%g mhot=%g mdisk=%g"
@@ -1545,7 +1546,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
           bp->cold_gas_mass * props->mass_to_solar_mass,
           bp->hot_gas_mass * props->mass_to_solar_mass,
           corot_gas_mass * props->mass_to_solar_mass,
-          props->time_to_Myr / bp->tdyn_inv,
+          props->time_to_Myr / tdyn_inv,
           bp->v_kick / props->kms_to_internal,
           delta_mass, 
           bp->radiative_efficiency, 
