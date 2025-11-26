@@ -52,7 +52,7 @@
  */
 __attribute__((always_inline)) INLINE static void runner_iact_density(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   float wi, wj, wi_dx, wj_dx;
@@ -138,7 +138,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, const struct part* restrict pj, const float a,
+    struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
 
   float wi, wi_dx;
@@ -203,7 +203,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const float r = sqrtf(r2);
@@ -227,10 +227,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        mj * drho_ij * dx_ij * wi_dx * r_inv;
-    pj->rho_gradient[j] +=
-        mi * drho_ij * dx_ij * wj_dx * r_inv;
+    pi->rho_gradient[j] += mj * drho_ij * dx_ij * wi_dx * r_inv;
+    pj->rho_gradient[j] += mi * drho_ij * dx_ij * wj_dx * r_inv;
   }
 }
 
@@ -252,7 +250,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   const float r = sqrtf(r2);
@@ -273,8 +271,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        mj * drho_ij * dx_ij * wi_dx * r_inv;
+    pi->rho_gradient[j] += mj * drho_ij * dx_ij * wi_dx * r_inv;
   }
 }
 
@@ -292,7 +289,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_force(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, struct part* restrict pj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H) {
 
   /* Cosmological factors entering the EoMs */
@@ -379,7 +376,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 
   /* Skip wind particles for force calculations */
   if (pi->feedback_data.decoupling_delay_time == 0.f &&
-      pj->feedback_data.decoupling_delay_time == 0.f) {  
+      pj->feedback_data.decoupling_delay_time == 0.f) {
     /* Use the force Luke ! */
     pi->a_hydro[0] -= mj * acc * dx[0];
     pi->a_hydro[1] -= mj * acc * dx[1];
@@ -409,7 +406,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 
   /* Skip wind particles for force calculations */
   if (pi->feedback_data.decoupling_delay_time == 0.f &&
-      pj->feedback_data.decoupling_delay_time == 0.f) {  
+      pj->feedback_data.decoupling_delay_time == 0.f) {
     /* Internal energy time derivative */
     pi->u_dt += du_dt_i * mj;
     pj->u_dt += du_dt_j * mi;
@@ -438,7 +435,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part* restrict pi, const struct part* restrict pj, const float a,
+    struct part *restrict pi, const struct part *restrict pj, const float a,
     const float H) {
 
   /* Cosmological factors entering the EoMs */
@@ -526,7 +523,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* Skip wind particles for force calculations */
   if (pi->feedback_data.decoupling_delay_time == 0.f &&
-      pj->feedback_data.decoupling_delay_time == 0.f) {  
+      pj->feedback_data.decoupling_delay_time == 0.f) {
     /* Use the force Luke ! */
     pi->a_hydro[0] -= mj * acc * dx[0];
     pi->a_hydro[1] -= mj * acc * dx[1];
@@ -546,7 +543,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* Skip wind particles for force calculations */
   if (pi->feedback_data.decoupling_delay_time == 0.f &&
-      pj->feedback_data.decoupling_delay_time == 0.f) {  
+      pj->feedback_data.decoupling_delay_time == 0.f) {
     /* Internal energy time derivatibe */
     pi->u_dt += du_dt_i * mj;
   }

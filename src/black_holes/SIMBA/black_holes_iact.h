@@ -21,11 +21,11 @@
 #ifndef SWIFT_SIMBA_BH_IACT_H
 #define SWIFT_SIMBA_BH_IACT_H
 
-//#define SIMBA_DEBUG_CHECKS
+// #define SIMBA_DEBUG_CHECKS
 
 /* Local includes */
-#include "black_holes_properties.h"
 #include "black_holes_parameters.h"
+#include "black_holes_properties.h"
 #include "entropy_floor.h"
 #include "equation_of_state.h"
 #include "gravity.h"
@@ -46,9 +46,9 @@
  * @param dt The timestep of the black hole in internal units.
  */
 __attribute__((always_inline)) INLINE static double
-black_holes_compute_xray_feedback(struct bpart* bp, const struct part* p,
-                                  const struct black_holes_props* props,
-                                  const struct cosmology* cosmo,
+black_holes_compute_xray_feedback(struct bpart *bp, const struct part *p,
+                                  const struct black_holes_props *props,
+                                  const struct cosmology *cosmo,
                                   const float dx[3], double dt,
                                   const double n_H_cgs, double T_gas_cgs) {
 
@@ -110,12 +110,10 @@ black_holes_compute_xray_feedback(struct bpart* bp, const struct part* p,
  * @param u_phys The internal energy of the particle.
  */
 __attribute__((always_inline)) INLINE static void
-black_holes_reset_heated_particle(struct part* pj, 
-                                  const struct xpart *xpj,
-                                  const struct black_holes_props* props,
-                                  const struct cosmology* cosmo,
-                                  const int with_cosmology,
-                                  const double dt, 
+black_holes_reset_heated_particle(struct part *pj, const struct xpart *xpj,
+                                  const struct black_holes_props *props,
+                                  const struct cosmology *cosmo,
+                                  const int with_cosmology, const double dt,
                                   const double time) {
 
   /* Wind cannot be star forming */
@@ -124,8 +122,7 @@ black_holes_reset_heated_particle(struct part* pj,
       star-forming. */
     if (with_cosmology) {
       pj->sf_data.SFR = -cosmo->a;
-    }
-    else {
+    } else {
       pj->sf_data.SFR = -time;
     }
   }
@@ -142,8 +139,7 @@ black_holes_reset_heated_particle(struct part* pj,
   timestep_sync_part(pj);
 
   if (props->xray_shutoff_cooling) {
-    const double u_phys = 
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
+    const double u_phys = hydro_get_physical_internal_energy(pj, xpj, cosmo);
 
     /* u_init is physical so cs_physical is physical */
     const double cs_physical =
@@ -151,11 +147,10 @@ black_holes_reset_heated_particle(struct part* pj,
 
     /* a_factor_sound_speed converts cs_physical to
      * internal (comoving) units) */
-    pj->feedback_data.cooling_shutoff_delay_time = max(
-          cosmo->a_factor_sound_speed * (pj->h / cs_physical),
-          dt); /* BH timestep as a lower limit */
+    pj->feedback_data.cooling_shutoff_delay_time =
+        max(cosmo->a_factor_sound_speed * (pj->h / cs_physical),
+            dt); /* BH timestep as a lower limit */
   }
-
 }
 
 /**
@@ -213,8 +208,9 @@ runner_iact_nonsym_bh_gas_density(
   /* Contribution to the total neighbour mass */
   bi->ngb_mass += mj;
 
-  /* Track max subgrid density of neighbors, in comoving coords to match rho_gas */
-  const double subgrid_dens = 
+  /* Track max subgrid density of neighbors, in comoving coords to match rho_gas
+   */
+  const double subgrid_dens =
       pj->cooling_data.subgrid_dens * cosmo->a * cosmo->a * cosmo->a;
   if (subgrid_dens > bi->rho_subgrid_gas) bi->rho_subgrid_gas = subgrid_dens;
 
@@ -253,15 +249,13 @@ runner_iact_nonsym_bh_gas_density(
   if (is_hot_gas) {
     bi->hot_gas_mass += mj;
     bi->hot_gas_internal_energy += mj * uj; /* Not kernel weighted */
-  } 
-  else {
-    if (bh_props->suppress_growth == BH_suppress_Hopkins22 || 
-            bh_props->suppress_growth == BH_suppress_ExponentialOnTorque || 
-            bh_props->suppress_growth == BH_suppress_ExponentialOnTotal || 
-            bh_props->suppress_growth == BH_suppress_OutflowsOnAllGas) {
+  } else {
+    if (bh_props->suppress_growth == BH_suppress_Hopkins22 ||
+        bh_props->suppress_growth == BH_suppress_ExponentialOnTorque ||
+        bh_props->suppress_growth == BH_suppress_ExponentialOnTotal ||
+        bh_props->suppress_growth == BH_suppress_OutflowsOnAllGas) {
       bi->cold_gas_mass += mj;
-    }
-    else if (pj->sf_data.SFR > 0.) {
+    } else if (pj->sf_data.SFR > 0.) {
       bi->cold_gas_mass += mj;
     }
 
@@ -269,13 +263,12 @@ runner_iact_nonsym_bh_gas_density(
   }
 
   if (!is_hot_gas) {
-    if (bh_props->suppress_growth == BH_suppress_Hopkins22 || 
-            bh_props->suppress_growth == BH_suppress_ExponentialOnTorque || 
-            bh_props->suppress_growth == BH_suppress_ExponentialOnTotal || 
-            bh_props->suppress_growth == BH_suppress_OutflowsOnAllGas) {
+    if (bh_props->suppress_growth == BH_suppress_Hopkins22 ||
+        bh_props->suppress_growth == BH_suppress_ExponentialOnTorque ||
+        bh_props->suppress_growth == BH_suppress_ExponentialOnTotal ||
+        bh_props->suppress_growth == BH_suppress_OutflowsOnAllGas) {
       bi->cold_disk_mass += mj;
-    }
-    else if (pj->sf_data.SFR > 0.) {
+    } else if (pj->sf_data.SFR > 0.) {
       bi->cold_disk_mass += mj;
     }
   }
@@ -337,7 +330,6 @@ runner_iact_nonsym_bh_gas_density(
   /* Update ngb counters */
   ++si->num_ngb_density;
 #endif
-
 }
 
 /**
@@ -499,13 +491,13 @@ runner_iact_nonsym_bh_gas_swallow(
 
   /* A black hole should never accrete/feedback if it is not in a galaxy */
   if (bi->galaxy_data.stellar_mass <= 0.f) return;
-  
+
   /* If there is no gas, skip */
   if (bi->rho_gas <= 0.f) return;
 
   /* Do not consider this particle if it is a stellar feedback particle */
   /*if (pj->feedback_data.kick_id > -1) return;*/
-  
+
   float wi;
 
   /* Compute the kernel function; note that r cannot be optimised
@@ -549,11 +541,10 @@ runner_iact_nonsym_bh_gas_swallow(
     if (hydro_get_mass(pj) < bh_props->min_gas_mass_for_nibbling) return;
 
     prob = (mass_deficit / bi->f_accretion) * hi_inv_dim * wi / bi->rho_gas;
-  }
-  else {
+  } else {
     prob = ((1.f - bi->f_accretion) / bi->f_accretion) * bi->accretion_rate *
            dt * (hi_inv_dim * wi / bi->rho_gas);
-           
+
     /* We do NOT accrete when subgrid_mass < physical_mass
      * but we still kick.
      */
@@ -606,7 +597,6 @@ runner_iact_nonsym_bh_gas_swallow(
       struct chemistry_part_data *pj_chem = &pj->chemistry_data;
       chemistry_transfer_part_to_bpart(bi_chem, pj_chem, nibbled_mass,
                                        nibbled_mass / pj_mass_orig);
-
     }
 
     /* This particle is swallowed by the BH with the largest ID of all the
@@ -893,8 +883,7 @@ runner_iact_nonsym_bh_gas_feedback(
         get_integer_time_begin(ti_current - 1, bi->time_bin);
 
     dt = cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
-  } 
-  else {
+  } else {
     dt = get_timestep(bi->time_bin, time_base);
   }
 
@@ -902,7 +891,7 @@ runner_iact_nonsym_bh_gas_feedback(
   if (pj->black_holes_data.swallow_id != bi->id) {
     /* We were not lucky for kick, but we might be lucky for X-ray feedback */
     if (bi->v_kick > bh_props->xray_heating_velocity_threshold) {
-      const float group_mass = 
+      const float group_mass =
           bi->galaxy_data.gas_mass + bi->galaxy_data.stellar_mass;
 
       float f_gas = 0.f;
@@ -915,7 +904,7 @@ runner_iact_nonsym_bh_gas_feedback(
         xray_coupling = fmin(xray_coupling * powf(1.f + cosmo->z, 2.f), 1.f);
       }
 
-      const float delta_fgas = 
+      const float delta_fgas =
           (bh_props->xray_f_gas_limit - f_gas) / bh_props->xray_f_gas_limit;
       float f_rad_loss = 0.f;
       if (delta_fgas > 0.f) {
@@ -923,18 +912,15 @@ runner_iact_nonsym_bh_gas_feedback(
       }
 
 #ifdef SIMBA_DEBUG_CHECKS
-      if (bi->v_kick/bh_props->kms_to_internal > 7000) {
-        message("BH_PROB: bid=%lld pswallow=%lld pid=%lld mbh=%g v=%g "
-                "vthresh=%g frad=%g fgas=%g", 
-                bi->id, 
-                pj->black_holes_data.swallow_id, 
-                pj->id, 
-                bi->subgrid_mass, 
-                bi->v_kick/bh_props->kms_to_internal, 
-                bh_props->xray_heating_velocity_threshold / 
-                    bh_props->kms_to_internal, 
-                f_rad_loss, 
-                f_gas);
+      if (bi->v_kick / bh_props->kms_to_internal > 7000) {
+        message(
+            "BH_PROB: bid=%lld pswallow=%lld pid=%lld mbh=%g v=%g "
+            "vthresh=%g frad=%g fgas=%g",
+            bi->id, pj->black_holes_data.swallow_id, pj->id, bi->subgrid_mass,
+            bi->v_kick / bh_props->kms_to_internal,
+            bh_props->xray_heating_velocity_threshold /
+                bh_props->kms_to_internal,
+            f_rad_loss, f_gas);
       }
 #endif
 
@@ -965,27 +951,27 @@ runner_iact_nonsym_bh_gas_feedback(
        * classify the gas as cold regardless of temperature.
        * All star forming gas is considered cold.
        */
-      const float T_EoS_cgs = 
-          entropy_floor_temperature(pj, cosmo, floor_props) / 
-              bh_props->T_K_to_int;
+      const float T_EoS_cgs =
+          entropy_floor_temperature(pj, cosmo, floor_props) /
+          bh_props->T_K_to_int;
 
       /* Is the particle in the ISM? */
       if ((n_H_cgs > bh_props->xray_heating_n_H_threshold_cgs &&
-            (T_gas_cgs < bh_props->xray_heating_T_threshold_cgs ||
-                T_gas_cgs < T_EoS_cgs * bh_props->fixed_T_above_EoS_factor)) ||
-            pj->sf_data.SFR > 0.f) {
+           (T_gas_cgs < bh_props->xray_heating_T_threshold_cgs ||
+            T_gas_cgs < T_EoS_cgs * bh_props->fixed_T_above_EoS_factor)) ||
+          pj->sf_data.SFR > 0.f) {
 
-	      /* compute kick velocity */
-        const float dv_phys = 
+        /* compute kick velocity */
+        const float dv_phys =
             2.f * sqrtf(bh_props->xray_kinetic_fraction * du_xray_phys);
 
-        const double u_new = 
+        const double u_new =
             u_init + du_xray_phys * (1.0 - bh_props->xray_kinetic_fraction);
 
         /* Do the energy injection. */
         hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
         hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
-        
+
         /* Push gas radially */
         const float r = sqrtf(r2);
         const float dv_comoving = dv_phys * cosmo->a;
@@ -999,52 +985,45 @@ runner_iact_nonsym_bh_gas_feedback(
         hydro_set_v_sig_based_on_velocity_kick(pj, cosmo, dv_phys);
 
         /* Turn off any star formation in particle */
-        black_holes_reset_heated_particle(pj, xpj, bh_props, cosmo, 
+        black_holes_reset_heated_particle(pj, xpj, bh_props, cosmo,
                                           with_cosmology, dt, time);
 
 #ifdef SIMBA_DEBUG_CHECKS
         if (pj->id % 10 == 0) {
-          message("BH_XRAY_KICK: z=%g bid=%lld pid=%lld mbh=%g fg=%g "
-                  "frad=%g nH=%g du=%g v=%g", 
-                  cosmo->z, 
-                  bi->id, 
-                  pj->id, 
-                  bi->subgrid_mass * bh_props->mass_to_solar_mass, 
-                  f_gas, 
-                  f_rad_loss, 
-                  n_H_cgs,
-                  du_xray_phys, 
-                  dv_phys / bh_props->kms_to_internal);
+          message(
+              "BH_XRAY_KICK: z=%g bid=%lld pid=%lld mbh=%g fg=%g "
+              "frad=%g nH=%g du=%g v=%g",
+              cosmo->z, bi->id, pj->id,
+              bi->subgrid_mass * bh_props->mass_to_solar_mass, f_gas,
+              f_rad_loss, n_H_cgs, du_xray_phys,
+              dv_phys / bh_props->kms_to_internal);
         }
 #endif
-      }
-      else {
+      } else {
         const double u_new = u_init + du_xray_phys;
 
         /* Do the energy injection. */
         hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
         hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
 
-	      /* Turn off any star formation in particle */
-        black_holes_reset_heated_particle(pj, xpj, bh_props, cosmo, 
+        /* Turn off any star formation in particle */
+        black_holes_reset_heated_particle(pj, xpj, bh_props, cosmo,
                                           with_cosmology, dt, time);
 
 #ifdef SIMBA_DEBUG_CHECKS
-        const double T_gas_final_cgs = 
-          u_new / (bh_props->temp_to_u_factor * bh_props->T_K_to_int);
-        message("BH_XRAY_HEAT: bid=%lld, pid=%lld, T_init %g K, T_new %g K, "
-                "T_new/T_init=%g, dt_shutoff=%g Myr",
-                bi->id, pj->id,
-                T_gas_cgs,
-                T_gas_final_cgs,
-                T_gas_final_cgs / T_gas_cgs,
-                pj->feedback_data.cooling_shutoff_delay_time * 
-                    bh_props->time_to_Myr);
+        const double T_gas_final_cgs =
+            u_new / (bh_props->temp_to_u_factor * bh_props->T_K_to_int);
+        message(
+            "BH_XRAY_HEAT: bid=%lld, pid=%lld, T_init %g K, T_new %g K, "
+            "T_new/T_init=%g, dt_shutoff=%g Myr",
+            bi->id, pj->id, T_gas_cgs, T_gas_final_cgs,
+            T_gas_final_cgs / T_gas_cgs,
+            pj->feedback_data.cooling_shutoff_delay_time *
+                bh_props->time_to_Myr);
 #endif
       }
     }
-  }
-  else { /* Below is swallow_id = id for particle/bh */
+  } else { /* Below is swallow_id = id for particle/bh */
 
     /* Save gas density and entropy before feedback */
     tracers_before_black_holes_feedback(pj, xpj, cosmo->a);
@@ -1075,18 +1054,18 @@ runner_iact_nonsym_bh_gas_feedback(
     xpj->v_full[2] += dv * dir[2];
 
 #ifdef SIMBA_DEBUG_CHECKS
-    message("BH_KICK: bid=%lld kicking pid=%lld, v_kick=%g km/s",
-       bi->id, pj->id, bi->v_kick / bh_props->kms_to_internal);
+    message("BH_KICK: bid=%lld kicking pid=%lld, v_kick=%g km/s", bi->id,
+            pj->id, bi->v_kick / bh_props->kms_to_internal);
 #endif
 
     /* Mark to be decoupled */
     pj->to_be_decoupled = 1;
     pj->to_be_recoupled = 0;
-    
+
     /* Set delay time */
     pj->feedback_data.decoupling_delay_time =
         dt + bh_props->wind_decouple_time_factor *
-             cosmology_get_time_since_big_bang(cosmo, cosmo->a);
+                 cosmology_get_time_since_big_bang(cosmo, cosmo->a);
     /*pj->chemistry_data.diffusion_coefficient = 0.f;*/
 
     /* Update the signal velocity of the particle based on the velocity kick. */
@@ -1099,31 +1078,28 @@ runner_iact_nonsym_bh_gas_feedback(
       /* Use the halo Tvir? */
       /* Set Tvir for possible later use */
       if (bh_props->scale_jet_temperature == 1) {
-        const float mass_scaling = 
-            bh_props->mass_to_solar_mass * 1.e-8f;
+        const float mass_scaling = bh_props->mass_to_solar_mass * 1.e-8f;
         new_Tj = bh_props->jet_temperature *
                  powf(bi->subgrid_mass * mass_scaling, 2.0f / 3.0f);
-      }
-      else if (bh_props->scale_jet_temperature == 2) {
-        const float bh_mass_msun = 
+      } else if (bh_props->scale_jet_temperature == 2) {
+        const float bh_mass_msun =
             bi->subgrid_mass * bh_props->mass_to_solar_mass;
 
         /* by-eye fit from Fig. 6 of Zhang+23 (2305.06803) */
         float halo_mass = 1.e12f * powf(bh_mass_msun * 1.e-7f, 0.75f);
 
         /* minimum at 10^11.8 Msun */
-        if (halo_mass < 6.3e11f) halo_mass = 6.3e11f; 
+        if (halo_mass < 6.3e11f) halo_mass = 6.3e11f;
 
         const float Tvir = 9.52e7f * powf(halo_mass * 1.e-15f, 0.6666f); /* K */
         new_Tj = bh_props->jet_temperature * Tvir;
-      } 
-      else {
+      } else {
         new_Tj = bh_props->jet_temperature; /* K */
       }
 
       /* Simba scales with velocity, up to jet velocity */
       new_Tj *= max(1., (bi->v_kick * bi->v_kick) /
-                (bh_props->jet_velocity * bh_props->jet_velocity));
+                            (bh_props->jet_velocity * bh_props->jet_velocity));
 
       if (new_Tj >= bh_props->jet_maximum_temperature) {
         new_Tj = bh_props->jet_maximum_temperature;
@@ -1133,8 +1109,9 @@ runner_iact_nonsym_bh_gas_feedback(
       new_Tj /= bh_props->T_K_to_int;
 
 #ifdef SIMBA_DEBUG_CHECKS
-      message("BH_KICK_JET: bid=%lld kicking pid=%lld at v_kick=%g km/s, T=%g K",
-        bi->id, pj->id, bi->v_kick / bh_props->kms_to_internal, new_Tj);
+      message(
+          "BH_KICK_JET: bid=%lld kicking pid=%lld at v_kick=%g km/s, T=%g K",
+          bi->id, pj->id, bi->v_kick / bh_props->kms_to_internal, new_Tj);
 #endif
 
       /* Compute new energy per unit mass of this particle */
@@ -1154,18 +1131,17 @@ runner_iact_nonsym_bh_gas_feedback(
       }
 
       pj->feedback_data.number_of_times_decoupled += 100000;
-    }
-    else {
+    } else {
       pj->feedback_data.number_of_times_decoupled += 1000;
     }
 
     /* Turn off any star formation in particle, impose maximal viscosity,
      * and sync on the timeline
      */
-    black_holes_reset_heated_particle(pj, xpj, bh_props, cosmo, 
-                                      with_cosmology, dt, time);
+    black_holes_reset_heated_particle(pj, xpj, bh_props, cosmo, with_cosmology,
+                                      dt, time);
 
-    /* IMPORTANT: The particle MUST NOT be swallowed. 
+    /* IMPORTANT: The particle MUST NOT be swallowed.
      * We are taking a f_accretion from each particle, and then
      * kicking the rest. We used the swallow marker as a temporary
      * passer in order to remember which particles have been "nibbled"

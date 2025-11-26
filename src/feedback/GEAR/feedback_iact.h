@@ -116,7 +116,7 @@ runner_iact_nonsym_feedback_apply(
 
   /* Ignore wind in density computation */
   if (pj->decoupled) return;
-  
+
   const double e_sn = si->feedback_data.energy_ejected;
 
   const float mj = hydro_get_mass(pj);

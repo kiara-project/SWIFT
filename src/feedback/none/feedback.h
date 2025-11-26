@@ -40,18 +40,13 @@
  * @param wind_mass The amount of mass in the wind (code units).
  */
 __attribute__((always_inline)) INLINE static double feedback_wind_probability(
-    struct part* p, struct xpart* xp,
-    const struct engine* e,
-    const struct cosmology* cosmo,
-    const struct feedback_props* fb_props,
-    const integertime_t ti_current,
-    const double dt_part,
-    double *rand_for_sf_wind,
-    double *wind_mass) {
+    struct part *p, struct xpart *xp, const struct engine *e,
+    const struct cosmology *cosmo, const struct feedback_props *fb_props,
+    const integertime_t ti_current, const double dt_part,
+    double *rand_for_sf_wind, double *wind_mass) {
 
   return 0.;
 }
-
 
 /**
  * @brief Recouple wind particles.
@@ -62,10 +57,9 @@ __attribute__((always_inline)) INLINE static double feedback_wind_probability(
  * @param with_cosmology Is this a cosmological simulation?
  */
 __attribute__((always_inline)) INLINE static void feedback_recouple_part(
-    struct part* p, struct xpart* xp, const struct engine* e,
-    const int with_cosmology, 
-    const struct cosmology* cosmo,
-    const struct feedback_props* fb_props) {}
+    struct part *p, struct xpart *xp, const struct engine *e,
+    const int with_cosmology, const struct cosmology *cosmo,
+    const struct feedback_props *fb_props) {}
 
 /**
  * @brief Sets the wind direction vector for feedback kicks
@@ -78,10 +72,9 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
  * @param fb_props The #feedback_props feedback parameters.
  */
 __attribute__((always_inline)) INLINE static void feedback_set_wind_direction(
-    struct part* p, struct xpart* xp, const struct engine* e,
-    const int with_cosmology, 
-    const struct cosmology* cosmo,
-    const struct feedback_props* fb_props) {}
+    struct part *p, struct xpart *xp, const struct engine *e,
+    const int with_cosmology, const struct cosmology *cosmo,
+    const struct feedback_props *fb_props) {}
 
 /**
  * @brief Determine if particles that ignore cooling should start cooling again.
@@ -92,8 +85,8 @@ __attribute__((always_inline)) INLINE static void feedback_set_wind_direction(
  * @param with_cosmology Is this a cosmological simulation?
  */
 __attribute__((always_inline)) INLINE static void feedback_ready_to_cool(
-    struct part* p, struct xpart* xp, const struct engine* e,
-    const struct cosmology* restrict cosmo, const int with_cosmology) {}
+    struct part *p, struct xpart *xp, const struct engine *e,
+    const struct cosmology *restrict cosmo, const int with_cosmology) {}
 
 /**
  * @brief Kick a gas particle selected for stellar feedback.
@@ -107,15 +100,14 @@ __attribute__((always_inline)) INLINE static void feedback_ready_to_cool(
  * @param dt_part The time step of the particle.
  * @param wind_mass The amount of mass in the wind (code units).
  */
-__attribute__((always_inline)) INLINE static void feedback_kick_and_decouple_part(
-    struct part* p, struct xpart* xp,
-    const struct engine* e,
-    const struct cosmology* cosmo,
-    const struct feedback_props* fb_props,
-    const integertime_t ti_current,
-    const int with_cosmology,
-    const double dt_part,
-    const double wind_mass) { }
+__attribute__((always_inline)) INLINE static void
+feedback_kick_and_decouple_part(struct part *p, struct xpart *xp,
+                                const struct engine *e,
+                                const struct cosmology *cosmo,
+                                const struct feedback_props *fb_props,
+                                const integertime_t ti_current,
+                                const int with_cosmology, const double dt_part,
+                                const double wind_mass) {}
 
 /*
  * @brief Computes the time-step length of a given star particle from feedback
@@ -134,9 +126,9 @@ __attribute__((always_inline)) INLINE static void feedback_kick_and_decouple_par
  */
 __attribute__((always_inline)) INLINE static float
 feedback_compute_spart_timestep(
-    const struct spart* const sp, const struct feedback_props* feedback_props,
-    const struct phys_const* phys_const, const struct unit_system* us,
-    const int with_cosmology, const struct cosmology* cosmo,
+    const struct spart *const sp, const struct feedback_props *feedback_props,
+    const struct phys_const *phys_const, const struct unit_system *us,
+    const int with_cosmology, const struct cosmology *cosmo,
     const integertime_t ti_current, const double time, const double time_base) {
   return FLT_MAX;
 }
@@ -153,8 +145,8 @@ feedback_compute_spart_timestep(
  * @param with_cosmology Is this a cosmological simulation?
  */
 __attribute__((always_inline)) INLINE static void feedback_update_part(
-    struct part* restrict p, struct xpart* restrict xp,
-    const struct engine* restrict e, const int with_cosmology) {}
+    struct part *restrict p, struct xpart *restrict xp,
+    const struct engine *restrict e, const int with_cosmology) {}
 
 /**
  * @brief Reset the gas particle-carried fields related to feedback at the
@@ -166,7 +158,7 @@ __attribute__((always_inline)) INLINE static void feedback_update_part(
  * @param xp The extended data of the particle.
  */
 __attribute__((always_inline)) INLINE static void feedback_reset_part(
-    struct part* p, struct xpart* xp) {}
+    struct part *p, struct xpart *xp) {}
 
 /**
  * @brief Prepares a s-particle for its feedback interactions
@@ -174,7 +166,7 @@ __attribute__((always_inline)) INLINE static void feedback_reset_part(
  * @param sp The particle to act upon
  */
 __attribute__((always_inline)) INLINE static void feedback_init_spart(
-    struct spart* sp) {}
+    struct spart *sp) {}
 
 /**
  * @brief Should we do feedback for this star?
@@ -182,7 +174,7 @@ __attribute__((always_inline)) INLINE static void feedback_init_spart(
  * @param sp The star to consider.
  */
 __attribute__((always_inline)) INLINE static int feedback_do_feedback(
-    const struct spart* sp) {
+    const struct spart *sp) {
 
   return 0;
 }
@@ -198,7 +190,7 @@ __attribute__((always_inline)) INLINE static int feedback_do_feedback(
  * @param e The #engine.
  */
 __attribute__((always_inline)) INLINE static int feedback_is_active(
-    const struct spart* sp, const struct engine* e) {
+    const struct spart *sp, const struct engine *e) {
 
   return 1;
 }
@@ -210,7 +202,7 @@ __attribute__((always_inline)) INLINE static int feedback_is_active(
  * @param e The #engine.
  */
 __attribute__((always_inline)) INLINE static int stars_dm_loop_is_active(
-    const struct spart* sp, const struct engine* e) {
+    const struct spart *sp, const struct engine *e) {
   /* No */
   return 0;
 }
@@ -231,8 +223,8 @@ __attribute__((always_inline)) INLINE static int stars_dm_loop_is_active(
  * @return The length of the enrichment step in internal units.
  */
 INLINE static double feedback_get_enrichment_timestep(
-    const struct spart* sp, const int with_cosmology,
-    const struct cosmology* cosmo, const double time, const double dt_star) {
+    const struct spart *sp, const int with_cosmology,
+    const struct cosmology *cosmo, const double time, const double dt_star) {
 
   /* Just return the regular step length */
   return dt_star;
@@ -245,7 +237,7 @@ INLINE static double feedback_get_enrichment_timestep(
  * This is called in the stars ghost.
  */
 __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
-    struct spart* sp, const struct feedback_props* feedback_props) {}
+    struct spart *sp, const struct feedback_props *feedback_props) {}
 
 /**
  * @brief Initialises the s-particles feedback props for the first time
@@ -257,7 +249,7 @@ __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
  * @param feedback_props The properties of the feedback model.
  */
 __attribute__((always_inline)) INLINE static void feedback_first_init_spart(
-    struct spart* sp, const struct feedback_props* feedback_props) {}
+    struct spart *sp, const struct feedback_props *feedback_props) {}
 
 /**
  * @brief Initialises the particles for the first time
@@ -282,7 +274,7 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
  * @param feedback_props The properties of the feedback model.
  */
 __attribute__((always_inline)) INLINE static void feedback_prepare_spart(
-    struct spart* sp, const struct feedback_props* feedback_props) {}
+    struct spart *sp, const struct feedback_props *feedback_props) {}
 
 /**
  * @brief Prepare a #spart for the feedback task.
@@ -304,9 +296,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_spart(
  * @param with_cosmology Are we running with cosmology on?
  */
 __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
-    struct spart* restrict sp, const struct feedback_props* feedback_props,
-    const struct cosmology* cosmo, const struct unit_system* us,
-    const struct phys_const* phys_const, const double star_age_beg_step,
+    struct spart *restrict sp, const struct feedback_props *feedback_props,
+    const struct cosmology *cosmo, const struct unit_system *us,
+    const struct phys_const *phys_const, const double star_age_beg_step,
     const double dt, const double time, const integertime_t ti_begin,
     const int with_cosmology) {}
 
@@ -326,9 +318,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
  * @param time_base The time base.
  */
 __attribute__((always_inline)) INLINE static void feedback_will_do_feedback(
-    const struct spart* sp, const struct feedback_props* feedback_props,
-    const int with_cosmology, const struct cosmology* cosmo, const double time,
-    const struct unit_system* us, const struct phys_const* phys_const,
+    const struct spart *sp, const struct feedback_props *feedback_props,
+    const int with_cosmology, const struct cosmology *cosmo, const double time,
+    const struct unit_system *us, const struct phys_const *phys_const,
     const integertime_t ti_current, const double time_base) {}
 
 /**
@@ -338,7 +330,7 @@ __attribute__((always_inline)) INLINE static void feedback_will_do_feedback(
  *
  * @param fp the feedback data structure.
  */
-static INLINE void feedback_clean(struct feedback_props* fp) {}
+static INLINE void feedback_clean(struct feedback_props *fp) {}
 
 /**
  * @brief Write a feedback struct to the given FILE as a stream of bytes.
@@ -346,8 +338,8 @@ static INLINE void feedback_clean(struct feedback_props* fp) {}
  * @param feedback the struct
  * @param stream the file stream
  */
-static INLINE void feedback_struct_dump(const struct feedback_props* feedback,
-                                        FILE* stream) {}
+static INLINE void feedback_struct_dump(const struct feedback_props *feedback,
+                                        FILE *stream) {}
 
 /**
  * @brief Restore a hydro_props struct from the given FILE as a stream of
@@ -357,15 +349,15 @@ static INLINE void feedback_struct_dump(const struct feedback_props* feedback,
  * @param stream the file stream
  * @param cosmo #cosmology structure
  */
-static INLINE void feedback_struct_restore(struct feedback_props* feedback,
-                                           FILE* stream) {}
+static INLINE void feedback_struct_restore(struct feedback_props *feedback,
+                                           FILE *stream) {}
 
 #ifdef HAVE_HDF5
 /**
  * @brief Writes the current model of feedback to the file
  * @param h_grpsph The HDF5 group in which to write
  */
-INLINE static void feedback_write_flavour(struct feedback_props* feedback,
+INLINE static void feedback_write_flavour(struct feedback_props *feedback,
                                           hid_t h_grp) {
 
   io_write_attribute_s(h_grp, "Feedback Model", "None");

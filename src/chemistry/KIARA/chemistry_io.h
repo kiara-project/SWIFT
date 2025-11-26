@@ -30,8 +30,8 @@
  *
  * @return Returns the number of fields to read.
  */
-INLINE static int chemistry_read_particles(struct part* parts,
-                                           struct io_props* list) {
+INLINE static int chemistry_read_particles(struct part *parts,
+                                           struct io_props *list) {
   int num = 0;
   /* List what we want to read */
   list[num] = io_make_input_field(
@@ -57,9 +57,9 @@ INLINE static int chemistry_read_particles(struct part* parts,
  *
  * @return Returns the number of fields to write.
  */
-INLINE static int chemistry_write_particles(const struct part* parts,
-                                            const struct xpart* xparts,
-                                            struct io_props* list,
+INLINE static int chemistry_write_particles(const struct part *parts,
+                                            const struct xpart *xparts,
+                                            struct io_props *list,
                                             const int with_cosmology) {
 
   int num = 0;
@@ -79,24 +79,20 @@ INLINE static int chemistry_write_particles(const struct part* parts,
 
   list[num] = io_make_output_field(
       "DiffusionCoefficients", FLOAT, 1, UNIT_CONV_DIFF_COEFF, 0.f, parts,
-      chemistry_data.diffusion_coefficient,
-      "The full diffusion coefficient");
+      chemistry_data.diffusion_coefficient, "The full diffusion coefficient");
   num++;
-  
+
 #ifdef KIARA_DEBUG_CHECKS
   list[num] = io_make_output_field(
-      "ElementDiffusionRates", FLOAT, chemistry_element_count, 
-      UNIT_CONV_DIFF_RATE, 
-      0.f, parts,
-      chemistry_data.dZ_dt,
+      "ElementDiffusionRates", FLOAT, chemistry_element_count,
+      UNIT_CONV_DIFF_RATE, 0.f, parts, chemistry_data.dZ_dt,
       "The rate of transfer of metal concentration for each element");
   num++;
 
-  list[num] = io_make_output_field(
-      "MetalDiffusionRates", FLOAT, 1, UNIT_CONV_DIFF_RATE, 
-      0.f, parts,
-      chemistry_data.dZ_dt_total,
-      "The rate of transfer of total metal concentration");
+  list[num] =
+      io_make_output_field("MetalDiffusionRates", FLOAT, 1, UNIT_CONV_DIFF_RATE,
+                           0.f, parts, chemistry_data.dZ_dt_total,
+                           "The rate of transfer of total metal concentration");
   num++;
 #endif
 
@@ -111,8 +107,8 @@ INLINE static int chemistry_write_particles(const struct part* parts,
  *
  * @return Returns the number of fields to write.
  */
-INLINE static int chemistry_write_sparticles(const struct spart* sparts,
-                                             struct io_props* list) {
+INLINE static int chemistry_write_sparticles(const struct spart *sparts,
+                                             struct io_props *list) {
 
   int num = 0;
 
@@ -132,7 +128,6 @@ INLINE static int chemistry_write_sparticles(const struct spart* sparts,
   return num;
 }
 
-
 /**
  * @brief Specifies which sink fields to write to a dataset
  *
@@ -140,13 +135,12 @@ INLINE static int chemistry_write_sparticles(const struct spart* sparts,
  * @param list The list of i/o properties to write.
  *
  * @return Returns the number of fields to write.
- * required by src/common_io.c 
+ * required by src/common_io.c
  */
-INLINE static int chemistry_write_sinkparticles(const struct sink* sinks,
-                                                struct io_props* list) {
+INLINE static int chemistry_write_sinkparticles(const struct sink *sinks,
+                                                struct io_props *list) {
   return 0;
 }
-
 
 /**
  * @brief Specifies which black hole particle fields to write to a dataset
@@ -156,8 +150,8 @@ INLINE static int chemistry_write_sinkparticles(const struct sink* sinks,
  *
  * @return Returns the number of fields to write.
  */
-INLINE static int chemistry_write_bparticles(const struct bpart* bparts,
-                                             struct io_props* list) {
+INLINE static int chemistry_write_bparticles(const struct bpart *bparts,
+                                             struct io_props *list) {
 
   int num = 0;
 
@@ -168,10 +162,10 @@ INLINE static int chemistry_write_bparticles(const struct bpart* bparts,
       "Masses of the BH particles in a given element");
   num++;
 
-  list[num] = io_make_output_field("MetalMasses", FLOAT, chemistry_element_count,
-                                 UNIT_CONV_MASS, 0.f, bparts,
-                                 chemistry_data.metal_mass_total,
-                                 "Masses of the BH particles in a metals");
+  list[num] = io_make_output_field("MetalMasses", FLOAT,
+                                   chemistry_element_count, UNIT_CONV_MASS, 0.f,
+                                   bparts, chemistry_data.metal_mass_total,
+                                   "Masses of the BH particles in a metals");
   num++;
 
   return num;
@@ -186,7 +180,7 @@ INLINE static int chemistry_write_bparticles(const struct bpart* bparts,
  * @param e The #engine.
  */
 INLINE static void chemistry_write_flavour(hid_t h_grp, hid_t h_grp_columns,
-                                           const struct engine* e) {
+                                           const struct engine *e) {
 
   /* Write the chemistry model */
   io_write_attribute_s(h_grp, "Chemistry Model", "KIARA");

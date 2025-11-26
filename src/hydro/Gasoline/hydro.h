@@ -474,7 +474,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     const struct part *restrict p, const struct xpart *restrict xp,
     const struct hydro_props *restrict hydro_properties,
     const struct cosmology *restrict cosmo) {
-  
+
   if (p->decoupled) return FLT_MAX;
 
   float dt_hydro = FLT_MAX;
@@ -484,7 +484,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   /* Hydro time-step */
   if (p->viscosity.v_sig > 0.f) {
     const float CFL_condition = hydro_properties->CFL_condition;
-   
+
     /* CFL condition */
     dt_cfl = 2.f * kernel_gamma * CFL_condition * cosmo->a * p->h /
              (cosmo->a_factor_sound_speed * p->viscosity.v_sig);
@@ -504,16 +504,17 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   dt_hydro = min(dt_hydro, dt_diffusion);
 
   if (dt_hydro < hydro_properties->dt_min) {
-    error("dt_hydro below minimum of dt_min=%g! \n"
-          "dt_hydro=%g \n"
-          "dt_diffusion=%g \n"
-          "dt_cfl=%g \n"
-          "pid=%lld \n"
-          "h=%g \n"
-          "u=%g \n"
-          "diffusion_rate=%g\n\n",
-          hydro_properties->dt_min, dt_hydro, dt_diffusion,
-          dt_cfl, p->id, p->h, p->u, p->diffusion.rate);
+    error(
+        "dt_hydro below minimum of dt_min=%g! \n"
+        "dt_hydro=%g \n"
+        "dt_diffusion=%g \n"
+        "dt_cfl=%g \n"
+        "pid=%lld \n"
+        "h=%g \n"
+        "u=%g \n"
+        "diffusion_rate=%g\n\n",
+        hydro_properties->dt_min, dt_hydro, dt_diffusion, dt_cfl, p->id, p->h,
+        p->u, p->diffusion.rate);
   }
 
   return dt_hydro;
@@ -521,7 +522,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
 
 /**
  * @brief Compute the signal velocity between two gas particles
-*
+ *
  * This is eq. (103) of Price D., JCoPh, 2012, Vol. 231, Issue 3.
  *
  * @param dx Comoving vector separating both particles (pi - pj).
@@ -750,8 +751,9 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 
       shear_norm2 += shear_component2;
       traceless_shear_norm2 += i == j ? 0.f : shear_component2;
-      /* Rennehan: Note that the 1/3 term is handled later, so should not be here. 
-       * I removed it, but it was present in the original master branch. */
+      /* Rennehan: Note that the 1/3 term is handled later, so should not be
+       * here. I removed it, but it was present in the original master branch.
+       */
       div_v += i == j ? p->viscosity.velocity_gradient[i][j] : 0.f;
     }
   }
@@ -761,24 +763,26 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 
   /* Now do the conduction coefficient; note that no limiter is used here. */
   /* These square roots are not included in the original documentation */
-  /* Rennehan: I added kernel_gamma here, it originally was NOT in 
+  /* Rennehan: I added kernel_gamma here, it originally was NOT in
    * diffusion_rate below. */
   const float h_physical = kernel_gamma * p->h * cosmo->a;
 
   /* Rennehan: Add limiter from GIZMO based on particle velocity */
-  const float v2_phys = (xp->v_full[0] * xp->v_full[0] + 
-                         xp->v_full[1] * xp->v_full[1] +
-                         xp->v_full[2] * xp->v_full[2]) * cosmo->a2_inv;
+  const float v2_phys =
+      (xp->v_full[0] * xp->v_full[0] + xp->v_full[1] * xp->v_full[1] +
+       xp->v_full[2] * xp->v_full[2]) *
+      cosmo->a2_inv;
   const float h2_phys = h_physical * h_physical;
   const float shear_norm2_max = 0.25f * v2_phys / h2_phys;
   if (traceless_shear_norm2 > shear_norm2_max) {
     traceless_shear_norm2 = shear_norm2_max;
   }
 
-  /* Rennehan: This is physical AND internal comoving since h * u units cancel out internally */
+  /* Rennehan: This is physical AND internal comoving since h * u units cancel
+   * out internally */
   const float diffusion_rate = hydro_props->diffusion.coefficient *
-                               sqrtf(traceless_shear_norm2) * 
-                               h_physical * h_physical;
+                               sqrtf(traceless_shear_norm2) * h_physical *
+                               h_physical;
 
   p->diffusion.rate = diffusion_rate;
   p->viscosity.tensor_norm = sqrtf(shear_norm2);
@@ -817,9 +821,9 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     struct part *p) {
   /* The f_i is calculated explicitly in Gasoline. */
   if (p->weighted_neighbour_wcount != 0.f && p->weighted_self_wcount != 0.f) {
-    p->force.f = p->weighted_self_wcount / (p->weighted_neighbour_wcount * p->rho);
-  }
-  else {
+    p->force.f =
+        p->weighted_self_wcount / (p->weighted_neighbour_wcount * p->rho);
+  } else {
     p->force.f = 1.f;
   }
 
@@ -837,9 +841,9 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     /* Constrain shock_limiter between [-1, 1] */
     p->viscosity.shock_limiter = max(p->viscosity.shock_limiter, -1.f);
     p->viscosity.shock_limiter = min(p->viscosity.shock_limiter, 1.f);
-    if (fabs(p->viscosity.shock_limiter) < 1.e-10f) p->viscosity.shock_limiter = 0.f;
-  }
-  else {
+    if (fabs(p->viscosity.shock_limiter) < 1.e-10f)
+      p->viscosity.shock_limiter = 0.f;
+  } else {
     p->viscosity.shock_limiter = 0.f;
   }
 
@@ -927,8 +931,10 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
                             dt_alpha;
 
   /* A_i in all of the equations */
-  /* Rennehan: Note that I added 0.5 here because v_sig is defined as twice the actual soundspeed */
-  const float v_sig_physical = 0.5f * p->viscosity.v_sig * cosmo->a_factor_sound_speed;
+  /* Rennehan: Note that I added 0.5 here because v_sig is defined as twice the
+   * actual soundspeed */
+  const float v_sig_physical =
+      0.5f * p->viscosity.v_sig * cosmo->a_factor_sound_speed;
   const float soundspeed_physical =
       gas_soundspeed_from_pressure(hydro_get_physical_density(p, cosmo),
                                    hydro_get_physical_pressure(p, cosmo));
@@ -946,8 +952,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   const float shock_limiter = shock_limiter_core_2 * shock_limiter_core_2;
 
   /* Rennehan: Removed 2.f * kernel_gamma2 and added it to h_physical  */
-  const float shock_detector = h_physical * h_physical *
-                               shock_limiter *
+  const float shock_detector = h_physical * h_physical * shock_limiter *
                                max(-1.f * d_shock_indicator_dt, 0.f);
 
   const float alpha_loc =
@@ -1263,7 +1268,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->decoupled = 0;
   p->to_be_decoupled = 0;
   p->to_be_recoupled = 0;
-  
 }
 
 /**

@@ -185,7 +185,7 @@ void runner_do_cooling(struct runner *r, struct cell *c, int timer) {
          * so the async doesn't matter like decoupling/recoupling.
          */
         feedback_ready_to_cool(p, xp, e, cosmo, with_cosmology);
-        
+
         /* Let's cool ! */
         cooling_cool_part(constants, us, cosmo, hydro_props,
                           entropy_floor_props, pressure_floor, cooling_func, p,
@@ -230,7 +230,7 @@ void runner_do_hydro_decoupling(struct runner *r, struct cell *c, int timer) {
 
       /* Anything to do here? (i.e. does this particle need updating?) */
       if (part_is_active(p, e) && p->to_be_decoupled) {
-        
+
         p->decoupled = 1;
         p->to_be_decoupled = 0;
 
@@ -512,13 +512,13 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
          * Note: Cannot do this here, must be at the end/beginning of step
          * since everything is a-sync.
          */
-        /*feedback_recouple_part(p, xp, e, with_cosmology, cosmo, us, 
+        /*feedback_recouple_part(p, xp, e, with_cosmology, cosmo, us,
                                  feedback_props);*/
 
         /* Is this particle star forming? */
         if (star_formation_is_star_forming(p, xp, sf_props, phys_const, cosmo,
-                                  hydro_props, us, cooling,
-                                  entropy_floor)) {
+                                           hydro_props, us, cooling,
+                                           entropy_floor)) {
 
           /* Time-step size for this particle */
           double dt_star;
@@ -539,68 +539,66 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
                                      cosmo, dt_star);
 
 #ifdef KIARA_DEBUG_CHECKS
-          if (p->sf_data.SFR > 0.5*hydro_get_mass(p) / dt_star) {
-            warning("SFR: sfr=%g mg/dt=%g dt=%g",
-                    p->sf_data.SFR, hydro_get_mass(p) / dt_star, dt_star);
+          if (p->sf_data.SFR > 0.5 * hydro_get_mass(p) / dt_star) {
+            warning("SFR: sfr=%g mg/dt=%g dt=%g", p->sf_data.SFR,
+                    hydro_get_mass(p) / dt_star, dt_star);
           }
 #endif
 
 #ifdef WITH_FOF_GALAXIES
           /* Mark (possibly) as grouppable AFTER we know the SFR */
-          fof_mark_part_as_grouppable(p, xp, e, cosmo, hydro_props, 
+          fof_mark_part_as_grouppable(p, xp, e, cosmo, hydro_props,
                                       entropy_floor);
 #endif
 
-          /* star_prob comes from the function that determines the probability.*/
+          /* star_prob comes from the function that determines the
+           * probability.*/
           double star_prob = 0.;
           int should_convert_to_star = star_formation_should_convert_to_star(
-                                          p, xp, sf_props, e, dt_star,
-                                          &star_prob);
+              p, xp, sf_props, e, dt_star, &star_prob);
 
           /* By default, do nothing */
           double rand_for_sf_wind = FLT_MAX;
           double wind_mass = 0.f;
-	        double wind_prob = 0.f;
+          double wind_prob = 0.f;
           int should_kick_wind = 0;
 
           /* The random number for star formation, stellar feedback,
            * or nothing is drawn here.
            */
-          wind_prob = feedback_wind_probability(p, xp, e, cosmo, 
-                                    feedback_props, ti_current, dt_star,
-                                    &rand_for_sf_wind,
-                                    &wind_mass);
+          wind_prob = feedback_wind_probability(p, xp, e, cosmo, feedback_props,
+                                                ti_current, dt_star,
+                                                &rand_for_sf_wind, &wind_mass);
 
           /* If there is both winds and SF, then make sure we distribute
-          * probabilities correctly */
+           * probabilities correctly */
           if (wind_prob > 0.f && star_prob > 0.f) {
             /* If the sum of the probabilities is greater than unity,
-              * rescale so that we can throw the dice properly.
-              */
+             * rescale so that we can throw the dice properly.
+             */
             double prob_sum = wind_prob + star_prob;
             if (prob_sum > 1.) {
               wind_prob /= prob_sum;
               star_prob /= prob_sum;
               prob_sum = wind_prob + star_prob;
-            } 
+            }
             /* We have three regions for the probability:
-              * 1. Form a star (random < star_prob)
-              * 2. Kick a wind (star_prob < random < star_prob + wind_prob)
-              * 3. Do nothing
-              */
+             * 1. Form a star (random < star_prob)
+             * 2. Kick a wind (star_prob < random < star_prob + wind_prob)
+             * 3. Do nothing
+             */
             if (rand_for_sf_wind < star_prob) {
               should_convert_to_star = 1;
               should_kick_wind = 0;
-            }
-            else if ((star_prob <= rand_for_sf_wind) && 
-                      (rand_for_sf_wind < prob_sum)) {
+            } else if ((star_prob <= rand_for_sf_wind) &&
+                       (rand_for_sf_wind < prob_sum)) {
               should_convert_to_star = 0;
               should_kick_wind = 1;
             } else {
               should_convert_to_star = 0;
               should_kick_wind = 0;
             }
-	        }
+          }
 
           /* Are we forming a star particle from this SF rate? */
           if (should_convert_to_star) {
@@ -724,13 +722,10 @@ void runner_do_star_formation(struct runner *r, struct cell *c, int timer) {
           } else if (should_kick_wind) {
 
             /* Here we are NOT converting a gas to star, but we could kick! */
-            feedback_kick_and_decouple_part(p, xp, e, cosmo, 
-                                            feedback_props,
-                                            ti_current,
-                                            with_cosmology,
-                                            dt_star,
+            feedback_kick_and_decouple_part(p, xp, e, cosmo, feedback_props,
+                                            ti_current, with_cosmology, dt_star,
                                             wind_mass);
-	        }
+          }
 
           /* D. Rennehan: Logging needs to go AFTER decoupling */
           /* Add the SFR and SFR*dt to the SFH struct of this cell */
@@ -910,7 +905,7 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
     struct part *restrict parts = c->hydro.parts;
     struct xpart *restrict xparts = c->hydro.xparts;
     const struct chemistry_global_data *chemistry = e->chemistry;
-    
+
     /* Loop over the gas particles in this cell. */
     for (int k = 0; k < count; k++) {
 
@@ -936,8 +931,8 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
         hydro_end_force(p, cosmo);
         mhd_end_force(p, cosmo);
         timestep_limiter_end_force(p);
-        chemistry_end_force(p, xp, cosmo, with_cosmology, 
-                            e->time, chemistry, dt);
+        chemistry_end_force(p, xp, cosmo, with_cosmology, e->time, chemistry,
+                            dt);
 
         /* Apply the forcing terms (if any) */
         forcing_terms_apply(e->time, e->forcing_terms, e->s,
@@ -1116,7 +1111,7 @@ void runner_do_end_grav_force(struct runner *r, struct cell *c, int timer) {
           const size_t offset = -gp->id_or_neg_offset;
           sink_store_potential_in_part(&s->parts[offset].sink_data, gp);
         }
-      
+
 #ifdef WITH_FOF_GALAXIES
         /* Copy the galaxy properties into the particle structs */
         if (with_black_holes && gp->type == swift_type_black_hole) {
@@ -1438,8 +1433,8 @@ void runner_do_rt_tchem(struct runner *r, struct cell *c, int timer) {
 
       const double dt =
           rt_part_dt(ti_begin, ti_end, e->time_base, with_cosmology, cosmo);
-      const double dt_therm =
-          rt_part_dt_therm(ti_begin, ti_end, e->time_base, with_cosmology, cosmo);
+      const double dt_therm = rt_part_dt_therm(ti_begin, ti_end, e->time_base,
+                                               with_cosmology, cosmo);
 #ifdef SWIFT_DEBUG_CHECKS
       if (ti_begin != ti_current_subcycle)
         error(
@@ -1455,7 +1450,7 @@ void runner_do_rt_tchem(struct runner *r, struct cell *c, int timer) {
 
       /* And finally do thermochemistry */
       rt_tchem(p, xp, rt_props, cosmo, hydro_props, entropy_floor_props,
-		      phys_const, cooling, us, dt, dt_therm, time);
+               phys_const, cooling, us, dt, dt_therm, time);
     }
   }
 

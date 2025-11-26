@@ -3,7 +3,7 @@
  * Copyright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
  *                    Matthieu Schaller (schaller@strw.leidenuniv.nl)
  *               2025 Doug Rennehan (douglas.rennehan@gmail.com)
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -106,7 +106,7 @@ struct part {
   long long id;
 
   /*! Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+  struct gpart *gpart;
 
   /*! Particle position. */
   double x[3];
@@ -140,11 +140,11 @@ struct part {
 
   /*! Minimum time-step amongst neighbours */
   float dt_min;
- 
+
   /*! Conduction du/dt */
   float u_dt_cond;
- 
-  #ifdef MAGMA2_DEBUG_CHECKS
+
+#ifdef MAGMA2_DEBUG_CHECKS
   struct {
     /*! Correction matrix at the last time it was ill-conditioned */
     hydro_real_t correction_matrix[3][3];
@@ -154,7 +154,7 @@ struct part {
 
     /*! Velocity tensor norm ill-conditioned */
     hydro_real_t velocity_tensor_aux_norm[3][3];
-    
+
     /*! u_aux tensor at ill-condition time */
     hydro_real_t u_aux[3];
 
@@ -224,7 +224,7 @@ struct part {
 
     /*! Normalization for computing u_aux */
     hydro_real_t u_aux_norm[3];
-    
+
     /*! Flag for whether u_aux_norm is ill-conditioned */
     char u_well_conditioned;
 
@@ -300,7 +300,7 @@ struct part {
 
   /*! Flag to indicate that the decoupling task will run */
   unsigned char to_be_decoupled;
-  
+
   /*! Flag to indicate that the recoupling task will run */
   unsigned char to_be_recoupled;
 

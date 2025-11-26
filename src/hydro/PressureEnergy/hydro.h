@@ -643,7 +643,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
  */
 __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
     struct part *restrict p) {
-  
+
   p->rho_gradient[0] = 0.f;
   p->rho_gradient[1] = 0.f;
   p->rho_gradient[2] = 0.f;
@@ -1056,7 +1056,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->decoupled = 0;
   p->to_be_decoupled = 0;
   p->to_be_recoupled = 0;
-
 }
 
 /**

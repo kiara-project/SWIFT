@@ -52,7 +52,7 @@ struct gpart {
 
   /*! Gravitational mass from the tree */
   float total_mass;
-  
+
 #endif
 
   /*! Particle mass. */

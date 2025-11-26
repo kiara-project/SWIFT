@@ -30,6 +30,7 @@
 #include "chemistry.h"
 #include "engine.h"
 #include "feedback.h"
+#include "fof.h"
 #include "gravity.h"
 #include "mhd.h"
 #include "neutrino.h"
@@ -40,8 +41,6 @@
 #include "stars.h"
 #include "threadpool.h"
 #include "tracers.h"
-#include "feedback.h"
-#include "fof.h"
 
 void space_first_init_parts_mapper(void *restrict map_data, int count,
                                    void *restrict extra_data) {
@@ -131,9 +130,9 @@ void space_first_init_parts_mapper(void *restrict map_data, int count,
     star_formation_first_init_part(phys_const, us, cosmo, star_formation, &p[k],
                                    &xp[k]);
 
-    if (with_cooling){
-    	/* And the cooling */
-    	cooling_first_init_part(phys_const, us, hydro_props, cosmo, cool_func,
+    if (with_cooling) {
+      /* And the cooling */
+      cooling_first_init_part(phys_const, us, hydro_props, cosmo, cool_func,
                               &p[k], &xp[k]);
     }
 

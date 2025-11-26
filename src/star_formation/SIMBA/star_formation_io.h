@@ -33,8 +33,8 @@
  *
  * @return num_fields The number of i/o fields to read.
  */
-INLINE static int star_formation_read_particles(struct spart* sparts,
-                                                struct io_props* list) {
+INLINE static int star_formation_read_particles(struct spart *sparts,
+                                                struct io_props *list) {
   return 0;
 }
 
@@ -48,8 +48,8 @@ INLINE static int star_formation_read_particles(struct spart* sparts,
  * @return Returns the number of fields to write.
  */
 __attribute__((always_inline)) INLINE static int star_formation_write_particles(
-    const struct part* parts, const struct xpart* xparts,
-    struct io_props* list) {
+    const struct part *parts, const struct xpart *xparts,
+    struct io_props *list) {
 
   list[0] = io_make_output_field(
       "StarFormationRates", FLOAT, 1, UNIT_CONV_SFR, 0.f, parts, sf_data.SFR,
@@ -57,10 +57,9 @@ __attribute__((always_inline)) INLINE static int star_formation_write_particles(
       "the last time/scale-factor at which the gas particle was star-forming. "
       "If zero, the particle was never star-forming.");
 
-  list[1] = io_make_output_field(
-      "FractionH2", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, 
-      sf_data.H2_fraction,
-      "The H2 fraction of the gas particle. ");
+  list[1] = io_make_output_field("FractionH2", FLOAT, 1, UNIT_CONV_NO_UNITS,
+                                 0.f, parts, sf_data.H2_fraction,
+                                 "The H2 fraction of the gas particle. ");
 
   return 2;
 }
@@ -74,8 +73,8 @@ __attribute__((always_inline)) INLINE static int star_formation_write_particles(
  * @return Returns the number of fields to write.
  */
 __attribute__((always_inline)) INLINE static int
-star_formation_write_sparticles(const struct spart* sparts,
-                                struct io_props* list) {
+star_formation_write_sparticles(const struct spart *sparts,
+                                struct io_props *list) {
   return 0;
 }
 #endif /* SWIFT_STAR_FORMATION_SIMBA_IO_H */

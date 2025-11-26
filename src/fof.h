@@ -24,8 +24,8 @@
 
 /* Local headers */
 #include "align.h"
-#include "parser.h"
 #include "hydro.h"
+#include "parser.h"
 #include "part_type.h"
 
 /* Avoid cyclic inclusions */
@@ -266,18 +266,15 @@ void rec_fof_attach_pair(const struct fof_props *props, const double dim[3],
 void fof_struct_dump(const struct fof_props *props, FILE *stream);
 void fof_struct_restore(struct fof_props *props, FILE *stream);
 #ifdef WITH_FOF_GALAXIES
-void fof_mark_part_as_grouppable(const struct part *p, 
-                                 const struct xpart *xp, 
-                                 const struct engine *e, 
-                                 const struct cosmology *cosmo,
-                                 const struct hydro_props *hydro_props,
-                                 const struct entropy_floor_properties 
-                                    *entropy_floor);
+void fof_mark_part_as_grouppable(
+    const struct part *p, const struct xpart *xp, const struct engine *e,
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props,
+    const struct entropy_floor_properties *entropy_floor);
 void fof_mark_spart_as_grouppable(const struct spart *sp);
 void fof_mark_bpart_as_grouppable(const struct bpart *bp);
-void fof_store_group_info_in_bpart(struct bpart* bp, const struct gpart* gp);
-void fof_store_group_info_in_part(struct part* p, const struct gpart* gp);
-void fof_store_group_info_in_spart(struct spart* sp, const struct gpart* gp);
+void fof_store_group_info_in_bpart(struct bpart *bp, const struct gpart *gp);
+void fof_store_group_info_in_part(struct part *p, const struct gpart *gp);
+void fof_store_group_info_in_spart(struct spart *sp, const struct gpart *gp);
 #endif
 
 #ifdef WITH_MPI

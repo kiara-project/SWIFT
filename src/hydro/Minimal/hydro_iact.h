@@ -228,10 +228,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        mj * drho_ij * dx_ij * wi_dx * r_inv;
-    pj->rho_gradient[j] +=
-        mi * drho_ij * dx_ij * wj_dx * r_inv;
+    pi->rho_gradient[j] += mj * drho_ij * dx_ij * wi_dx * r_inv;
+    pj->rho_gradient[j] += mi * drho_ij * dx_ij * wj_dx * r_inv;
   }
 }
 
@@ -274,8 +272,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     const float drho_ij = pi->rho - pj->rho;
     const float dx_ij = pi->x[j] - pj->x[j];
 
-    pi->rho_gradient[j] +=
-        mj * drho_ij * dx_ij * wi_dx * r_inv;
+    pi->rho_gradient[j] += mj * drho_ij * dx_ij * wi_dx * r_inv;
   }
 }
 

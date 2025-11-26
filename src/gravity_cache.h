@@ -147,7 +147,7 @@ static INLINE void gravity_cache_init(struct gravity_cache *c,
                       sizeBytesF);
   e += swift_memalign("gravity_cache", (void **)&c->pot, SWIFT_CACHE_ALIGNMENT,
                       sizeBytesF);
-  e += swift_memalign("gravity_cache", (void **)&c->total_mass, 
+  e += swift_memalign("gravity_cache", (void **)&c->total_mass,
                       SWIFT_CACHE_ALIGNMENT, sizeBytesF);
   e += swift_memalign("gravity_cache", (void **)&c->active,
                       SWIFT_CACHE_ALIGNMENT, sizeBytesI);
@@ -179,7 +179,7 @@ INLINE static void gravity_cache_zero_output(struct gravity_cache *c,
   swift_declare_aligned_ptr(float, a_y, c->a_y, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, a_z, c->a_z, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, pot, c->pot, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, total_mass, c->total_mass, 
+  swift_declare_aligned_ptr(float, total_mass, c->total_mass,
                             SWIFT_CACHE_ALIGNMENT);
   swift_assume_size(gcount_padded, VEC_SIZE);
 
@@ -524,7 +524,7 @@ INLINE static void gravity_cache_write_back(const struct gravity_cache *c,
   swift_declare_aligned_ptr(float, a_y, c->a_y, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, a_z, c->a_z, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, pot, c->pot, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, total_mass, c->total_mass, 
+  swift_declare_aligned_ptr(float, total_mass, c->total_mass,
                             SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(int, active, c->active, SWIFT_CACHE_ALIGNMENT);
 

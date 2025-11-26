@@ -38,7 +38,7 @@
  */
 __attribute__((always_inline)) INLINE static float
 black_hole_gravitational_radius(float mass,
-                                const struct phys_const* constants) {
+                                const struct phys_const *constants) {
 
   const float r_G =
       mass * constants->const_newton_G /
@@ -121,8 +121,8 @@ __attribute__((always_inline)) INLINE static float black_hole_isco_radius(
  * @param constants Physical constants (in internal units).
  */
 __attribute__((always_inline)) INLINE static float
-black_hole_angular_momentum_magnitude(struct bpart* bp,
-                                      const struct phys_const* constants) {
+black_hole_angular_momentum_magnitude(struct bpart *bp,
+                                      const struct phys_const *constants) {
 
   const float J_BH =
       fabs(bp->subgrid_mass * bp->subgrid_mass * bp->spin *
@@ -164,8 +164,8 @@ black_hole_angular_momentum_magnitude(struct bpart* bp,
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static float black_hole_warp_radius(
-    struct bpart* bp, const struct phys_const* constants,
-    const struct black_holes_props* props) {
+    struct bpart *bp, const struct phys_const *constants,
+    const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
      to this variable. */
@@ -249,7 +249,7 @@ __attribute__((always_inline)) INLINE static float black_hole_warp_radius(
   }
 #endif
 
-  return Rw=0;
+  return Rw = 0;
 }
 
 /**
@@ -278,8 +278,8 @@ __attribute__((always_inline)) INLINE static float black_hole_warp_radius(
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
-    struct bpart* bp, const struct phys_const* constants,
-    const struct black_holes_props* props) {
+    struct bpart *bp, const struct phys_const *constants,
+    const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
      to this variable. */
@@ -290,8 +290,7 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
       black_hole_gravitational_radius(bp->subgrid_mass, constants);
 
   /* Start branching depending on which accretion mode the BH is in */
-  if ((bp->state == BH_states_adaf) ||
-      (bp->state == BH_states_slim_disk)) {
+  if ((bp->state == BH_states_adaf) || (bp->state == BH_states_slim_disk)) {
 
     /* Define v_0, the only factor which differs between thick and slim
        disc */
@@ -347,7 +346,7 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
   }
 #endif
 
-  return Mw=0;
+  return Mw = 0;
 }
 
 /**
@@ -371,17 +370,16 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static double
-black_hole_warp_angular_momentum(struct bpart* bp,
-                                 const struct phys_const* constants,
-                                 const struct black_holes_props* props) {
+black_hole_warp_angular_momentum(struct bpart *bp,
+                                 const struct phys_const *constants,
+                                 const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
      to this variable. */
   double Jw = -1.;
 
   /* Start branching depending on which accretion mode the BH is in */
-  if ((bp->state == BH_states_adaf) ||
-      (bp->state == BH_states_slim_disk)) {
+  if ((bp->state == BH_states_adaf) || (bp->state == BH_states_slim_disk)) {
 
     /* Get numerical constants for radial and tangential velocities for the
        thick and slim disk, which factor into the surface density and spec.
@@ -431,7 +429,7 @@ black_hole_warp_angular_momentum(struct bpart* bp,
   }
 #endif
 
-  return Jw=0;
+  return Jw = 0;
 }
 
 /**
@@ -456,8 +454,6 @@ __attribute__((always_inline)) INLINE static float eps_Novikov_Thorne(float a) {
   return 1. - sqrtf(1. - 2.f / (3.f * black_hole_isco_radius(a)));
 }
 
-
-
 /* ---------------------------------------------------- */
 /* ---------- additional rad efficiencies skipped ----- */
 /* ---------------------------------------------------- */
@@ -479,8 +475,8 @@ __attribute__((always_inline)) INLINE static float eps_Novikov_Thorne(float a) {
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static float l_acc(
-    struct bpart* bp, const struct phys_const* constants,
-    const struct black_holes_props* props) {
+    struct bpart *bp, const struct phys_const *constants,
+    const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
      to this variable. */
@@ -501,8 +497,7 @@ __attribute__((always_inline)) INLINE static float l_acc(
       (1.f + 2.f * sqrtf(3.f * black_hole_isco_radius(bp->spin) - 2.f));
 
   /* Branch depending on which accretion mode the BH is in */
-  if ((bp->state == BH_states_adaf) ||
-      (bp->state == BH_states_slim_disk)) {
+  if ((bp->state == BH_states_adaf) || (bp->state == BH_states_slim_disk)) {
     L = 0.45f * L_ISCO;
   } else {
     L = L_ISCO;
@@ -519,7 +514,6 @@ __attribute__((always_inline)) INLINE static float l_acc(
 
   return L;
 }
-
 
 /**
  * @brief Compute the evolution of the spin of a BH particle. This
@@ -541,8 +535,8 @@ __attribute__((always_inline)) INLINE static float l_acc(
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
-    struct bpart* bp, const struct phys_const* constants,
-    const struct black_holes_props* props) {
+    struct bpart *bp, const struct phys_const *constants,
+    const struct black_holes_props *props) {
   const float a = bp->spin;
 
   if ((a == 0.f) || (a < -0.9981f) || (a > 0.9981f)) {
@@ -569,7 +563,6 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
   } else if (bp->state == BH_states_slim_disk) { /* ||
              (bp->state == BH_states_quasar) {  &&
               props->use_jets_in_thin_disc)) { */
-
 
     /* Fitting function from Ricarte et al. (2023). */
     float Eddington_ratio =
@@ -603,6 +596,6 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
     return 0;
   }
 }
- 
+
 /* still mergers and GW */
 #endif /* SWIFT_SPIN_JET_BLACK_HOLES_SPIN_H */

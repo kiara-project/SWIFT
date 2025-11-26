@@ -488,13 +488,13 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   }
 
   if (dt_cfl < hydro_properties->dt_min) {
-    error("dt_hydro below minimum of dt_min=%g! \n"
-          "dt_cfl=%g \n"
-          "pid=%lld \n"
-          "h=%g \n"
-          "u=%g \n",
-          hydro_properties->dt_min,
-          dt_cfl, p->id, p->h, p->u);
+    error(
+        "dt_hydro below minimum of dt_min=%g! \n"
+        "dt_cfl=%g \n"
+        "pid=%lld \n"
+        "h=%g \n"
+        "u=%g \n",
+        hydro_properties->dt_min, dt_cfl, p->id, p->h, p->u);
   }
 
   return dt_cfl;
@@ -666,7 +666,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
  * @brief Resets the variables that are required for a gradient calculation.
  *
  * This function is called after hydro_prepare_gradient.
-  *
+ *
  * @param p The particle to act upon.
  * @param xp The extended particle data to act upon.
  * @param cosmo The cosmological model.
@@ -869,7 +869,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_acceleration(
  * @param p The particle.
  * @param xp The extended data of this particle.
  * @param cosmo The cosmological model.
-* @param pressure_floor The #pressure_floor_props used.
+ * @param pressure_floor The #pressure_floor_props used.
  */
 __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
     struct part *restrict p, const struct xpart *restrict xp,
@@ -907,7 +907,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
  * @param cosmo The cosmological model.
  * @param hydro_props The properties of the hydro scheme.
  * @param floor_props The properties of the entropy floor.
-* @param pressure_floor The properties of the pressure floor.
+ * @param pressure_floor The properties of the pressure floor.
  */
 __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     struct part *restrict p, const struct xpart *restrict xp, float dt_drift,
@@ -1049,7 +1049,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
  * @param xp The extended particle to act upon
  * @param cosmo The cosmological model.
  * @param hydro_props The constants used in the scheme.
-* @param pressure_floor The properties of the pressure floor.
+ * @param pressure_floor The properties of the pressure floor.
  */
 __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
     struct part *restrict p, struct xpart *restrict xp,
@@ -1104,7 +1104,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->decoupled = 0;
   p->to_be_decoupled = 0;
   p->to_be_recoupled = 0;
-
 }
 
 /**

@@ -2,7 +2,7 @@
  * This file is part of SWIFT.
  * Copyright (c) 2022 Bert Vandenbroucke (bert.vandenbroucke@gmail.com)
  *               2022 Doug Rennehan (douglas.rennehan@gmail.com)
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
@@ -21,6 +21,6 @@
 #define SWIFT_FEEDBACK_SIMBA_DEBUG_H
 
 __attribute__((always_inline)) INLINE static void feedback_debug_particle(
-    const struct part* p, const struct xpart* xp) {}
+    const struct part *p, const struct xpart *xp) {}
 
 #endif /* SWIFT_FEEDBACK_SIMBA_DEBUG_H */

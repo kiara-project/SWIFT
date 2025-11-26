@@ -594,7 +594,8 @@ void runner_do_black_holes_density_ghost(struct runner *r, struct cell *c,
   const float eps = e->black_holes_properties->h_tolerance;
   const float black_holes_eta_dim =
       pow_dimension(e->black_holes_properties->eta_neighbours);
-  const int max_smoothing_iter = e->black_holes_properties->max_smoothing_iterations;
+  const int max_smoothing_iter =
+      e->black_holes_properties->max_smoothing_iterations;
   int redo = 0, bcount = 0;
 
   /* Running value of the maximal smoothing length */

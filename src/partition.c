@@ -1445,7 +1445,7 @@ void partition_gather_weights(void *map_data, int num_elements,
         t->type == task_type_grav_down || t->type == task_type_end_grav_force ||
         t->type == task_type_cooling || t->type == task_type_star_formation ||
         /* Rennehan: decoupling task */
-        t->type == task_type_hydro_decoupling || 
+        t->type == task_type_hydro_decoupling ||
         /* Rennehan: recoupling task */
         t->type == task_type_hydro_recoupling ||
         t->type == task_type_star_formation_sink ||
