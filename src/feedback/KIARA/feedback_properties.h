@@ -216,9 +216,6 @@ struct feedback_props {
   /*! The power-law slope of eta above FIRE_eta_break */
   float FIRE_eta_upper_slope;
 
-  /*! The power-law slope of eta below FIRE_eta_break at z>6 */
-  float FIRE_eta_lower_slope_EOR;
-
   /*! The wind speed of stellar feedback suppressed above this z */
   float wind_velocity_suppression_redshift;
 

@@ -1705,9 +1705,6 @@ void feedback_props_init(struct feedback_props *fp,
       parser_get_param_double(params, "KIARAFeedback:FIRE_eta_lower_slope");
   fp->FIRE_eta_upper_slope =
       parser_get_param_double(params, "KIARAFeedback:FIRE_eta_upper_slope");
-  fp->FIRE_eta_lower_slope_EOR = parser_get_opt_param_double(
-      params, "KIARAFeedback:FIRE_eta_lower_slope_EOR",
-      fp->FIRE_eta_lower_slope);
 
   fp->wind_velocity_suppression_redshift = parser_get_opt_param_float(
       params, "KIARAFeedback:wind_velocity_suppression_redshift", 0.f);
@@ -1829,8 +1826,6 @@ void feedback_props_init(struct feedback_props *fp,
     message("Feedback FIRE eta break: %g", fp->FIRE_eta_break);
     message("Feedback FIRE eta upper slope: %g", fp->FIRE_eta_upper_slope);
     message("Feedback FIRE eta lower slope: %g", fp->FIRE_eta_lower_slope);
-    message("Feedback FIRE eta lower slope at z>6: %g",
-            fp->FIRE_eta_lower_slope_EOR);
 
     if (fabs(fp->wind_velocity_suppression_redshift) != 0.f) {
       message(
