@@ -222,7 +222,7 @@ void test(void) {
   runner_iact_force(r2, dx, pi.h, pj.h, &pi, &pj, a, H);
   runner_iact_mhd_force(r2, dx, pi.h, pj.h, &pi, &pj, mu_0, a, H);
   runner_iact_diffusion(r2, dx, pi.h, pj.h, &pi, &pj, a, H, time_base,
-                        ti_current, /*cosmo=*/NULL, /*with_cosmology=*/0,
+                        ti_current, /*cosmo=*/NULL, /*phys_const=*/NULL, /*with_cosmology=*/0,
                         /*chem_data=*/NULL);
   runner_iact_timebin(r2, dx, pi.h, pj.h, &pi, &pj, a, H);
 
@@ -230,7 +230,7 @@ void test(void) {
   runner_iact_nonsym_force(r2, dx, pi2.h, pj2.h, &pi2, &pj2, a, H);
   runner_iact_nonsym_mhd_force(r2, dx, pi2.h, pj2.h, &pi2, &pj2, mu_0, a, H);
   runner_iact_nonsym_diffusion(r2, dx, pi2.h, pj2.h, &pi2, &pj2, a, H,
-                               time_base, ti_current, /*cosmo=*/NULL,
+                               time_base, ti_current, /*cosmo=*/NULL, /*phys_const=*/NULL,
                                /*with_cosmology=*/0, /*chem_data=*/NULL);
   runner_iact_nonsym_timebin(r2, dx, pi2.h, pj2.h, &pi2, &pj2, a, H);
   dx[0] = -dx[0];
@@ -239,7 +239,7 @@ void test(void) {
   runner_iact_nonsym_force(r2, dx, pj2.h, pi2.h, &pj2, &pi2, a, H);
   runner_iact_nonsym_mhd_force(r2, dx, pj2.h, pi2.h, &pj2, &pi2, mu_0, a, H);
   runner_iact_nonsym_diffusion(r2, dx, pj2.h, pi2.h, &pj2, &pi2, a, H,
-                               time_base, ti_current, /*cosmo=*/NULL,
+                               time_base, ti_current, /*cosmo=*/NULL, /*phys_const=*/NULL,
                                /*with_cosmology=*/0, /*chem_data=*/NULL);
   runner_iact_nonsym_timebin(r2, dx, pj2.h, pi2.h, &pj2, &pi2, a, H);
 
