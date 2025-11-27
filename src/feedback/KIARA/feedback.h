@@ -386,8 +386,9 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
 
   /* Dutton+11 eq 6: log (M* / 1e10) = -0.61 + 4.51 log (vdisk / 100) */
   const float v_circ_km_s =
-      100.f * powf(4.0738f * galaxy_stellar_mass_Msun * 1.e-10f, 0.221729f) *
-      pow(cosmo->H / cosmo->H0, 1.f / 3.f);
+    100.f * powf(4.0738f * galaxy_stellar_mass_Msun * 1.e-10f, 0.221729f);
+    // *
+    //pow(cosmo->H / cosmo->H0, 1.f / 3.f);
 
   const float rand_for_scatter =
       random_unit_interval(sp_id, ti_current, random_number_stellar_feedback_2);
