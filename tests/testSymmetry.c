@@ -45,6 +45,8 @@ void test(void) {
   const float mu_0 = 4. * M_PI;
   const integertime_t ti_current = 1;
   const double time_base = 1e-5;
+  struct chemistry_global_data cd;
+  bzero(&cd, sizeof(struct chemistry_global_data));
 
   /* Create two random particles (don't do this at home !) */
   struct part pi, pj;
@@ -221,17 +223,18 @@ void test(void) {
   /* Call the symmetric version */
   runner_iact_force(r2, dx, pi.h, pj.h, &pi, &pj, a, H);
   runner_iact_mhd_force(r2, dx, pi.h, pj.h, &pi, &pj, mu_0, a, H);
-  runner_iact_diffusion(r2, dx, pi.h, pj.h, &pi, &pj, a, H, time_base,
-                        ti_current, /*cosmo=*/NULL, /*phys_const=*/NULL, /*with_cosmology=*/0,
-                        /*chem_data=*/NULL);
+  runner_iact_diffusion(r2, dx, pi.h, pj.h, &pi, &pj, &xpi, &xpj, a, H,
+                        time_base, ti_current, /*cosmo=*/NULL,
+                        /*with_cosmology=*/0, /*phys_const=*/NULL,
+                        /*chem_data=*/&cd);
   runner_iact_timebin(r2, dx, pi.h, pj.h, &pi, &pj, a, H);
 
   /* Call the non-symmetric version */
   runner_iact_nonsym_force(r2, dx, pi2.h, pj2.h, &pi2, &pj2, a, H);
   runner_iact_nonsym_mhd_force(r2, dx, pi2.h, pj2.h, &pi2, &pj2, mu_0, a, H);
   runner_iact_nonsym_diffusion(r2, dx, pi2.h, pj2.h, &pi2, &pj2, a, H,
-                               time_base, ti_current, /*cosmo=*/NULL, /*phys_const=*/NULL,
-                               /*with_cosmology=*/0, /*chem_data=*/NULL);
+                               time_base, ti_current, /*cosmo=*/NULL,
+                               /*with_cosmology=*/0, /*chem_data=*/&cd);
   runner_iact_nonsym_timebin(r2, dx, pi2.h, pj2.h, &pi2, &pj2, a, H);
   dx[0] = -dx[0];
   dx[1] = -dx[1];
@@ -239,8 +242,8 @@ void test(void) {
   runner_iact_nonsym_force(r2, dx, pj2.h, pi2.h, &pj2, &pi2, a, H);
   runner_iact_nonsym_mhd_force(r2, dx, pj2.h, pi2.h, &pj2, &pi2, mu_0, a, H);
   runner_iact_nonsym_diffusion(r2, dx, pj2.h, pi2.h, &pj2, &pi2, a, H,
-                               time_base, ti_current, /*cosmo=*/NULL, /*phys_const=*/NULL,
-                               /*with_cosmology=*/0, /*chem_data=*/NULL);
+                               time_base, ti_current, /*cosmo=*/NULL,
+                               /*with_cosmology=*/0, /*chem_data=*/&cd);
   runner_iact_nonsym_timebin(r2, dx, pj2.h, pi2.h, &pj2, &pi2, a, H);
 
 /* Check that the particles are the same */
