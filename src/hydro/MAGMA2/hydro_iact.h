@@ -665,6 +665,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
       G_rad_ij[1] = dx[1];
       G_rad_ij[2] = dx[2];
     }
+
+    G_rad_ij_norm = hydro_vec3_norm(G_rad_ij);
   }
 
   /* MAGMA2-style gradients (Matrix-Inversion-2 SPH) */
