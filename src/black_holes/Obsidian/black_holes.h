@@ -1027,7 +1027,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     if (gas_c > 0.) {
       const double gas_c_phys_inv = 1. / (cosmo->a_factor_sound_speed * gas_c);
 
-      Bondi_rate = 4. * M_PI * G * G * BH_mass * BH_mass * gas_rho_phys *
+      float BH_mass_bondi = BH_mass;
+      if (BH_mass_bondi > props->bondi_BH_mass_cap) 
+	BH_mass_bondi = props->bondi_BH_mass_cap;
+
+      Bondi_rate = 4. * M_PI * G * G * BH_mass_bondi * BH_mass_bondi * gas_rho_phys *
                    gas_c_phys_inv * gas_c_phys_inv * gas_c_phys_inv;
 
       /* In the case of standard Bondi, we limit it to the Eddington rate */
@@ -1231,7 +1235,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
         const float eta_break = props->FIRE_eta_break;
         const float eta_lower_slope = props->FIRE_eta_lower_slope;
         const float eta_upper_slope = props->FIRE_eta_upper_slope;
-        const float eta_lower_slope_EOR = props->FIRE_eta_lower_slope_EOR;
+        const float eta_lower_slope_EOR = props->FIRE_eta_lower_slope;
         const float eta_minmass = props->minimum_galaxy_stellar_mass;
         const float eta_suppress = props->wind_eta_suppression_redshift;
 

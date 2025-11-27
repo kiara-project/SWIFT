@@ -527,7 +527,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   const float FIRE_eta_lower_slope = feedback_props->FIRE_eta_lower_slope;
   const float FIRE_eta_upper_slope = feedback_props->FIRE_eta_upper_slope;
   const float FIRE_eta_lower_slope_EOR =
-      feedback_props->FIRE_eta_lower_slope_EOR;
+      feedback_props->FIRE_eta_lower_slope;
   const float wind_velocity_suppression_redshift =
       feedback_props->wind_velocity_suppression_redshift;
 

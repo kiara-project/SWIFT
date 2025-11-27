@@ -106,6 +106,9 @@ struct black_holes_props {
    */
   float f_Edd_Bondi_maximum;
 
+  /*! Maximum BH mass to use in calculating Bondi rate */
+  float bondi_BH_mass_cap;
+
   /*! Minimum gas particle mass in nibbling mode */
   float min_gas_mass_for_nibbling;
 
@@ -449,9 +452,6 @@ struct black_holes_props {
   /*! The power-law slope of eta above FIRE_eta_break */
   float FIRE_eta_upper_slope;
 
-  /*! The power-law slope of eta below FIRE_eta_break at z>6 */
-  float FIRE_eta_lower_slope_EOR;
-
   /*! The minimum galaxy stellar mass in internal units */
   float minimum_galaxy_stellar_mass;
 
@@ -610,8 +610,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_lower_slope");
     bp->FIRE_eta_upper_slope =
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_upper_slope");
-    bp->FIRE_eta_lower_slope_EOR = parser_get_param_float(
-        params, "KIARAFeedback:FIRE_eta_lower_slope_EOR");
     bp->minimum_galaxy_stellar_mass = parser_get_param_float(
         params, "KIARAFeedback:minimum_galaxy_stellar_mass_Msun");
     bp->minimum_galaxy_stellar_mass /= bp->mass_to_solar_mass;
@@ -624,6 +622,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->f_Edd_Bondi_maximum = parser_get_opt_param_float(
       params, "ObsidianAGN:max_bondi_eddington_fraction", 1.f);
+
+  bp->bondi_BH_mass_cap = parser_get_opt_param_float(
+      params, "ObsidianAGN:bondi_BH_mass_cap_Msun", FLT_MAX);
+  bp->bondi_BH_mass_cap /= bp->mass_to_solar_mass;
 
   bp->fixed_T_above_EoS_factor = exp10(
       parser_get_param_float(params, "ObsidianAGN:fixed_T_above_EoS_dex"));
@@ -1110,7 +1112,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     message("Black holes relative tolerance in h: %.5f (+/- %.4f neighbours).",
             bp->h_tolerance, bp->delta_neighbours);
 
-    message("Black hole model is Rennehan+24");
+    message("Black hole model is Obsidian (Rennehan+24, with modifications for KIARA)");
+    message("Black hole torque accretion efficiency is %g",
+            bp->torque_accretion_norm);
+    message("Black hole Bondi accretion alpha is %g",
+            bp->bondi_alpha);
+    message("Black hole Bondi accretion BH mass cap is %g Msun",
+            bp->bondi_BH_mass_cap * bp->mass_to_solar_mass);
     message("Black hole jet velocity is %g km/s",
             bp->jet_velocity / bp->kms_to_internal);
     if (bp->jet_loading_type == BH_jet_momentum_loaded) {
