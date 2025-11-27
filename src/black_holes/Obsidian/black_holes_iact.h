@@ -916,6 +916,7 @@ runner_iact_nonsym_bh_gas_feedback(
     dt = cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
   } else {
     error("Kiara BH model can only be run with cosmology.");
+    dt = 0.;
   }
 
   /* Save gas density and entropy before feedback */

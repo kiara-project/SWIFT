@@ -20,6 +20,7 @@
 #define SWIFT_SIMBA_STARS_H
 
 #include "exp10.h"
+#include "feedback_properties.h"
 
 #include <float.h>
 
