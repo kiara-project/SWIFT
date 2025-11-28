@@ -48,7 +48,7 @@ InitialConditions:
   
 # Parameters for the hydrodynamics scheme
 SPH:
-  resolution_eta:        1.2348   # Target smoothing length in units of the mean inter-particle separation (1.2348 == 48Ngbs with the cubic spline kernel).
+  resolution_eta:        1.56   # Target smoothing length in units of the mean inter-particle separation (1.2348 == 48Ngbs with the cubic spline kernel).
   CFL_condition:         0.1      # Courant-Friedrich-Levy condition for time integration.
   h_min_ratio:           0.1      # Minimal smoothing in units of softening.
   h_max:                 10.
@@ -59,7 +59,7 @@ Stars:
   resolution_eta:        1.1642  # Target smoothing length in units of the mean inter-particle separation
   h_tolerance:           7e-3
   overwrite_birth_time:    1     # Make sure the stars in the ICs do not do any feedback
-  birth_time:             -1.    # by setting all of their birth times to -1  
+  birth_time:             1000.    # by setting all of their birth times to -1  
   timestep_age_threshold_Myr: 10.   # Age at which stars switch from young to old (in Mega-years).
   max_timestep_young_Myr:     0.1   # Maximal time-step length of young stars (in Mega-years).
   max_timestep_old_Myr:       1.0   # Maximal time-step length of old stars (in Mega-years).
@@ -184,3 +184,110 @@ EAGLEFeedback:
   SNII_yield_factor_Magnesium:          2.0             # (Optional) Correction factor to apply to the Magnesium yield from the SNII channel.
   SNII_yield_factor_Silicon:            1.0             # (Optional) Correction factor to apply to the Silicon yield from the SNII channel.
   SNII_yield_factor_Iron:               0.5             # (Optional) Correction factor to apply to the Iron yield from the SNII channel.
+
+KIARAChemistry:
+  diffusion_on:                 1                       # Turns on metal mixing
+  diffusion_coefficient:        0.236                   # 0.472 is default value from Rennehan (2021), they quote C*h^2*|S| not (C*h)^2|S|
+  use_firehose_wind_model:      1                       # Turns on Firehose wind model (tracks outflow stream/ambient mixing when "decoupled")
+  firehose_nh_ambient_max_cgs:  1.e-3
+  firehose_temp_floor:          1.e3
+  firehose_recoupling_mach:     1.0
+  firehose_recoupling_u_factor: 3.0
+  firehose_recoupling_fmix:     0.899
+  firehose_max_velocity:        2000.0
+  firehose_max_fmix_per_step:   0.1
+  init_abundance_metal:         0.0129
+  init_abundance_Hydrogen:      0.7065
+  init_abundance_Helium:        0.2806
+  init_abundance_Carbon:        0.00207
+  init_abundance_Nitrogen:      0.000836
+  init_abundance_Oxygen:        0.00549
+  init_abundance_Neon:          0.00141
+  init_abundance_Magnesium:     0.000591
+  init_abundance_Silicon:       0.000683
+  init_abundance_Sulfur:        1.e-5
+  init_abundance_Calcium:       1.e-5
+  init_abundance_Iron:          0.0011
+
+# SIMBA Cooling using Grackle-3.2+
+KIARACooling:
+  cloudy_table:                 CloudyData_UVB=FG2011_shielded.h5  # Name of the Cloudy Table (available on the grackle bitbucket repository)
+  with_UV_background:           1                       # Enable or not the UV background
+  redshift:                     -1                      # Redshift to use (-1 means time based redshift)
+  with_metal_cooling:           1                       # Enable or not the metal cooling
+  provide_volumetric_heating_rates: 0                   # Provide volumetric heating rates to grackle
+  provide_specific_heating_rates: 1                     # Provide specific heating rates to grackle; turning this off ignores adiabatic dudt
+  self_shielding_method:        4                       # Grackle (<= 3) self shielding method; 3 (default) is advised.
+  ism_adiabatic_heating_method: 1                       # 0=ignore adiabatic du/dt, 1=evolve in grackle, 2=use to evaporate cold ism
+  grackle_max_steps:            300                     # maximum number of iterations for a single step in Grackle
+  timestep_accuracy:            0.2                     # max change in energy, HI, or electron density in a single timestep
+  grackle_damping_interval:     0                       # e-folding of damping subcycle iterations when substep too small (0=off)
+  thermal_time:                 0                       # Don't cool again within this many Myr
+  use_grackle_dust_evol:        1                       # turn on dust model, only in KIARA (will be turned off for SIMBA's GRACKLE_MODE==1)
+  dust_destruction_eff:         0.3                     # efficiency of dust destruction by shocks = destroyed mass/shocked mass
+  dust_sne_coeff:               1.0                     # SN energy / 1.e51 erg
+  dust_sne_shockspeed:          100.0                   # km/s
+  dust_grainsize:               0.1                     # grain size in micron
+  dust_growth_densref:          3.346e-22               # g cm^-3 physical
+  dust_growth_tauref:           1.0                     # Gyr, growth timescale at densref
+  cold_ISM_frac:                0.5                     # Fraction of particle mass in cold phase eligible for SF
+  G0_computation_method:        1                       # For Grackle subgrid SF compate G0 via: 1=Local SFR density; 2=Global sSFR; 3=sSFR when nonzero, otherwise local; 4=scaled to local SNe rate; 5=mix of 2+4
+  max_subgrid_density_g_p_cm3:  1.673e-19               # z=0 maximum comoving density sent to Grackle in subgrid model, in cgs units
+  entropy_floor_margin_dex:     0.5                     # log interval above entropy floor allowed to be in subgrid model 
+  self_enrichment_metallicity:  1.e-7                   # when below this metallicity, self-enrich from own star formation.
+
+# KIARA star formation parameters
+KIARAStarFormation:
+  SF_model:                          WadaNorman         # SchmidtLaw, WadaNorman, or lognormal
+  min_over_density:                  100.0              # The over-density above which star-formation is allowed.
+  threshold_temperature_K :          1000.0             # When using subgrid-based SF threshold, subgrid temperature below which gas is star-forming if also above the density limit.
+  threshold_number_density_H_p_cm3:  0.13              # When using subgrid-based SF threshold, subgrid number density above which gas is star-forming if also below the temperature limit.
+  H2_model:                          Grackle            # 'Thresh' sets fH2=1; 'KMT' computes fH2 from KG11; 'Grackle' uses Grackle-computed fH2
+  lognormal_critical_density:        1.e3               # For WN/lognormal: number density (cgs) above which SF occurs
+  lognormal_epsilon:                 1.0              # 
+  wn07_epsc_method:                  4                  # method to estimate SF eff epsc from galaxy props in WadaNorman model
+
+# Parameters for the SIMBA "equation of state"
+SIMBAEntropyFloor:
+  Jeans_density_threshold_H_p_cm3:      0.13            # Physical density above which the SIMBA Jeans limiter entropy floor kicks in expressed in Hydrogen atoms per cm^3.
+  Jeans_over_density_threshold:         100.            # Overdensity above which the SIMBA Jeans limiter entropy floor can kick in.
+  Jeans_temperature_norm_K:             8000            # Temperature of the SIMBA Jeans limiter entropy floor at the density threshold expressed in Kelvin.
+  Jeans_gamma_effective:                1.3333          # Slope the of the SIMBA Jeans limiter entropy floor
+  Cool_density_threshold_H_p_cm3:       0.13e-3         # Physical density for the SIMBA Cool limiter entropy floor kicks in expressed in Hydrogen atoms per cm^3, between this value up to Jeans_density_threshold_H_p_cm3.
+  Cool_over_density_threshold:          1.              # Overdensity above which the SIMBA Cool limiter entropy floor can kick in.
+  Cool_temperature_norm_K:              100             # Temperature of the SIMBA Cool limiter entropy floor at the density threshold expressed in Kelvin. (NOTE: This is below the min T and hence this floor does nothing)
+  Cool_gamma_effective:                 1.0             # Slope the of the SIMBA Cool limiter entropy floor
+
+# Kiara feedback model (based on EAGLE-kinetic)
+KIARAFeedback:
+  tables_path:                          ./chem5         #
+  imf:                                  1               # IMF: 0 = Kroupa, 1 = Chabrier, >=2 Not implemented
+  use_HN_energy_from_chem5:             0               # Use hypernovae energy directly from star particle to gas
+  use_SNII_energy_from_chem5:           0               # Use SNII energy directly from star particle to gas
+  use_SNIa_energy_from_chem5:           500             # Use SNIa energy directly from star particle to gas. If >10, use SNIa energy only if age < use_SNIa_energy_from_chem5 in Myr
+  dust_boost_factor:                    1.
+  stellar_enrichment_frequency:         0.0             # Factor in units of current stellar age above which to recompute stellar evol
+  metal_yield_multiplier:               1.5            # Factor to multiply all chem5 metal yields
+  kick_direction_flag:                  2               # Direction of launch: 0=random, 1=L_gas(=v x a), 2=outwards
+  FIRE_velocity_normalization:          3.0             # Normalization from Muratov
+  FIRE_velocity_slope:                  0.12            # Muratov+15: 0.12
+  kick_velocity_scatter:                0.1             #
+  FIRE_eta_normalization:               9.0            #
+  FIRE_eta_break_Msun:                  5.2e9           #
+  FIRE_eta_lower_slope:                 -0.4            # Angles-Alcazar+17: -0.317
+  FIRE_eta_upper_slope:                 -0.761          # Angles-Alcazar+17: -0.761
+  FIRE_eta_lower_slope_EOR:             -0.4            # Angles-Alcazar+17: -0.317
+  wind_velocity_suppression_redshift:   -8.            # above this redshift, FIRE_velocity_normalization is attenuated by (1+z)^2
+  wind_eta_suppression_redshift:        -8.
+  metal_dependent_vwind:                2               # 0=Off, 1=vwind boost, 2=eta boost, 3=both boost
+  cold_wind_temperature_K:              8000            #
+  hot_wind_temperature_K:               8000            # converted to K from erg/g released by 1 SN per ~100Mo
+  minimum_galaxy_stellar_mass_Msun:     5.8e8           # floor for M* to use in FIRE wind formula
+  wind_decouple_time_factor:            0.1            # fraction of Hubble time at launch to decouple (max)
+  recouple_ism_density_nH_cgs:          0.1            # ISM threshold density for purposes of recoupling (cgs)
+  recouple_density_factor:              0.001            # Factor below recouple_ism_density_cgs at which to recouple
+  SNII_energy_multiplier:               1.0
+  stellar_evolution_age_cut_Gyr:        0.5             # Stellar age in Gyr above which the enrichment is down-sampled.
+  stellar_evolution_sampling_rate:      10              # Number of time-steps in-between two enrichment events for a star above the age threshold.
+  early_stellar_feedback_alpha:         0.8             # ESF model of Keller+22. Should be [0.5-1]. 0=off
+  SNIa_add_heat_to_ISM:                 1

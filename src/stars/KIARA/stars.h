@@ -313,6 +313,11 @@ INLINE static void stars_get_luminosities(
   else
     age = time - sp->birth_time;
 
+  if (age < 0) {
+    bzero(luminosities, luminosity_bands_count*sizeof(float));
+    return;
+  }
+  
   /* Convert to the units of the tables */
   const float mass_Msun = mass / phys_const->const_solar_mass;
   const float age_Gyr = age / phys_const->const_year / 1e9;

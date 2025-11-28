@@ -56,7 +56,7 @@ INLINE static void black_holes_read_particles(struct bpart *bparts,
                                   UNIT_CONV_NO_UNITS, bparts, id);
   num++;
 
-  list[num] = io_make_input_field("SmoothingLengths", FLOAT, 1, OPTIONAL,
+  list[num] = io_make_input_field("SmoothingLength", FLOAT, 1, OPTIONAL,
                                   UNIT_CONV_LENGTH, bparts, h);
   num++;
 
