@@ -323,13 +323,13 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
   if (pj->feedback_data.kick_id == si->id) {
 
     /* Need time-step for decoupling */
-    const integertime_t ti_step = get_integer_timestep(pj->time_bin);
-    const integertime_t ti_begin =
-        get_integer_time_begin(ti_current - 1, pj->time_bin);
+    //const integertime_t ti_step = get_integer_timestep(pj->time_bin);
+    //const integertime_t ti_begin =
+    //    get_integer_time_begin(ti_current - 1, pj->time_bin);
 
     /* TODO: Requires always having with_cosmology! */
-    const double dt =
-        cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+    double dt = 1e-6;
+    //dt = cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
 
     /* Compute velocity and KE of wind event.
      * Note that xpj->v_full = a^2 * dx/dt, with x the comoving
@@ -444,8 +444,8 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     if (fb_props->wind_decouple_time_factor > 0.f) {
       /* Decouple the particles from the hydrodynamics */
       pj->feedback_data.decoupling_delay_time =
-          dt + fb_props->wind_decouple_time_factor *
-                   cosmology_get_time_since_big_bang(cosmo, cosmo->a);
+	dt + fb_props->wind_decouple_time_factor * 10.;
+      //cosmology_get_time_since_big_bang(cosmo, cosmo->a);
       pj->decoupled = 1;
     } else {
       pj->feedback_data.decoupling_delay_time = 0.f;

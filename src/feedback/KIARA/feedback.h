@@ -74,7 +74,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
   p->cooling_data.subgrid_fcold = 0.f;
 
   /* Make sure to sync the newly coupled part on the timeline */
-  timestep_sync_part(p);
+  // timestep_sync_part(p);
 }
 
 /**
@@ -93,6 +93,9 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     const struct feedback_props *fb_props) {
 
   if (p->decoupled) {
+
+    if (p->id == ICHECK) message("RECOUPLING!!!!! decoupled=%d", p->decoupled);
+
     const integertime_t ti_step = get_integer_timestep(p->time_bin);
     const integertime_t ti_begin =
         get_integer_time_begin(e->ti_current - 1, p->time_bin);
@@ -132,14 +135,17 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     if (recouple && p->decoupled == 1) {
       /* If it is recoupling, do one more decoupled step to set timestep etc */
       p->decoupled = 2;
+      if (p->id == ICHECK) message("RECOUPLING!!!!! set decoupled=2");
     } else if (recouple) {
       /* extra decoupled step is done, now properly recouple */
       feedback_recouple_set_flags(p, cosmo);
+      if (p->id == ICHECK) message("RECOUPLING!!!!! recouple_set_flgs");
     } else {
       /* Reset subgrid properties if decoupled for safety */
       p->cooling_data.subgrid_temp = 0.f;
       p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
       p->cooling_data.subgrid_fcold = 0.f;
+      if (p->id == ICHECK) message("RECOUPLING!!!!! reset subgrid");
     }
   }
 }
@@ -386,8 +392,9 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
 
   /* Dutton+11 eq 6: log (M* / 1e10) = -0.61 + 4.51 log (vdisk / 100) */
   const float v_circ_km_s =
-      100.f * powf(4.0738f * galaxy_stellar_mass_Msun * 1.e-10f, 0.221729f) *
-      pow(cosmo->H / cosmo->H0, 1.f / 3.f);
+      100.f * powf(4.0738f * galaxy_stellar_mass_Msun * 1.e-10f, 0.221729f);
+  // *
+  // pow(cosmo->H / cosmo->H0, 1.f / 3.f);
 
   const float rand_for_scatter =
       random_unit_interval(sp_id, ti_current, random_number_stellar_feedback_2);
@@ -442,7 +449,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     const int with_cosmology) {
 
   if (sp->feedback_data.ngb_mass <= 0.f) {
-    warning("Star %lld has zero neighbor gas density.", sp->id);
+    // warning("Star %lld has zero neighbor gas density.", sp->id);
     return;
   }
 
@@ -526,8 +533,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   const float FIRE_eta_break = feedback_props->FIRE_eta_break;
   const float FIRE_eta_lower_slope = feedback_props->FIRE_eta_lower_slope;
   const float FIRE_eta_upper_slope = feedback_props->FIRE_eta_upper_slope;
-  const float FIRE_eta_lower_slope_EOR =
-      feedback_props->FIRE_eta_lower_slope;
+  const float FIRE_eta_lower_slope_EOR = feedback_props->FIRE_eta_lower_slope;
   const float wind_velocity_suppression_redshift =
       feedback_props->wind_velocity_suppression_redshift;
 
