@@ -1302,7 +1302,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const float my_adaf_mass_limit =
       get_black_hole_adaf_mass_limit(bp, props, cosmo);
 
-  /* Switch between states depending on the */
+  /* Switch between states depending on f_edd */
   switch (bp->state) {
     case BH_states_adaf:
       if (predicted_mdot_medd > props->eddington_fraction_upper_boundary) {
@@ -1382,7 +1382,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
    * jet BZ efficiency (spin is fixed) */
   mass_rate = (1. - bp->radiative_efficiency) * bp->accretion_rate;
 
-  /* This is used for X-ray feedback later */
+  /* This is used for jet feedback later */
   bp->radiative_luminosity = luminosity;
 
 #ifdef OBSIDIAN_DEBUG_CHECKS
@@ -1442,7 +1442,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   }
 
   if (bp->state == BH_states_adaf ||
-      (props->slim_disk_jet_active && bp->state == BH_states_slim_disk)) {
+      (props->slim_disk_jet_active && bp->state == BH_states_slim_disk) ||
+      (bp->radiative_luminosity > props->lum_thresh_always_jet &&
+      props->lum_thresh_always_jet > 0.f)) {
 
     float jet_velocity = black_hole_compute_jet_velocity(bp, cosmo, props);
 
