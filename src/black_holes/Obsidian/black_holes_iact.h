@@ -609,11 +609,6 @@ runner_iact_nonsym_bh_gas_swallow(
     float jet_prob = bi->jet_mass_reservoir * kernel_wt;
     const float rand_jet = random_unit_interval(bi->id + pj->id, ti_current,
                                                 random_number_BH_kick);
-    /* Always kick if above luminosity threshold */
-    if (bi->radiative_luminosity > bh_props->lum_thresh_always_jet &&
-        bh_props->lum_thresh_always_jet > 0.f) {
-      jet_prob = 1.f;
-    }
 
     /* Here the particle is also identified to be kicked out as a jet */
     if (rand_jet < jet_prob) {
