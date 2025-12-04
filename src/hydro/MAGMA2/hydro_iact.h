@@ -32,6 +32,7 @@
 #include "hydro_parameters.h"
 #include "minmax.h"
 #include "signal_velocity.h"
+#include "fvpm_geometry.h"
 
 /**
  * @brief Density interaction between two particles.
@@ -73,6 +74,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 
   adaptive_softening_add_correction_term(pi, xi, hi_inv, mj);
 
+  /* Collect data for FVPM matrix construction */
+  fvpm_accumulate_geometry_and_matrix(pi, wi, dx);
+  fvpm_update_centroid_left(pi, dx, wi);
+
   /* Compute density of pj. */
   const hydro_real_t hj_inv = 1. / hj;
   const float xj = r * hj_inv;
@@ -85,6 +90,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.wcount_dh -= (hydro_dimension * wj + xj * wj_dx);
 
   adaptive_softening_add_correction_term(pj, xj, hj_inv, mi);
+
+  /* Collect data for FVPM matrix construction */
+  fvpm_accumulate_geometry_and_matrix(pj, wj, dx);
+  fvpm_update_centroid_right(pj, dx, wj);
 
   /* Now we need to compute the div terms */
   const hydro_real_t r_inv = r ? 1.0 / r : 0.0;
@@ -201,6 +210,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.wcount_dh -= (hydro_dimension * wi + xi * wi_dx);
 
   adaptive_softening_add_correction_term(pi, xi, h_inv, mj);
+
+  /* Collect data for FVPM matrix construction */
+  fvpm_accumulate_geometry_and_matrix(pi, wi, dx);
+  fvpm_update_centroid_left(pi, dx, wi);
 
   const hydro_real_t r_inv = r ? 1.0 / r : 0.0;
   const hydro_real_t faci = mj * wi_dx * r_inv;

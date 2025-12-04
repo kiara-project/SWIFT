@@ -1501,6 +1501,8 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   /* No cooling if particle is decoupled */
   if (p->decoupled) return;
 
+  if (cooling->do_cooling_in_rt) return;
+
   /* No cooling happens over zero time */
   if (dt == 0.f || dt_therm == 0.f) return;
 
@@ -1774,11 +1776,11 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   // Set parameter values for chemistry & cooling
 
   // Flag to activate the grackle machinery:
-  chemistry->use_grackle = 2;  // grackle on (duh)
+  chemistry->use_grackle = 2;  // 1=original grackle, 2=crackle
   /* Flag to include radiative cooling and actually update the thermal energy
    * during the chemistry solver. If off, the chemistry species will still be
    * updated. The most common reason to set this to off is to iterate the
-   * chemistry network to an equilibrium state. Default: 1. */
+   * chemistry network to an equilibrium state. */
   chemistry->with_radiative_cooling = 1;
 
   /* Flag to control which primordial chemistry network is used (set by Config
