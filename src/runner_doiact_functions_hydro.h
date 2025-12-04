@@ -420,9 +420,6 @@ void DOSELF1_NAIVE(struct runner *r, const struct cell *c,
 
     /* Get a hold of the ith part in ci. */
     struct part *restrict pi = &parts[pid];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-    struct xpart *restrict xpi = &xparts[pid];
-#endif
 
     /* Skip inhibited particles. */
     if (part_is_inhibited(pi, e)) continue;
@@ -440,9 +437,6 @@ void DOSELF1_NAIVE(struct runner *r, const struct cell *c,
 
       /* Get a pointer to the jth particle. */
       struct part *restrict pj = &parts[pjd];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-      struct xpart *restrict xpj = &xparts[pjd];
-#endif
 
       /* Skip inhibited particles. */
       if (part_is_inhibited(pj, e)) continue;
@@ -591,9 +585,6 @@ void DOSELF2_NAIVE(struct runner *r, const struct cell *c,
 
   const int count = c->hydro.count;
   struct part *parts = c->hydro.parts;
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-  struct xpart *xparts = c->hydro.xparts;
-#endif
 
   /* Get the depth limits (if any) */
   const char min_depth = limit_max_h ? c->depth : 0;
@@ -610,9 +601,6 @@ void DOSELF2_NAIVE(struct runner *r, const struct cell *c,
 
     /* Get a hold of the ith part in ci. */
     struct part *restrict pi = &parts[pid];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-    struct xpart *restrict xpi = &xparts[pid];
-#endif
 
     /* Skip inhibited particles. */
     if (part_is_inhibited(pi, e)) continue;
@@ -630,9 +618,6 @@ void DOSELF2_NAIVE(struct runner *r, const struct cell *c,
 
       /* Get a pointer to the jth particle. */
       struct part *restrict pj = &parts[pjd];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-      struct xpart *restrict xpj = &xparts[pjd];
-#endif
 
       /* Skip inhibited particles. */
       if (part_is_inhibited(pj, e)) continue;
@@ -1671,10 +1656,6 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
   const int count_j = cj->hydro.count;
   struct part *restrict parts_i = ci->hydro.parts;
   struct part *restrict parts_j = cj->hydro.parts;
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-  struct xpart *restrict xparts_i = ci->hydro.xparts;
-  struct xpart *restrict xparts_j = cj->hydro.xparts;
-#endif
 
   /* Cosmological terms and physical constants */
   const float a = cosmo->a;
@@ -1752,9 +1733,6 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 
     /* Get a hold of the ith part in ci. */
     struct part *pi = &parts_i[sort_i[pid].i];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-    struct xpart *xpi = &xparts_i[sort_i[pid].i];
-#endif
     const char depth_i = pi->depth_h;
 
     /* Skip inhibited particles. */
@@ -1879,9 +1857,6 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 
         /* Recover pj */
         struct part *pj = &parts_j[sort_j[pjd].i];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-        struct xpart *xpj = &xparts_j[sort_j[pjd].i];
-#endif
         const char depth_j = pj->depth_h;
 
         /* Skip inhibited particles. */
@@ -2010,9 +1985,6 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 
     /* Get a hold of the jth part in cj. */
     struct part *pj = &parts_j[sort_j[pjd].i];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-    struct xpart *xpj = &xparts_j[sort_j[pjd].i];
-#endif
     const char depth_j = pj->depth_h;
 
     /* Skip inhibited particles. */
@@ -2138,9 +2110,6 @@ void DOPAIR2(struct runner *r, const struct cell *restrict ci,
 
         /* Recover pi */
         struct part *pi = &parts_i[sort_i[pid].i];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-        struct xpart *xpi = &xparts_i[sort_i[pid].i];
-#endif
         const char depth_i = pi->depth_h;
 
         /* Skip inhibited particles. */
@@ -2343,9 +2312,6 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
   TIMER_TIC;
 
   struct part *parts = c->hydro.parts;
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-  struct xpart *xparts = c->hydro.xparts;
-#endif
   const int count = c->hydro.count;
 
   /* Get the depth limits (if any) */
@@ -2386,9 +2352,6 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
 
     /* Get a pointer to the ith particle. */
     struct part *restrict pi = &parts[pid];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-    struct xpart *restrict xpi = &xparts[pid];
-#endif
     const char depth_i = pi->depth_h;
 
     /* Skip inhibited particles. */
@@ -2411,9 +2374,6 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
 
         /* Get a pointer to the jth particle. (by construction pi != pj) */
         struct part *restrict pj = &parts[indt[pjd]];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-        struct xpart *restrict xpj = &xparts[indt[pjd]];
-#endif
 
         /* This particle's (square of) search radius. */
         const float hj = pj->h;
@@ -2478,9 +2438,6 @@ void DOSELF1(struct runner *r, const struct cell *c, const int limit_min_h,
 
         /* Get a pointer to the jth particle (by construction pi != pj). */
         struct part *restrict pj = &parts[pjd];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-        struct xpart *restrict xpj = &xparts[pjd];
-#endif
         const char depth_j = pj->depth_h;
 
         /* Skip inhibited particles. */
@@ -2680,9 +2637,6 @@ void DOSELF2(struct runner *r, const struct cell *c, const int limit_min_h,
   TIMER_TIC;
 
   struct part *parts = c->hydro.parts;
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-  struct xpart *xparts = c->hydro.xparts;
-#endif
   const int count = c->hydro.count;
 
   /* Get the depth limits (if any) */
@@ -2723,9 +2677,6 @@ void DOSELF2(struct runner *r, const struct cell *c, const int limit_min_h,
 
     /* Get a pointer to the ith particle. */
     struct part *restrict pi = &parts[pid];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-    struct xpart *restrict xpi = &xparts[pid];
-#endif
     const char depth_i = pi->depth_h;
 
     /* Skip inhibited particles. */
@@ -2812,9 +2763,6 @@ void DOSELF2(struct runner *r, const struct cell *c, const int limit_min_h,
 
         /* Get a pointer to the jth particle. */
         struct part *restrict pj = &parts[pjd];
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
-        struct xpart *restrict xpj = &xparts[pjd];
-#endif
         const char depth_j = pj->depth_h;
 
         /* Skip inhibited particles. */
