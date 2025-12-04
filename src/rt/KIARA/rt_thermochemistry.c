@@ -25,6 +25,10 @@
 #include "rt_getters.h"
 #include "../../cooling.h"
 
+/* The grackle library itself */
+#include <grackle.h>
+extern chemistry_data *grackle_data;
+
 /**
  * @file src/rt/KIARA/rt_thermochemistry.h
  * @brief Main header file for the KIARA M1 closure radiative transfer scheme
@@ -108,7 +112,7 @@ INLINE void rt_do_thermochemistry(
 
   /* Nothing to do here? */
   if (rt_props->skip_thermochemistry) return;
-  if (dt == 0.) return;
+  if (dt <= 0.) return;
 
   /* This is where the fun begins */
   /* ---------------------------- */
@@ -368,17 +372,18 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   /* Nothing to do here? */
   if (rt_props->skip_thermochemistry) return;
 
-  /* Compute cooling time and other quantities needed for firehose */
-  /* TODO: firehose is using without RT_rates */
-  firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props,
+  /* Compute cooling time and other quantities needed for firehose 
+  if (dt > 0. && dt_therm > 0.) {
+    firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props,
                               cooling, p, xp, dt);
+  }*/
 
-  /* Update the subgrid properties */
+  /* Update the subgrid properties 
   cooling_set_particle_subgrid_properties( phys_const, us,
-	  cosmo, hydro_props, floor_props, cooling, p, xp);
+	  cosmo, hydro_props, floor_props, cooling, p, xp);*/
 
-  /* No cooling if particle is decoupled */
-  if (p->decoupled) return;
+  /* No cooling if particle is decoupled 
+  if (p->decoupled) return; */
 
   if (dt == 0.f || dt_therm == 0.f) return;
 

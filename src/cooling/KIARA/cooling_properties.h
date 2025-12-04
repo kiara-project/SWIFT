@@ -142,6 +142,10 @@ struct cooling_function_data {
 
   /*! Option to use Cloudy lookup tables when outside ISM */
   int use_tables_outside_ism;
+
+  /*! When using radiative transfer, set this on if you want thermochemistry 
+   * done within RT modules (eg in KIARART) */
+  int do_cooling_in_rt;
 };
 
 #endif /* SWIFT_COOLING_PROPERTIES_KIARA_H */

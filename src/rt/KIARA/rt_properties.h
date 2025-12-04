@@ -140,6 +140,9 @@ struct rt_props {
   /*! make grackle talkative? */
   int grackle_verbose;
 
+  /* Max number of subcycles per hydro step */
+  int debug_max_nr_subcycles;
+
 #ifdef SWIFT_RT_DEBUG_CHECKS
   /* radiation emitted by stars this step. This is not really a property,
    * but a placeholder to sum up a global variable. It's being reset
@@ -157,9 +160,6 @@ struct rt_props {
   /* total radiation absorbed by gas. This is not really a property,
    * but a placeholder to sum up a global variable */
   unsigned long long debug_radiation_absorbed_tot;
-
-  /* Max number of subcycles per hydro step */
-  int debug_max_nr_subcycles;
 #endif
 };
 
@@ -199,10 +199,10 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
 
   message("Radiative transfer scheme: '%s'", RT_IMPLEMENTATION);
   message("RT Riemann Solver used: '%s'", RT_RIEMANN_SOLVER_NAME);
-  char messagestring[200] = "Using photon frequency bins: [ ";
+  char messagestring[200] = "Using photon frequency bins (Ryd): [ ";
   char freqstring[20];
   for (int g = 0; g < RT_NGROUPS; g++) {
-    sprintf(freqstring, "%.3g ", rtp->photon_groups[g]);
+    sprintf(freqstring, "%.3g ", rtp->photon_groups[g] / 3.288e15);
     strcat(messagestring, freqstring);
   }
   strcat(messagestring, "]");
@@ -237,6 +237,7 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
     message("WARNING: Thermochemistry will be skipped.");
   if (rtp->rt_with_galaxy_subgrid)
     message("RT is coupling with galaxy subgrid modules.");
+  message("RT max number of subcycles: %d", rtp->debug_max_nr_subcycles);
 }
 
 /**
@@ -516,11 +517,12 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   rtp->debug_radiation_absorbed_tot = 0ULL;
   rtp->debug_radiation_absorbed_this_step = 0ULL;
 
+#endif
+
   /* Don't make it an optional parameter here so we crash
    * if I forgot to provide it */
   rtp->debug_max_nr_subcycles =
       parser_get_param_int(params, "TimeIntegration:max_nr_rt_subcycles");
-#endif
 
   /* Grackle setup */
   /* ------------- */
