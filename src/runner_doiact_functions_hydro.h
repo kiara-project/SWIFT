@@ -2943,6 +2943,12 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
   if (!CELL_IS_ACTIVE(ci, e) && !CELL_IS_ACTIVE(cj, e)) return;
   if (ci->hydro.count == 0 || cj->hydro.count == 0) return;
 
+#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_GRADIENT) || (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
+    const int rt_request = 1;
+#else
+    const int rt_request = 0;
+#endif
+  
   /* Get the type of pair and flip ci/cj if needed. */
   double shift[3];
   const int sid = space_getsid_and_swap_cells(s, &ci, &cj, shift);
@@ -2950,20 +2956,18 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
   /* We reached a leaf OR a cell small enough to be processed quickly */
   if (!ci->split || ci->hydro.count < space_recurse_size_pair_hydro ||
       !cj->split || cj->hydro.count < space_recurse_size_pair_hydro) {
-
+    
     /* Do any of the cells need to be sorted first?
      * Since h_max might have changed, we may not have sorted at this level */
     if (!(ci->hydro.sorted & (1 << sid)) ||
         ci->hydro.dx_max_sort_old > ci->dmin * space_maxreldx) {
-      /* Bert: RT probably broken here! */
       runner_do_hydro_sort(r, ci, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                           /*rt_request=*/0, /*clock=*/0);
+                           rt_request, /*clock=*/0);
     }
     if (!(cj->hydro.sorted & (1 << sid)) ||
         cj->hydro.dx_max_sort_old > cj->dmin * space_maxreldx) {
-      /* Bert: RT probably broken here! */
       runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                           /*rt_request=*/0, /*clock=*/0);
+                           rt_request, /*clock=*/0);
     }
 
     /* We interact all particles in that cell:
@@ -2992,15 +2996,13 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
        * Since h_max might have changed, we may not have sorted at this level */
       if (!(ci->hydro.sorted & (1 << sid)) ||
           ci->hydro.dx_max_sort_old > ci->dmin * space_maxreldx) {
-        /* Bert: RT probably broken here! */
         runner_do_hydro_sort(r, ci, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                             /*rt_request=*/0, /*clock=*/0);
+                             rt_request, /*clock=*/0);
       }
       if (!(cj->hydro.sorted & (1 << sid)) ||
           cj->hydro.dx_max_sort_old > cj->dmin * space_maxreldx) {
-        /* Bert: RT probably broken here! */
         runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                             /*rt_request=*/0, /*clock=*/0);
+                             rt_request, /*clock=*/0);
       }
 
       /* message("Multi-level PAIR! ci->count=%d cj->count=%d", ci->hydro.count,
@@ -3113,6 +3115,12 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
   if (!CELL_IS_ACTIVE(ci, e) && !CELL_IS_ACTIVE(cj, e)) return;
   if (ci->hydro.count == 0 || cj->hydro.count == 0) return;
 
+#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_GRADIENT) || (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
+    const int rt_request = 1;
+#else
+    const int rt_request = 0;
+#endif
+  
   /* Get the type of pair and flip ci/cj if needed. */
   double shift[3];
   const int sid = space_getsid_and_swap_cells(s, &ci, &cj, shift);
@@ -3125,15 +3133,13 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
      * Since h_max might have changed, we may not have sorted at this level */
     if (!(ci->hydro.sorted & (1 << sid)) ||
         ci->hydro.dx_max_sort_old > ci->dmin * space_maxreldx) {
-      /* Bert: RT probably broken here! */
       runner_do_hydro_sort(r, ci, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                           /*rt_request=*/0, /*clock=*/0);
+                           rt_request, /*clock=*/0);
     }
     if (!(cj->hydro.sorted & (1 << sid)) ||
         cj->hydro.dx_max_sort_old > cj->dmin * space_maxreldx) {
-      /* Bert: RT probably broken here! */
       runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                           /*rt_request=*/0, /*clock=*/0);
+                           rt_request, /*clock=*/0);
     }
 
     /* We interact all particles in that cell:
@@ -3161,15 +3167,13 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
        * Since h_max might have changed, we may not have sorted at this level */
       if (!(ci->hydro.sorted & (1 << sid)) ||
           ci->hydro.dx_max_sort_old > ci->dmin * space_maxreldx) {
-        /* Bert: RT probably broken here! */
         runner_do_hydro_sort(r, ci, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                             /*rt_request=*/0, /*clock=*/0);
+                             rt_request, /*clock=*/0);
       }
       if (!(cj->hydro.sorted & (1 << sid)) ||
           cj->hydro.dx_max_sort_old > cj->dmin * space_maxreldx) {
-        /* Bert: RT probably broken here! */
         runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
-                             /*rt_request=*/0, /*clock=*/0);
+                             rt_request, /*clock=*/0);
       }
 
       /* message("Multi-level PAIR! ci->count=%d cj->count=%d", ci->hydro.count,
