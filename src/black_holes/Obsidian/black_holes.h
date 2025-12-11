@@ -23,6 +23,7 @@
 /* Local includes */
 #include "black_holes_properties.h"
 #include "black_holes_struct.h"
+#include "black_holes_spin.h"
 #include "cooling.h"
 #include "cosmology.h"
 #include "dimension.h"
@@ -450,6 +451,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->last_repos_vel = 0.f;
   bp->radiative_luminosity = 0.f;
   bp->delta_energy_this_timestep = 0.f;
+  bp->dt_ang_mom = 0.f;
   bp->state = BH_states_slim_disk;
   bp->radiative_efficiency = 0.f;
   bp->f_accretion = 0.f;
@@ -461,6 +463,12 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->jet_mass_kicked_this_step = 0.f;
   bp->adaf_energy_to_dump = 0.f;
   bp->adaf_energy_used_this_step = 0.f;
+  /* CBP - allow for jet direction to follow angular momentum direction*/
+  bp->jet_direction[0] = bp->angular_momentum_direction[0];
+  bp->jet_direction[1] = bp->angular_momentum_direction[1];
+  bp->jet_direction[2] = bp->angular_momentum_direction[2];
+  /* End of CBP update */ 
+
 }
 
 /**
@@ -489,6 +497,9 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->velocity_gas[0] = 0.f;
   bp->velocity_gas[1] = 0.f;
   bp->velocity_gas[2] = 0.f;
+  bp->spec_angular_momentum_gas[0] = 0.f;
+  bp->spec_angular_momentum_gas[1] = 0.f;
+  bp->spec_angular_momentum_gas[2] = 0.f;
   bp->circular_velocity_gas[0] = 0.f;
   bp->circular_velocity_gas[1] = 0.f;
   bp->circular_velocity_gas[2] = 0.f;
@@ -654,6 +665,9 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   bp->velocity_gas[0] *= m_tot_inv;
   bp->velocity_gas[1] *= m_tot_inv;
   bp->velocity_gas[2] *= m_tot_inv;
+  bp->spec_angular_momentum_gas[0] *= m_tot_inv;
+  bp->spec_angular_momentum_gas[1] *= m_tot_inv;
+  bp->spec_angular_momentum_gas[2] *= m_tot_inv;
   bp->circular_velocity_gas[0] *= m_tot_inv;
   bp->circular_velocity_gas[1] *= m_tot_inv;
   bp->circular_velocity_gas[2] *= m_tot_inv;
@@ -865,15 +879,51 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
     }
   }
 
+  /* NLT added */
+  /* Evolve the black hole spin. */
+  black_hole_merger_spin_evolve(bpi, bpj, phys_const);
+  /*---*/
+
   /* Increase the masses of the BH. */
   bpi->mass += bpj->mass;
   bpi->gpart->mass += bpj->mass;
   bpi->subgrid_mass += bpj->subgrid_mass;
 
+  /* NLT added */
+  /* We need to see if the new spin is positive or negative, by implementing
+     King et al. (2005) condition of (counter-)alignment. */
+  const float gas_spec_ang_mom_norm = sqrtf(
+      bpi->spec_angular_momentum_gas[0] * bpi->spec_angular_momentum_gas[0] +
+      bpi->spec_angular_momentum_gas[1] * bpi->spec_angular_momentum_gas[1] +
+      bpi->spec_angular_momentum_gas[2] * bpi->spec_angular_momentum_gas[2]);
+
+
+  float dot_product = -1.;
+  if (gas_spec_ang_mom_norm > 0.) {
+    dot_product = 1. / gas_spec_ang_mom_norm *
+                  (bpi->spec_angular_momentum_gas[0] *
+                       bpi->angular_momentum_direction[0] +
+                   bpi->spec_angular_momentum_gas[1] *
+                       bpi->angular_momentum_direction[1] +
+                   bpi->spec_angular_momentum_gas[2] *
+                       bpi->angular_momentum_direction[2]);
+  } else {
+    dot_product = 0.;
+  }
+
+  if (black_hole_angular_momentum_magnitude(bpi, phys_const) * dot_product <
+      -0.5 * black_hole_warp_angular_momentum(bpi, phys_const, props)) {
+    bpi->spin = -1. * fabsf(bpi->spin);
+  } else {
+    bpi->spin = fabsf(bpi->spin);
+  }
+
   /* Collect the swallowed angular momentum */
   bpi->swallowed_angular_momentum[0] += bpj->swallowed_angular_momentum[0];
   bpi->swallowed_angular_momentum[1] += bpj->swallowed_angular_momentum[1];
   bpi->swallowed_angular_momentum[2] += bpj->swallowed_angular_momentum[2];
+
+  /* -------------- */
 
   /* Update the BH momentum */
   const float BH_mom[3] = {bpi_dyn_mass * bpi->v[0] + bpj_dyn_mass * bpj->v[0],
@@ -1378,6 +1428,134 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double luminosity =
       bp->radiative_efficiency * bp->accretion_rate * c * c;
 
+  /*-----------------------------------------------------------------*/
+  /*---------------NLT added ----------------------------------------*/
+  /*-----------------------------------------------------------------*/
+  
+  /* How much mass will be consumed over this time step? */
+  double delta_m_0 = bp->accretion_rate * dt;
+
+  /* Norm of the specific angular momentum, will be needed in a moment. */
+  float spec_ang_mom_norm = sqrtf(max(
+      0.,
+      bp->spec_angular_momentum_gas[0] * bp->spec_angular_momentum_gas[0] +
+      bp->spec_angular_momentum_gas[1] * bp->spec_angular_momentum_gas[1] +
+      bp->spec_angular_momentum_gas[2] * bp->spec_angular_momentum_gas[2]));
+
+  /* Cosine of the angle between the spin vector and the specific angular
+     momentum vector of gas around the BH. */
+  float dot_product = -1.;
+  if (spec_ang_mom_norm > 0.) {
+    dot_product =
+        1. / spec_ang_mom_norm *
+        (bp->spec_angular_momentum_gas[0] * bp->angular_momentum_direction[0] +
+         bp->spec_angular_momentum_gas[1] * bp->angular_momentum_direction[1] +
+         bp->spec_angular_momentum_gas[2] * bp->angular_momentum_direction[2]);
+  } else {
+    dot_product = 0.;
+  }
+  
+
+  /* Decide if accretion is prograde (spin positive) or retrograde
+     (spin negative) based on condition from King et al. (2005) */
+  if ((black_hole_angular_momentum_magnitude(bp, phys_const) * dot_product <
+       -0.5 * black_hole_warp_angular_momentum(bp, phys_const, props)) &&
+      (fabsf(bp->spin) > 0.01)) {
+    bp->spin = -1. * fabsf(bp->spin);
+  } else {
+    bp->spin = fabsf(bp->spin);
+  }
+  
+  /* Calculate how many warp increments the BH will swallow over this time
+     step */
+  double n_i = 0.;
+  if (bp->accretion_rate > 0.) {
+    n_i = delta_m_0 / black_hole_warp_mass(bp, phys_const, props);
+  }
+
+  /* Update the angular momentum vector of the BH based on how many
+     increments of warp angular momenta have been consumed. */
+  if (spec_ang_mom_norm > 0.) {
+
+    /* If spin is at its floor value of 0.01, we immediately redirect
+       the spin in the direction of the accreting gas */
+    if (fabsf(bp->spin) <= 0.01) {
+      bp->angular_momentum_direction[0] =
+          bp->spec_angular_momentum_gas[0] / spec_ang_mom_norm;
+      bp->angular_momentum_direction[1] =
+          bp->spec_angular_momentum_gas[1] / spec_ang_mom_norm;
+      bp->angular_momentum_direction[2] =
+          bp->spec_angular_momentum_gas[2] / spec_ang_mom_norm;
+    } else {
+      const double j_warp =
+          black_hole_warp_angular_momentum(bp, phys_const, props);
+      const double j_BH = black_hole_angular_momentum_magnitude(bp, phys_const);
+      const double ang_mom_total[3] = {
+          bp->angular_momentum_direction[0] * j_BH +
+              n_i * bp->spec_angular_momentum_gas[0] / spec_ang_mom_norm *
+                  j_warp,
+          bp->angular_momentum_direction[1] * j_BH +
+              n_i * bp->spec_angular_momentum_gas[1] / spec_ang_mom_norm *
+                  j_warp,
+          bp->angular_momentum_direction[2] * j_BH +
+              n_i * bp->spec_angular_momentum_gas[2] / spec_ang_mom_norm *
+                  j_warp};
+
+      /* Modulus of the new J_BH */
+      const double modulus = sqrt(ang_mom_total[0] * ang_mom_total[0] +
+                                  ang_mom_total[1] * ang_mom_total[1] +
+                                  ang_mom_total[2] * ang_mom_total[2]);
+
+      if (modulus > 0.) {
+        bp->angular_momentum_direction[0] = ang_mom_total[0] / modulus;
+        bp->angular_momentum_direction[1] = ang_mom_total[1] / modulus;
+        bp->angular_momentum_direction[2] = ang_mom_total[2] / modulus;
+      }
+    }
+  }
+
+
+  bp->jet_direction[0] = bp->angular_momentum_direction[0];
+  bp->jet_direction[1] = bp->angular_momentum_direction[1];
+  bp->jet_direction[2] = bp->angular_momentum_direction[2];
+
+  float spin_final = -1.;
+  /* Calculate the change in the BH spin */
+  if (bp->subgrid_mass > 0.) {
+    spin_final = bp->spin + delta_m_0 / bp->subgrid_mass; /* *
+                                black_hole_spinup_rate(bp, phys_const, props);*/
+  } else {
+    error(
+        "Black hole with id %lld tried to evolve spin with zero "
+        "(or less) subgrid mass. ",
+        bp->id);
+  }
+
+  /* Make sure that the spin does not shoot above 1 or below -1. Physically
+     this wouldn't happen because the spinup function goes to 0 at a=1, but
+     numerically it may happen due to finite increments. If this happens,
+     many spin-related quantities begin to diverge. We also want to avoid
+     spin equal to zero, or very close to it. The black hole time steps
+     become shorter and shorter as the BH approaches spin 0, so we simply
+     'jump' through 0 instead, choosing a small value of 0.01 (in magnitude)
+     as a floor for the spin. The spin will always jump to +0.01 since the
+     spinup function will always make spin go from negative to positive at
+     these small values. */
+  if (spin_final > 0.998) {
+    spin_final = 0.998;
+  } else if (spin_final < -0.998) {
+    spin_final = -0.998;
+  } else if (fabsf(spin_final) < 0.01) {
+    spin_final = 0.01;
+  }
+
+  /* Update the spin */
+  bp->spin = spin_final;
+  message("update: spin, %f, ang_mom_direction_0, %f",bp->spin,bp->angular_momentum_direction[0]);
+
+  /*-----------------------------------------------------------------*/
+
+
   /* Factor in the radiative efficiency, don't subtract
    * jet BZ efficiency (spin is fixed) */
   mass_rate = (1. - bp->radiative_efficiency) * bp->accretion_rate;
@@ -1515,6 +1693,67 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* This is always true in the ADAF mode; only heating happens */
   if (bp->state == BH_states_adaf) bp->v_kick = 0.f;
 
+  /* NLT added */
+
+    /* Calculate a BH angular momentum evolution time step. Two conditions are
+     used, one ensures that the BH spin changes by a small amount over the
+     next time-step, while the other ensures that the spin is not wildly
+     redirected between two time-steps */
+  if ((fabsf(bp->spin) > 0.01) && (bp->accretion_rate > 0.)) {
+
+    /* How much do we want to allow the spin to change over the next time-
+       step? If the spin is large (above 0.1 in magnitude), we allow it
+       to only change by 1% of its current value. If it is small, we instead
+       use a fixed increment of 0.01. This is to prevent the code from
+       becoming very slow. */
+    const float spin_magnitude = fabsf(bp->spin);
+    float epsilon_spin = 0.01;
+    if (spin_magnitude > 0.1) {
+      epsilon_spin = 0.01 * spin_magnitude;
+    }
+    float dt_ang_mom = epsilon_spin /
+                       fabsf(black_hole_spinup_rate(bp, phys_const, props)) *
+                       bp->subgrid_mass / bp->accretion_rate;
+
+    /* We now compute the angular-momentum (direction) time-step. We allow
+       the anticipated warp angular momentum along the direction perpendicular
+       to the current spin vector to be 10% of the current BH angular momentum,
+       which should correspond to a change of direction of around 5 degrees. We
+       also apply this only if the spin is not low. */
+    if (spin_magnitude > 0.1) {
+
+      /* Angular momentum direction of gas in kernel along the direction of
+         the current spin vector */
+
+      if (spec_ang_mom_norm > 0.) {
+        const float cosine = (bp->spec_angular_momentum_gas[0] *
+                                  bp->angular_momentum_direction[0] +
+                              bp->spec_angular_momentum_gas[1] *
+                                  bp->angular_momentum_direction[1] +
+                              bp->spec_angular_momentum_gas[2] *
+                                  bp->angular_momentum_direction[2]) /
+                             spec_ang_mom_norm;
+        /* Compute sine, i.e. the componenent perpendicular to that. */
+        const float sine = fmaxf(0., sqrtf(1. - cosine * cosine));
+
+        const float dt_redirection =
+            0.1 * black_hole_warp_mass(bp, phys_const, props) *
+            black_hole_angular_momentum_magnitude(bp, phys_const) /
+            (bp->accretion_rate *
+             black_hole_warp_angular_momentum(bp, phys_const, props) * sine);
+        dt_ang_mom = min(dt_ang_mom, dt_redirection);
+      }
+    }
+
+    bp->dt_ang_mom = dt_ang_mom;
+  } else {
+    bp->dt_ang_mom = FLT_MAX;
+  }
+
+  /* -------------------------------------- */
+
+
+
 #ifdef OBSIDIAN_DEBUG_CHECKS
   // MATTHIEU: TODO: FIX THIS!
   float galaxy_sfr = 0.;  // fof_props->group_star_formation_rate[group_id];
@@ -1544,7 +1783,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       "eps_r=%g, f_Edd=%g, f_acc=%g, "
       "luminosity=%g, accr_rate=%g Msun/yr, coupling=%g, v_kick=%g km/s, "
       "jet_mass_reservoir=%g Msun unresolved_reservoir=%g Msun "
-      "jet_mass_loading=%g",
+      "jet_mass_loading=%g, spin=%g, ang_mom_dir=%g",
       bp->id, bp->state, predicted_mdot_medd, bp->radiative_efficiency,
       bp->eddington_fraction, bp->f_accretion,
       bp->radiative_luminosity * props->conv_factor_energy_rate_to_cgs,
@@ -1553,7 +1792,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->v_kick / props->kms_to_internal,
       bp->jet_mass_reservoir * props->mass_to_solar_mass,
       bp->unresolved_mass_reservoir * props->mass_to_solar_mass,
-      bp->jet_mass_loading);
+      bp->jet_mass_loading
+      bp->spin;
+      bp->angular_momentum_direction);
 #endif
 
 #define OBSIDIAN_BH_DETAILS
@@ -1823,6 +2064,31 @@ INLINE static void black_holes_create_from_gas(
 
   /* Initial seed mass */
   bp->subgrid_mass = props->subgrid_seed_mass;
+
+  /* ----------------------- NLT -------------------- */
+  /* Small initial spin magnitude */
+  bp->spin = props->seed_spin;
+
+  /* Generate a random unit vector for the spin direction */
+  const float rand_cos_theta =
+      2. *
+      (0.5 - random_unit_interval(bp->id, ti_current, random_number_BH_spin));
+  const float rand_sin_theta =
+      sqrtf(max(0., (1. - rand_cos_theta) * (1. + rand_cos_theta)));
+  const float rand_phi =
+      2. * M_PI *
+      random_unit_interval(bp->id * bp->id, ti_current, random_number_BH_spin);
+
+  bp->angular_momentum_direction[0] = rand_sin_theta * cos(rand_phi);
+  bp->angular_momentum_direction[1] = rand_sin_theta * sin(rand_phi);
+  bp->angular_momentum_direction[2] = rand_cos_theta;
+
+  /* Point the jets in the same direction to begin with */
+  bp->jet_direction[0] = bp->angular_momentum_direction[0];
+  bp->jet_direction[1] = bp->angular_momentum_direction[1];
+  bp->jet_direction[2] = bp->angular_momentum_direction[2];
+/* ----------------------------------------------------- */
+
 
   /* We haven't accreted anything yet */
   bp->total_accreted_mass = 0.f;

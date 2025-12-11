@@ -124,6 +124,25 @@ struct bpart {
   /*! The current state of the black hole */
   int state;
 
+  
+  /* --------------- NLT --------------- */
+  /*! Evolving spin */
+  float spin;
+
+  /*! direction of jet launch */
+  float jet_direction[3];
+
+  /*! The normalized spin/angular momentum vector of the BH */
+  float angular_momentum_direction[3];
+
+  /*! Specific angular momentum of gas around the black hole */
+  float spec_angular_momentum_gas[3];
+
+  /*! angular momentum evolution of limited time-step of BH */
+  float dt_ang_mom;
+  /* ------------------------------------*/
+
+
   /*! The radiative efficiency associated with M_dot,bh */
   float radiative_efficiency;
 

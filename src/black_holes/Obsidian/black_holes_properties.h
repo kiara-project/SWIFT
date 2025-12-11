@@ -49,6 +49,11 @@ enum BH_loading_types {
   BH_jet_mixed_loaded     /* A mix between momentum and energy loading */
 };
 
+enum thin_disc_regions {
+  TD_region_B, /*< Region B from Shakura & Sunyaev (1973) */
+  TD_region_C  /*< Region C from Shakura & Sunyaev (1973) */
+};
+
 /**
  * @brief Properties of black holes and AGN feedback in the EAGEL model.
  */
@@ -163,8 +168,100 @@ struct black_holes_props {
   /*! The spin of EVERY black hole */
   float fixed_spin;
 
+  /*! The black hole seed spin */
+  float seed_spin;
+
   /*! Method to compute the dynamical time within the kernel */
   int dynamical_time_calculation_method;
+
+
+  /* ------------NLT added -------------- */
+  /* properties required for accretion disk calcs */
+
+
+  /*! Viscous alpha of the accretion disk, and various factors and powers
+      involving it. Here alpha_factor_x refers to alpha raised to the power of
+      x, expressed as e.g. 0549 if x is 0.549 (these are the decimal
+      expressions for powers of alpha that appear in accretion disk theory).
+      alpha_factor_x_inv refers to the inverse of a similar number, or
+      equivalently alpha raised to the power of -x. alpha_factor_x_inv_10 is
+      alpha * 10 raised to the power of -x, a combination that also often
+      appears in the literature.  */
+  float alpha_acc;
+  float alpha_acc_2;
+  float alpha_acc_2_inv;
+  float alpha_factor_01;
+  float alpha_factor_02;
+  float alpha_factor_08;
+  float alpha_factor_08_inv;
+  float alpha_factor_08_inv_10;
+  float alpha_factor_0549;
+  float alpha_factor_06222;
+
+  /*! Transition accretion rate between thick (ADAF) and thin disk. */
+  float mdot_crit_ADAF;
+
+  /*! Gas-to-total pressure ratio of the accretion disk */
+  float beta_acc;
+  float beta_acc_inv;
+
+  /*! Critical accretion rate that separates two different states in the
+      thick disk regime, related to radiation */
+  float edd_crit_thick;
+
+  /*! Effective adiabatic index of the accretion disk */
+  float gamma_acc;
+
+  /*! Epsilon parameter of the ADAF (thick disk), which appears in
+      Narayan & Yi (1994, 1995) model */
+  float eps_ADAF;
+
+  /*! Numerical coefficient relating sound speed in ADAF (thick disk) to the
+      Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
+  float cs_0_ADAF;
+
+  /*! Numerical coefficient relating radial velocity in ADAF (thick disk) to
+   the Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
+  float v_0_ADAF;
+
+  /*! Numerical coefficient relating angular velocity in ADAF (thick disk) to
+      the Keplerian angular velocity, which appears in Narayan & Yi
+      (1994, 1995) model */
+  float omega_0_ADAF;
+
+  /*! Aspect ratio of the ADAF (thick disk), which appears in Narayan & Yi
+      (1994, 1995) model */
+  float h_0_ADAF;
+  float h_0_ADAF_2;
+
+  /*! Electron heating parameter of the ADAF (thick disk), which appears in
+      Narayan & Yi (1994, 1995) model */
+  float delta_ADAF;
+
+  /*! The gamma parameter of the slim disk, which appears in the Wang & Zhou
+      (1999) model */
+  float gamma_SD;
+  float gamma_SD_inv;
+
+  /*! The ratio of vertical to horizontal kinematic viscosity of the thin disk.
+      Note that we use the definition xi = nu_2 / nu_1, whereas xi =
+      (nu_2 / nu_1) * 2 * alpha^2 is often used, e.g. Fiacconi et al. (2018) */
+  float xi_TD;
+
+  /*! Which region of the thin disc (Shakura & Sunyaev) we are assuming the
+      subgrid accretion disk is represented as:
+       B - region b; gas pressure dominates over radiation pressure,
+                     electron scattering dominates the opacity
+       C - region c; gas pressure dominates over radiation pressure,
+                     free-free absorption dominates the opacity */
+  enum thin_disc_regions TD_region;
+
+
+  float spin;
+  /*--------------------------------------*/
+
+
+
 
   /* ---- Properties of the feedback model ------- */
 
@@ -633,6 +730,99 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->dynamical_time_calculation_method = parser_get_opt_param_int(
       params, "ObsidianAGN:dynamical_time_calculation_method", 1);
 
+  /* ----------- spin and accretion disk parameters ------ */
+
+  /* The viscosisty parameter of the subgrid accretion disks.*/
+  bp->alpha_acc = parser_get_param_float(params, "ObsidianAGN:alpha_acc");
+
+  /* Various factors and powers of alpha, the subgrid accretion disc
+     viscosity, that appear in subgrid accretion disk equations. We
+     precompute them here. */
+  bp->alpha_acc_2 = bp->alpha_acc * bp->alpha_acc;
+  bp->alpha_acc_2_inv = 1. / bp->alpha_acc_2;
+  bp->alpha_factor_01 = pow(bp->alpha_acc, 0.1);
+  bp->alpha_factor_02 = pow(bp->alpha_acc, 0.2);
+  bp->alpha_factor_08 = pow(bp->alpha_acc, 0.8);
+  bp->alpha_factor_08_inv = 1. / bp->alpha_factor_08;
+  bp->alpha_factor_08_inv_10 = pow(bp->alpha_acc * 10., -0.8);
+  bp->alpha_factor_0549 = pow(bp->alpha_acc, 0.549);
+  bp->alpha_factor_06222 = pow(bp->alpha_acc * 10., 0.6222);
+
+  if ((bp->alpha_acc <= 0.) || (bp->alpha_acc > 1.)) {
+    error(
+        "The alpha viscosity parameter of accretion disks must be between 0. "
+        " and 1., not %f",
+        bp->alpha_acc);
+  }
+
+
+  /* The BH seed spin*/
+  bp->seed_spin = parser_get_param_float(params, "Obsidian:subgrid_seed_spin");
+  if ((bp->seed_spin <= 0.) || (bp->seed_spin > 1.)) {
+    error(
+        "The BH seed spin parameter must be strictly between 0 and 1, "
+        "not %f",
+        bp->seed_spin);
+  }
+
+  /* The critical transition accretion rate between the thick and
+     thin disk regimes. spinjetagn:mdot_crit_adaf*/
+  bp->mdot_crit_ADAF =
+      parser_get_param_float(params, "ObsidianAGN:eddington_fraction_lower_boundary");
+
+  /* Calculate the gas-to-total pressure ratio as based on simulations
+     (see Yuan & Narayan 2014) */
+  bp->beta_acc = 1. / (1. + 2. * bp->alpha_acc);
+  bp->beta_acc_inv = 1. / bp->beta_acc;
+
+  /* Calculate the critical accretion rate between two thick disk regimes as
+     in Mahadevan (1997). */
+  bp->edd_crit_thick = 2. * bp->delta_ADAF * bp->alpha_acc_2 *
+                       (1. - bp->beta_acc) * bp->beta_acc_inv;
+
+  /* Calculate the adiabatic index based on how strong the magnetic fields are
+    (see Esin 1997) */
+  bp->gamma_acc = (8. - 3. * bp->beta_acc) / (6. - 3. * bp->beta_acc);
+
+  /* Calculate numerical factors of the ADAF (thick disk) as in
+     Narayan & Yi (1995) */
+  bp->eps_ADAF = (1.6667 - bp->gamma_acc) / (bp->gamma_acc - 1.);
+  bp->cs_0_ADAF = sqrtf(2. / (5. + 2. * bp->eps_ADAF));
+  bp->v_0_ADAF = 3. / (5. + 2. * bp->eps_ADAF);
+  bp->omega_0_ADAF = sqrtf(2. * bp->eps_ADAF / (5. + 2. * bp->eps_ADAF));
+
+  /* Instead of using the Narayan & Yi value, we set to 0.3 based on numerous
+     GRMHD simulations (see e.g. Narayan et al. 2021) */
+  bp->h_0_ADAF = 0.3;
+  bp->h_0_ADAF_2 = 0.09;
+
+  bp->delta_ADAF = parser_get_param_float(params, "ObsidianAGN:delta_ADAF");
+
+  if (bp->delta_ADAF <= 0.) {
+    error(
+        "The delta electron heating parameter of thick accretion disks "
+        " must be > 0. not %f",
+        bp->delta_ADAF);
+  }
+  bp->gamma_SD = sqrtf(5.);
+  bp->gamma_SD_inv = 1. / bp->gamma_SD;
+
+  /* Formula taken from Lodato et al. (2010) */
+  bp->xi_TD = 2. * (1. + 7. * bp->alpha_acc_2) / (4. + bp->alpha_acc_2) /
+              bp->alpha_acc_2;
+
+  char temp4[PARSER_MAX_LINE_SIZE];
+  parser_get_param_string(params, "ObsidianAGN:TD_region", temp4);
+  if (strcmp(temp4, "B") == 0)
+    bp->TD_region = TD_region_B;
+  else if (strcmp(temp4, "C") == 0)
+    bp->TD_region = TD_region_C;
+  else
+    error("The choice of thin disc region must be B or C, not %s", temp4);
+
+
+
+
   /* Feedback parameters ---------------------------------- */
 
   bp->kms_to_internal =
@@ -689,15 +879,15 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     error("Black hole must have spin > 0.0 and < 1.0");
   }
 
-  bp->A_sd = powf(0.9663f - 0.9292f * bp->fixed_spin, -0.5639f);
-  bp->B_sd = powf(4.627f - 4.445f * bp->fixed_spin, -0.5524f);
-  bp->C_sd = powf(827.3f - 718.1f * bp->fixed_spin, -0.7060f);
+  bp->A_sd = powf(0.9663f - 0.9292f * bp->spin, -0.5639f);
+  bp->B_sd = powf(4.627f - 4.445f * bp->spin, -0.5524f);
+  bp->C_sd = powf(827.3f - 718.1f * bp->spin, -0.7060f);
 
-  const float phi_bh = -20.2f * powf(bp->fixed_spin, 3.f) -
-                       14.9f * powf(bp->fixed_spin, 2.f) +
-                       34.f * bp->fixed_spin + 52.6f;
+  const float phi_bh = -20.2f * powf(bp->spin, 3.f) -
+                       14.9f * powf(bp->spin, 2.f) +
+                       34.f * bp->spin + 52.6f;
   const float big_J =
-      bp->fixed_spin / (2.f * (1.f + sqrtf(1.f - powf(bp->fixed_spin, 2.f))));
+      bp->spin / (2.f * (1.f + sqrtf(1.f - powf(bp->spin, 2.f))));
   const float f_j =
       powf(big_J, 2.f) + 1.38f * powf(big_J, 4.f) - 9.2f * powf(big_J, 6.f);
 
