@@ -211,7 +211,7 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
   list[num] = io_make_output_field(
-      "CoolingTime", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
+      "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
       cooling_data.mixing_layer_cool_time,
       "Cooling time for particle; if it's currently a firehose wind"
       "particle (delay_time>0), this is the mixing layer cooling time");
