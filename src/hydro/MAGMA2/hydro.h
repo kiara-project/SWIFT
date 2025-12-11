@@ -1595,9 +1595,9 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 
   /* Finish matrix and volume computations for FVPM Radiative Transfer */
   fvpm_compute_volume_and_matrix(p, h_inv_dim);
+/**
 }
 
-/**
  * @brief Prepare a particle for the gradient calculation.
  *
  * This function is called after the density loop and before the gradient loop.
@@ -1612,11 +1612,11 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
  * @param cosmo The cosmological model.
  * @param hydro_props Hydrodynamic properties.
  * @param pressure_floor The properties of the pressure floor.
- */
 __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
     struct part *restrict p, struct xpart *restrict xp,
     const struct cosmology *cosmo, const struct hydro_props *hydro_props,
     const struct pressure_floor_props *pressure_floor) {
+ */
 
 #ifdef hydro_props_use_adiabatic_correction
   /* Prepare the denominator for the adiabatic correction term */
