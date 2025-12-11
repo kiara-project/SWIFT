@@ -439,7 +439,7 @@ double **read_Bpass_from_hdf5(char *file_name, char *dataset_name){
     for (hsize_t i = 0; i < dims[0]; i++){
          for (hsize_t j = 0; j < dims[1]; j++) {
             Table[i][j] = buffer[i * dims[1] + j];
-	    if (fabs(Table[i][j])< 0) error("Negative photon number in the table! row:%lu, column:%lu\n", i, j);
+	    if (fabs(Table[i][j])< 0) error("Negative photon number in the table! row:%lu, column:%lu\n", (long int)i, (long int)j);
          }
     } 
 

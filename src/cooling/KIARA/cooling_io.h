@@ -346,6 +346,9 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
 
   cooling->self_enrichment_metallicity = parser_get_opt_param_double(
       parameter_file, "KIARACooling:self_enrichment_metallicity", 0.f);
+
+  cooling->do_cooling_in_rt = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:do_cooling_in_rt", 0);
 }
 
 #endif /* SWIFT_COOLING_KIARA_IO_H */

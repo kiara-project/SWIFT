@@ -305,11 +305,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
  * @param hj Comoving smoothing-length of particle j.
  * @param pi Wind particle.
  * @param pj Ambient particle.
- * @param xpi The #xpart data of the particle #pi.
- * @param xpj The #xpart data of the particle #pj.
  * @param time_base The time base used to convert integer to float time.
  * @param ti_current Current integer time for seeding random number generator
- * @param phys_const Physical constants
  * @param cd #chemistry_global_data containing chemistry information.
  * @param v2 velocity difference squared between i and j.
  *
@@ -318,10 +315,8 @@ __attribute__((always_inline)) INLINE static float
 firehose_compute_mass_exchange(const float r2, const float dx[3],
                                const float hi, const float hj,
                                const struct part *pi, const struct part *pj,
-                               const struct xpart *xpi, const struct xpart *xpj,
                                const float time_base,
                                const integertime_t ti_current,
-                               const struct phys_const *phys_const,
                                const struct chemistry_global_data *cd,
                                float *v2, const struct cosmology *cosmo) {
 
@@ -353,7 +348,7 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
    * Order does not matter here because it is symmetric. */
   *v2 = 0.f;
   for (int i = 0; i < 3; i++) {
-    const float dv = xpi->v_full[i] - xpj->v_full[i];
+    const float dv = pi->v[i] - pj->v[i];
     *v2 += dv * dv;
   }
 
@@ -487,19 +482,16 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
  * @param hj Comoving smoothing-length of particle j.
  * @param pi Wind particle.
  * @param pj Ambient particle.
- * @param xpi The #xpart data of the particle #pi.
- * @param xpj The #xpart data of the particle #pj.
  * @param time_base The time base used to convert integer to float time.
  * @param ti_current Current integer time for seeding random number generator.
- * @param phys_const Physical constants
  * @param cd #chemistry_global_data containing chemistry information.
  *
  */
 __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part *pi, struct part *pj, struct xpart *xpi, struct xpart *xpj,
+    struct part *pi, struct part *pj, 
     const float time_base, const integertime_t ti_current,
-    const struct phys_const *phys_const, const struct chemistry_global_data *cd,
+    const struct chemistry_global_data *cd,
     const struct cosmology *cosmo) {
 
   /* Both particles must be within each others smoothing lengths */
@@ -523,9 +515,9 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 
   /* Compute the amount of mass mixed between stream particle and ambient gas */
   float v2 = 0.f;
-  const float dm = firehose_compute_mass_exchange(r2, dx, hi, hj, pi, pj, xpi,
-                                                  xpj, time_base, ti_current,
-                                                  phys_const, cd, &v2, cosmo);
+  const float dm = firehose_compute_mass_exchange(r2, dx, hi, hj, pi, pj, 
+                                                  time_base, ti_current,
+                                                  cd, &v2, cosmo);
   float delta_m = fabs(dm);
   if (delta_m <= 0.f) return;
 
@@ -623,13 +615,13 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   float new_v2 = 0.f;
   for (int i = 0; i < 3; i++) {
     const float new_pi_v_full_i =
-        (wt_ii * xpi->v_full[i] + wt_ij * xpj->v_full[i]) / mi;
+        (wt_ii * pi->v[i] + wt_ij * pj->v[i]) / mi;
     /* Keep track of the final new velocity */
-    chi->dv[i] += new_pi_v_full_i - xpi->v_full[i];
+    chi->dv[i] += new_pi_v_full_i - pi->v[i];
 
     const float new_pj_v_full_i =
-        (wt_ji * xpi->v_full[i] + wt_jj * xpj->v_full[i]) / mj;
-    chj->dv[i] += new_pj_v_full_i - xpj->v_full[i];
+        (wt_ji * pi->v[i] + wt_jj * pj->v[i]) / mj;
+    chj->dv[i] += new_pj_v_full_i - pj->v[i];
 
     const float dv_i = new_pi_v_full_i - new_pj_v_full_i;
     new_v2 += dv_i * dv_i;
@@ -671,8 +663,6 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
  * @param hj Comoving smoothing-length of particle j.
  * @param pi First particle.
  * @param pj Second particle.
- * @param xpi The #xpart data of the particle #pi.
- * @param xpj The #xpart data of the particle #pj.
  * @param a Current scale factor.
  * @param H Current Hubble parameter.
  * @param time_base The time base used to convert integer to float time.
@@ -683,18 +673,16 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
  */
 __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part *restrict pi, struct part *restrict pj,
-    struct xpart *restrict xpi, struct xpart *restrict xpj, const float a,
+    struct part *restrict pi, struct part *restrict pj, const float a,
     const float H, const float time_base, const integertime_t t_current,
     const struct cosmology *cosmo, const int with_cosmology,
-    const struct phys_const *phys_const,
     const struct chemistry_global_data *cd) {
 
   if (pi->decoupled || pj->decoupled) {
     if (cd->use_firehose_wind_model) {
       /* If in wind mode, do firehose wind diffusion */
-      firehose_evolve_particle_sym(r2, dx, hi, hj, pi, pj, xpi, xpj, time_base,
-                                   t_current, phys_const, cd, cosmo);
+      firehose_evolve_particle_sym(r2, dx, hi, hj, pi, pj, time_base,
+                                   t_current, cd, cosmo);
     }
 
     return;
