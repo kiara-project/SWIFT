@@ -1398,7 +1398,7 @@ void runner_do_limiter(struct runner *r, struct cell *c, int force,
       /* Bip, bip, bip... wake-up time */
       if (p->limiter_data.wakeup != time_bin_not_awake) {
 
-        if (!part_is_active(p, e) && p->limiter_data.to_be_synchronized) {
+        /*if (!part_is_active(p, e) && p->limiter_data.to_be_synchronized) {
           warning(
               "Not limiting particle with id %lld because it needs to be "
               "synced tdel=%g dec=%d.",
@@ -1411,9 +1411,7 @@ void runner_do_limiter(struct runner *r, struct cell *c, int force,
 #endif
           );
           continue;
-        }
-
-        // message("Limiting particle %lld in cell %lld", p->id, c->cellID);
+        }*/
 
         /* Apply the limiter and get the new end of time-step */
         const integertime_t ti_end_new = timestep_limit_part(p, xp, e);

@@ -247,7 +247,7 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
     pj->feedback_data.kick_id = si->id;
   }
 
-  // #ifdef KIARA_DEBUG_CHECKS
+#ifdef KIARA_DEBUG_CHECKS
   message(
       "KICK_PROB: z=%g sid=%lld, gid=%lld, prob=%g, rand=%g, eta=%g, "
       "mlaunch=%g, "
@@ -256,7 +256,7 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
       si->feedback_data.mass_to_launch / si->mass_init,
       si->feedback_data.mass_to_launch, si->mass_init, wj,
       si->feedback_data.wind_wt_sum, pj->feedback_data.kick_id == si->id);
-  // #endif
+#endif
 }
 
 /**

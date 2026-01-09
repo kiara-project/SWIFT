@@ -21,10 +21,10 @@
 #define SWIFT_COOLING_KIARA_IO_H
 
 /* Local includes */
-#include "cooling_properties.h"
-#include "cooling_struct.h"
+#include "cooling.h"
+#include "engine.h"
 #include "io_properties.h"
-#include "physical_constants.h"
+#include "cooling_properties.h"
 
 #ifdef HAVE_HDF5
 
@@ -111,6 +111,14 @@ INLINE static void convert_part_e_density(const struct engine *e,
   *ret = (float)xp->cooling_data.e_frac;
 }
 
+INLINE static void convert_part_T(const struct engine *e, const struct part *p,
+                                  const struct xpart *xp, float *ret) {
+
+  *ret = cooling_get_temperature(e->physical_constants, e->hydro_properties,
+                                 e->internal_units, e->cosmology,
+                                 e->cooling_func, p, xp);
+}
+
 #ifdef RT_NONE
 INLINE static void convert_mass_fractions(const struct engine *engine,
                                           const struct part *part,
@@ -170,51 +178,59 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
   list[num] = io_make_output_field_convert_part(
-      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NUMBER_DENSITY, -3.f,
-      parts, xparts, convert_part_e_density, "Electron number densities");
+      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, -3.f,
+      parts, xparts, convert_part_e_density, "Electron number densities"
+      "in units of the hydrogen density.");
+  num++;
+
+  list[num] = io_make_output_field_convert_part(
+      "Temperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, parts, xparts,
+      convert_part_T, "Temperatures of the overall gas particles.");
   num++;
 
 #if COOLING_GRACKLE_MODE >= 2
   list[num] = io_make_output_field(
-      "SubgridTemperatures", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
-      cooling_data.subgrid_temp, "Temperature of subgrid ISM in K");
+      "SubgridTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, parts,
+      cooling_data.subgrid_temp, "Temperatures of the cold phase"
+      				 "of the subgrid ISM gas particles.");
   num++;
 
   list[num] =
       io_make_output_field("SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY,
                            -3.f, parts, cooling_data.subgrid_dens,
-                           "Mass density in physical units of subgrid ISM");
+                           "Mass densities in physical units of the "
+			   "subgrid ISM gas particles.");
   num++;
 
   list[num] = io_make_output_field(
       "SubgridColdISMFraction", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
       cooling_data.subgrid_fcold,
-      "Fraction of particle mass in cold subgrid ISM");
+      "Fraction of gas particle masses in cold component of subgrid ISM.");
   num++;
 
   list[num] =
       io_make_output_field("DustMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts,
-                           cooling_data.dust_mass, "Total mass in dust");
+                           cooling_data.dust_mass, "Total masses in dust.");
   num++;
 
   list[num] = io_make_output_field("DustMassFractions", FLOAT,
                                    chemistry_element_count, UNIT_CONV_NO_UNITS,
                                    0.f, parts, cooling_data.dust_mass_fraction,
                                    "Fractions of the particles' masses that "
-                                   "are in dust for a given element");
+                                   "are in dust for a given element.");
   num++;
 
   list[num] =
-      io_make_output_field("DustTemperatures", FLOAT, 1, UNIT_CONV_NO_UNITS,
+      io_make_output_field("DustTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE,
                            0.f, parts, cooling_data.dust_temperature,
-                           "Dust temperature in subgrid dust model, in K");
+                           "Dust temperatures in subgrid ISM dust model.");
   num++;
 
   list[num] = io_make_output_field(
       "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
       cooling_data.mixing_layer_cool_time,
-      "Cooling time for particle; if it's currently a firehose wind"
-      "particle (delay_time>0), this is the mixing layer cooling time");
+      "Cooling times for the gas particle. If it's currently a firehose wind"
+      "particle (decoupling_delay_time>0), this is the mixing layer cooling time.");
   num++;
 #endif
 #endif
@@ -222,7 +238,7 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
 #ifdef RT_NONE
   list[num] = io_make_output_field_convert_part(
       "IonMassFractions", FLOAT, 2, UNIT_CONV_NO_UNITS, 0, parts, xparts,
-      convert_mass_fractions, "Mass fractions of all constituent species");
+      convert_mass_fractions, "Mass fractions of all constituent species.");
   num++;
 #endif
   return num;

@@ -34,7 +34,6 @@
 
 /* Local includes. */
 #include "chemistry.h"
-#include "cooling_io.h"
 #include "cooling_properties.h"
 #include "entropy_floor.h"
 #include "error.h"
