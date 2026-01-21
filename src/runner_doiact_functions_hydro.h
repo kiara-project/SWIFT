@@ -2950,12 +2950,6 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
   if (!CELL_IS_ACTIVE(ci, e) && !CELL_IS_ACTIVE(cj, e)) return;
   if (ci->hydro.count == 0 || cj->hydro.count == 0) return;
 
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_GRADIENT) || (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
-    const int rt_request = 1;
-#else
-    const int rt_request = 0;
-#endif
-  
   /* Get the type of pair and flip ci/cj if needed. */
   double shift[3];
   const int sid = space_getsid_and_swap_cells(s, &ci, &cj, shift);
@@ -3125,12 +3119,6 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
   if (!CELL_IS_ACTIVE(ci, e) && !CELL_IS_ACTIVE(cj, e)) return;
   if (ci->hydro.count == 0 || cj->hydro.count == 0) return;
 
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_GRADIENT) || (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
-    const int rt_request = 1;
-#else
-    const int rt_request = 0;
-#endif
-  
   /* Get the type of pair and flip ci/cj if needed. */
   double shift[3];
   const int sid = space_getsid_and_swap_cells(s, &ci, &cj, shift);

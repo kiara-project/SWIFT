@@ -261,6 +261,16 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->with_uv_background =
       parser_get_param_int(parameter_file, "KIARACooling:with_UV_background");
 
+  cooling->with_radiative_transfer =
+      parser_get_opt_param_int(parameter_file, "KIARACooling:with_radiative_transfer", 0);
+
+  if (cooling->with_radiative_transfer > 0) {
+    if (cooling->with_uv_background == 1) {
+      warning("When setting with_radiative_transfer=1, cannot use a UVB; setting with_uv_background to 0.");
+      cooling->with_uv_background = 0;
+    }
+  }
+
   cooling->redshift =
       parser_get_param_double(parameter_file, "KIARACooling:redshift");
 

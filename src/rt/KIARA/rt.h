@@ -358,6 +358,7 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
 __attribute__((always_inline)) INLINE static float rt_compute_timestep(
     const struct part* restrict p, const struct xpart* restrict xp,
     struct rt_props* rt_props, const struct cosmology* restrict cosmo,
+    const struct gravity_props* grav_props,
     const struct hydro_props* hydro_props,
     const struct phys_const* restrict phys_const,
     const struct cooling_function_data* restrict cooling,
@@ -371,12 +372,15 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   }
   if (total_energy_density <= 0.) return 1e20f;
 
-  /* just mimic the gizmo particle "size" for now */
+  /* just mimic the gizmo particle "size" for now 
   const float psize = cosmo->a * cosmo->a *
                       powf(p->geometry.volume / hydro_dimension_unit_sphere,
-                           hydro_dimension_inv);
+                           hydro_dimension_inv);*/
+  /* Set particle size based on h, with minimum at grav softening */
+  float psize;
+  psize = cosmo->a * fmax(p->h, grav_props->epsilon_baryon_comoving);
   float dt = psize * rt_params.reduced_speed_of_light_inverse *
-             rt_props->CFL_condition;
+             cosmo->a * rt_props->CFL_condition;
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -559,6 +563,14 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
     rtd->radiation[g].flux[2] -=
         rtd->radiation[g].flux[2] *
         redshift_factor;  // Energy lost due to redshift
+
+    /* TEST (WRONG): decoupled particles lose all photon energy/flux 
+    if (p->decoupled) {
+      rtd->radiation[g].energy_density = 0.f;
+      rtd->radiation[g].flux[0] = 0.f;
+      rtd->radiation[g].flux[1] = 0.f;
+      rtd->radiation[g].flux[2] = 0.f;
+    }*/
 
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
                               rtd->radiation[g].flux, e_old, /*callloc=*/4);

@@ -38,6 +38,9 @@ struct cooling_function_data {
   /*! Enable/Disable UV backgroud */
   int with_uv_background;
 
+  /*! Enable/Disable UV backgroud */
+  int with_radiative_transfer;
+
   /*! Redshift to use for the UV backgroud (-1 to use cosmological one) */
   double redshift;
 

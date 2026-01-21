@@ -1860,7 +1860,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
 
   /* arrays of ionization and heating rates from radiative transfer solutions
    * are being provided */
-  chemistry->use_radiative_transfer = 0;
+  chemistry->use_radiative_transfer = cooling->with_radiative_transfer;
 
   /* must be enabled to couple the passed radiative transfer fields to the
    * chemistry solver */
