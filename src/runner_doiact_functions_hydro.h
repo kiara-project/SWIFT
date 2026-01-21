@@ -2937,6 +2937,13 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
   struct space *s = r->e->s;
   const struct engine *e = r->e;
 
+#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_GRADIENT) || \
+    (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
+  const int rt_request = 1;
+#else
+  const int rt_request = 0;
+#endif
+
   TIMER_TIC;
 
   /* Should we even bother? */
@@ -3004,10 +3011,6 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
         runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
                              rt_request, /*clock=*/0);
       }
-
-      /* message("Multi-level PAIR! ci->count=%d cj->count=%d", ci->hydro.count,
-       */
-      /* 	      cj->hydro.count); */
 
       /* Interact all *active* particles with h in the range [dmin/2, dmin)
          with all their neighbours */
@@ -3109,6 +3112,13 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
   const struct engine *e = r->e;
   struct space *s = e->s;
 
+#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_GRADIENT) || \
+    (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
+  const int rt_request = 1;
+#else
+  const int rt_request = 0;
+#endif
+
   TIMER_TIC;
 
   /* Should we even bother? */
@@ -3175,10 +3185,6 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
         runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
                              rt_request, /*clock=*/0);
       }
-
-      /* message("Multi-level PAIR! ci->count=%d cj->count=%d", ci->hydro.count,
-       */
-      /* 	      cj->hydro.count); */
 
       /* Interact all *active* particles with h in the range [dmin/2, dmin)
          with all their neighbours */
