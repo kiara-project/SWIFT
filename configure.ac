@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Init the project.
-AC_INIT([SWIFT],[2025.10],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
+AC_INIT([SWIFT],[2026.01],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
 swift_config_flags="$*"
 
 AC_COPYRIGHT
@@ -365,6 +365,17 @@ AC_ARG_ENABLE([obsidian-debugging-checks],
 )
 if test "$enable_obsidian_debugging_checks" = "yes"; then
    AC_DEFINE([OBSIDIAN_DEBUG_CHECKS],1,[Enable Obsidian expensive debugging])
+
+AC_ARG_ENABLE([likwid],
+   [AS_HELP_STRING([--enable-likwid],
+      [Enable LIKWID performance monitoring])],
+   [enable_likwid="$enableval"],
+   [enable_likwid="no"]
+)
+
+if test "$enable_likwid" = "yes"; then
+   AC_DEFINE([WITH_LIKWID], 1, [Enable LIKWID performance monitoring])
+   LIBS="$LIBS -llikwid"
 fi
 
 # Check if expensive debugging is on.
@@ -3079,7 +3090,7 @@ esac
 # Forcing terms
 AC_ARG_WITH([forcing],
    [AS_HELP_STRING([--with-forcing=<term>],
-      [Hydrodynamics forcing terms @<:@none, boundary-particles, roberts-flow, roberts-flow-acceleration, abc-flow, default: none@:>@]
+      [Hydrodynamics forcing terms @<:@none, boundary-particles, roberts-flow, roberts-flow-acceleration, abc-flow, idealized-agn-jet, default: none@:>@]
    )],
    [with_forcing="$withval"],
    [with_forcing="none"]
@@ -3099,6 +3110,9 @@ case "$with_forcing" in
    ;;
    abc-flow)
       AC_DEFINE([FORCING_ABC_FLOW], [1], [ABC flow external forcing terms])
+   ;;
+   idealized-agn-jet)
+      AC_DEFINE([FORCING_IDEALIZED_AGN_JET], [1], [Launch AGN jets and treats particles in jet reservoir as fixed boundary particles])
    ;;
    *)
       AC_MSG_ERROR([Unknown external forcing term: $with_forcing])
