@@ -1,6 +1,8 @@
 /*******************************************************************************
  * This file is part of SWIFT.
  * Copyright (c) 2022 Filip Husko (filip.husko@durham.ac.uk)
+ * This file has been edited for the Obsidian model in Kiara 
+ * 2025 Nicole Thomas (nicole.thomas@uwa.edu.au)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
