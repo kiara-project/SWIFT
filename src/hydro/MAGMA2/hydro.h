@@ -1591,9 +1591,27 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
     }
   }
   
-
   /* Finish matrix and volume computations for FVPM Radiative Transfer */
   fvpm_compute_volume_and_matrix(p, h_inv_dim);
+
+  //rescale photon energy density
+  const float h_new = p->h;
+  const float h_old = p->geometry.h_old;
+
+  if (h_old > 0.f && h_new > 0.f) {
+
+    const float ratio = h_old / h_new;
+    const float ratio2 = ratio * ratio;
+
+    for (int g = 0; g < RT_NGROUPS; g++) {
+        p->rt_data.radiation[g].energy_density *= ratio * ratio2;
+	p->rt_data.radiation[g].flux[0] *= ratio2;
+	p->rt_data.radiation[g].flux[1] *= ratio2;
+	p->rt_data.radiation[g].flux[2] *= ratio2;
+    }
+  }
+
+  p->geometry.h_old = p->h;
 }
 
 /**

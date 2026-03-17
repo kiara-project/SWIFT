@@ -100,7 +100,8 @@ rt_get_interaction_rates_for_grackle(
   /* Convert into correct units. */
   const double nHI = ns_cgs[rt_ionizing_species_HI];
   if (nHI > 0.)
-    rates[0] /= nHI;
+    rates[0] = 0.;
+    //rates[0] /= nHI;
   else
     rates[0] = 0.;
 

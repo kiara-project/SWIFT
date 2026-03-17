@@ -3086,7 +3086,59 @@ int engine_step(struct engine *e) {
     message("The CSDS currently uses %f GB of storage",
             e->collect_group1.csds_file_size_gb);
 #endif
+/* ---- DEBUG: top 10 hottest particles ---- */
 
+/* Simple struct to store particle info */
+struct top_particle {
+    long long id;
+    double u;
+    double rho;
+    double du_dt;
+    double a;
+    double HI;
+};
+
+/* Initialize top 10 array */
+struct top_particle top10[10];
+for(int i=0;i<10;i++){
+    top10[i].u = -1.0;  /* negative means empty */
+}
+
+/* Loop over local gas particles */
+for(size_t i=0;i<e->s->nr_parts;i++){
+    struct part *p = &e->s->parts[i];
+
+    double u = p->u;
+    double rho = hydro_get_physical_density(p, e->cosmology);
+    double du_dt = hydro_get_physical_internal_energy_dt(p, e->cosmology);
+    double a = e->cosmology->a;
+
+    /* Insert into top 10 if u is larger than any current entry */
+    for(int j=0;j<10;j++){
+        if(u > top10[j].u){
+            /* shift lower entries down */
+            for(int k=9;k>j;k--){
+                top10[k] = top10[k-1];
+            }
+            top10[j].id = p->id;
+            top10[j].u = u;
+            top10[j].rho = rho;
+	    top10[j].du_dt = du_dt;
+	    top10[j].a = a;
+            break;
+        }
+    }
+}
+
+/* Print top 10 */
+printf("[HOTTEST] step=%lld\n", e->ti_current);
+for(int i=0;i<10;i++){
+    if(top10[i].u < 0) break;
+    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e\n",
+           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a);
+}
+
+/* ---- END DEBUG ---- */
   /********************************************************/
   /* OK, we are done with the regular stuff. Time for i/o */
   /********************************************************/
