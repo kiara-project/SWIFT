@@ -1159,8 +1159,10 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
       const float dust_mass_ratio = dust_mass_new / dust_mass_old;
       p->chemistry_data.metal_mass_fraction_total = 0.f;
 
-      for (int elem = chemistry_element_He; elem < chemistry_element_count;
+      for (int elem = 0; elem < chemistry_element_count;
            ++elem) {
+	if (elem == chemistry_element_H || elem == chemistry_element_He) continue;
+
         const float Z_dust_elem_old = p->cooling_data.dust_mass_fraction[elem];
         const float Z_dust_elem_new = Z_dust_elem_old * dust_mass_ratio;
         const float Z_elem_old = p->chemistry_data.metal_mass_fraction[elem];
@@ -1177,9 +1179,7 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
         p->cooling_data.dust_mass_fraction[elem] *= dust_mass_ratio;
 
         /* Sum up to get the new Z value */
-        if (elem != chemistry_element_H && elem != chemistry_element_He) {
-          p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
-        }
+        p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
       }
 
       /* Make sure that X + Y + Z = 1 */
@@ -1891,7 +1891,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
    * solutions. */
   chemistry->radiative_transfer_hydrogen_only = 0;
 
-  /* Use Rahmati+13 self-shielding; 0=none, 1=HI only, 2=HI+HeI, 3=HI+HeI but
+  /* Use self-shielding; 0=none, 1=HI only, 2=HI+HeI, 3=HI+HeI but
    * set HeII rates to 0 */
   chemistry->self_shielding_method = cooling->self_shielding_method;
 

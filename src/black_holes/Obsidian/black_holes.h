@@ -155,6 +155,7 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
   if (bp->accretion_rate < 0.f || bp->m_dot_inflow < 0.f) return 0.f;
 
   float v_kick = 0.f;
+  /* Variable AGN wind speeds */
   if (props->quasar_wind_speed < 0.f || props->slim_disk_wind_speed < 0.f) {
     const float subgrid_mass_Msun =
         bp->subgrid_mass * props->mass_to_solar_mass;
@@ -165,6 +166,9 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
       const float dlog10_BH_mass =
           log10f(subgrid_mass_Msun) - log10f(min_BH_mass_Msun);
       v_kick = fabs(props->quasar_wind_speed) + (fabs(props->slim_disk_wind_speed) / 3.f) * dlog10_BH_mass;
+      if (props->slim_disk_wind_speed < 0.f) {
+        v_kick = fabs(props->quasar_wind_speed) + (fabs(props->slim_disk_wind_speed) / 3.f) * dlog10_BH_mass * dlog10_BH_mass;
+      }
 
       /* Sometimes can get very small leading to huge mass loadings */
       if (v_kick < props->minimum_v_kick_km_s) {
@@ -172,32 +176,31 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
       }
 
       v_kick *= props->kms_to_internal;
+
+      /* Quasar/slim disk winds should not exceed jet velocity (should not really happen anyways) */
+      if (v_kick > props->jet_velocity) v_kick = props->jet_velocity;
+    }
+    return v_kick;
+  }
+  /* Non-variable AGN wind speeds */
+  else {
+    switch (bp->state) {
+      case BH_states_adaf:
+        return fabs(props->adaf_wind_speed);
+        break;
+      case BH_states_quasar:
+        return fabs(props->quasar_wind_speed);
+        break;
+      case BH_states_slim_disk:
+        return fabs(props->slim_disk_wind_speed);
+        break;
+      default:
+        error("Invalid black hole state.");
+        return 0.f;
+        break;
     }
   }
 
-  switch (bp->state) {
-    case BH_states_adaf:
-      return fabs(props->adaf_wind_speed);
-      break;
-    case BH_states_quasar:
-      if (props->quasar_wind_speed < 0.f && v_kick > 0.f) {
-        return v_kick;
-      } else {
-        return fabs(props->quasar_wind_speed);
-      }
-      break;
-    case BH_states_slim_disk:
-      if (props->slim_disk_wind_speed < 0.f && v_kick > 0.f) {
-        return v_kick;
-      } else {
-        return fabs(props->slim_disk_wind_speed);
-      }
-      break;
-    default:
-      error("Invalid black hole state.");
-      return 0.f;
-      break;
-  }
 }
 
 /**
