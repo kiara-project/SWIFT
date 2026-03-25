@@ -114,9 +114,9 @@ INLINE static void convert_part_e_density(const struct engine *e,
 INLINE static void convert_part_T(const struct engine *e, const struct part *p,
                                   const struct xpart *xp, float *ret) {
 
-  *ret = cooling_get_temperature(e->physical_constants, e->hydro_properties,
-                                 e->internal_units, e->cosmology,
-                                 e->cooling_func, p, xp);
+  const float u = hydro_get_physical_internal_energy(p, xp, e->cosmology);
+  const float ne = xp->cooling_data.e_frac;
+  *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p);
 }
 
 #ifdef RT_NONE
@@ -129,6 +129,12 @@ INLINE static void convert_mass_fractions(const struct engine *engine,
   ret[1] = (float)xpart->cooling_data.HII_frac;
 }
 #endif
+
+INLINE static void convert_part_G0(const struct engine *e, const struct part *p,
+                                   const struct xpart *xp, float *ret) {
+
+  *ret = cooling_G0_from_FIRE(p, p->cooling_data.subgrid_dens, e->cooling_func);
+}
 
 /**
  * @brief Specifies which particle fields to write to a dataset
@@ -232,6 +238,12 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
       "Cooling times for the gas particle. If it's currently a firehose wind"
       "particle (decoupling_delay_time>0), this is the mixing layer cooling time.");
   num++;
+
+  list[num] = io_make_output_field_convert_part(
+    "InterstellarRadiation", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
+    convert_part_G0, "The interstellar radiation field strength in Habing units. ");
+  num++;
+
 #endif
 #endif
 

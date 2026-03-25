@@ -979,7 +979,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->minimum_black_hole_mass_v_kick /= bp->mass_to_solar_mass;
 
   bp->minimum_v_kick_km_s = parser_get_opt_param_float(
-      params, "ObsidianAGN:minimum_v_kick_km_s", 10.f);
+      params, "ObsidianAGN:minimum_v_kick_km_s", 100.f);
 
   /* Reposition parameters --------------------------------- */
 

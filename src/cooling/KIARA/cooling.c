@@ -78,6 +78,7 @@ void cooling_update(const struct phys_const *phys_const,
   if (cooling->redshift == -1) {
     cooling->units.a_value = cosmo->a;
   } else {
+    cooling->redshift = cosmo->z;
     cooling->units.a_value = 1. / (1. + cooling->redshift);
   }
 }
@@ -340,6 +341,9 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     G0 = max(ssfr, pssfr) * cooling->G0_factor2 +
          p->cooling_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
   }
+  else if (cooling->G0_computation_method == 6) {
+    G0 = cooling_G0_from_FIRE(p, rho, cooling);
+  }
 #endif
   else {
     error("G0_computation_method %d not recognized\n",
@@ -349,14 +353,16 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   /* Scale G0 by user-input value */
   G0 *= cooling->G0_multiplier;
 
-  if (mstar * 1.e10 > 1.e9 && p->id % 100000 == 0 && p->chemistry_data.local_sfr_density > 0) {
-    message("G0: id=%lld M*=%g SFR=%g rho_sfr=%g SNe=%g Td=%g fshield=%g G0=%g",
+  if (mstar * 1.e10 > 1.e9 && p->id % 10000 == 0 && p->cooling_data.subgrid_temp > 0) {
+  //if (p->id % 1 == 0 && p->cooling_data.subgrid_temp > 0) {
+    message("G0: id=%lld M*=%g SFR=%g rho_sfr=%g T=%g nH=%g Td=%g fshield=%g G0=%g",
             p->id,
             mstar * 1.e10,
             mstar * 1.e10 *
                 ssfr / (1.e6 * cooling->time_to_Myr),
             p->chemistry_data.local_sfr_density * 0.002 / 1.6,
-	    p->cooling_data.SNe_ThisTimeStep,
+	    p->cooling_data.subgrid_temp,
+            p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
             p->cooling_data.dust_temperature,
             fH2_shield,
             G0);
@@ -1159,8 +1165,10 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
       const float dust_mass_ratio = dust_mass_new / dust_mass_old;
       p->chemistry_data.metal_mass_fraction_total = 0.f;
 
-      for (int elem = chemistry_element_He; elem < chemistry_element_count;
+      for (int elem = 0; elem < chemistry_element_count;
            ++elem) {
+	if (elem == chemistry_element_H || elem == chemistry_element_He) continue;
+
         const float Z_dust_elem_old = p->cooling_data.dust_mass_fraction[elem];
         const float Z_dust_elem_new = Z_dust_elem_old * dust_mass_ratio;
         const float Z_elem_old = p->chemistry_data.metal_mass_fraction[elem];
@@ -1177,9 +1185,7 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
         p->cooling_data.dust_mass_fraction[elem] *= dust_mass_ratio;
 
         /* Sum up to get the new Z value */
-        if (elem != chemistry_element_H && elem != chemistry_element_He) {
-          p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
-        }
+        p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
       }
 
       /* Make sure that X + Y + Z = 1 */
@@ -1757,6 +1763,10 @@ void cooling_init_units(const struct unit_system *us,
 
   cooling->time_to_Myr = time_to_yr * 1.e-6;
 
+  const double vel_to_km_s =  units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY) * 1.e-5;
+  cooling->potential_to_kms2 = vel_to_km_s * vel_to_km_s;
+  cooling->ff_const = sqrt(3. * M_PI / (32. * phys_const->const_newton_G));
+
   /* G0 for MW=1.6 (Parravano etal 2003).  */
   /* Scaled to SFR density in solar neighborhood =0.002 Mo/Gyr/pc^3
      (J. Isern 2019) */
@@ -1891,7 +1901,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
    * solutions. */
   chemistry->radiative_transfer_hydrogen_only = 0;
 
-  /* Use Rahmati+13 self-shielding; 0=none, 1=HI only, 2=HI+HeI, 3=HI+HeI but
+  /* Use self-shielding; 0=none, 1=HI only, 2=HI+HeI, 3=HI+HeI but
    * set HeII rates to 0 */
   chemistry->self_shielding_method = cooling->self_shielding_method;
 
