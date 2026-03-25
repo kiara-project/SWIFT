@@ -53,6 +53,12 @@ struct cooling_function_data {
   /*! Convert time to Myr */
   double time_to_Myr;
 
+  /*! Convert potential to (km/s)^2 */
+  double potential_to_kms2;
+
+  /*! Constant needed for computing free-fall time */
+  double ff_const;
+
   /*! conversion unit factor for rate of change of thermal energy */
   double dudt_units;
 

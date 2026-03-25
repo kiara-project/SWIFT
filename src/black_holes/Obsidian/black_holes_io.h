@@ -432,7 +432,8 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
 
   list[num] = io_make_output_field_convert_bpart(
       "Potentials", FLOAT, 1, UNIT_CONV_POTENTIAL, -1.f, bparts,
-      convert_bpart_potential, "Gravitational potentials of the particles");
+      convert_bpart_potential, "Gravitational potentials of the "
+      "black hole particles");
   num++;
 
   *num_fields = num;

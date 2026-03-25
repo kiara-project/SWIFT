@@ -40,9 +40,6 @@ struct star_formation_part_data {
 
   /*! The fraction of H2 in this gas particle */
   float H2_fraction;
-
-  /*! The fraction of H2 in this gas particle */
-  float G0;
 };
 
 /**
