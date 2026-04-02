@@ -250,10 +250,8 @@ INLINE static double cooling_get_electron_pressure(
 }
 
 /**
- * @brief Compute the specific thermal energy (physical) for a given
+ * @brief Return the specific thermal energy (physical) for a given
  * temperature.
- *
- * Converts T to u (internal physical units) for a given particle.
  *
  * @param temperature Particle temperature in K
  * @param ne Electron number density relative to H atom density
@@ -262,20 +260,27 @@ INLINE static double cooling_get_electron_pressure(
  */
 INLINE static double cooling_convert_temp_to_u(
     const double temperature, const double ne,
-    const struct cooling_function_data *cooling, const struct part *p) {
+    const struct cooling_function_data *cooling, const struct part *p,
+    const struct xpart *xp) {
 
+  float mu = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+  mu = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
+  mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
+  mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  mu += xp->cooling_data.e_frac;
+#else
   const float X_H =
       chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
   const float yhelium = (1. - X_H) / (4. * X_H);
   const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
+#endif
 
-  return temperature * mu * cooling->temp_to_u_factor;
+  return temperature * cooling->temp_to_u_factor / mu;
 }
 
 /**
- * @brief Compute the temperature for a given physical specific energy
- *
- * Converts T to u (internal physical units) for a given particle.
+ * @brief Return the temperature for a given physical specific energy
  *
  * @param u Physical specific energy
  * @param ne Electron number density relative to H atom density
@@ -284,14 +289,24 @@ INLINE static double cooling_convert_temp_to_u(
  */
 INLINE static double cooling_convert_u_to_temp(
     const double u, const double ne,
-    const struct cooling_function_data *cooling, const struct part *p) {
+    const struct cooling_function_data *cooling, const struct part *p,
+    const struct xpart *xp) {
 
+  float mu = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+  mu = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
+  mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
+  mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  mu += xp->cooling_data.e_frac;
+  mu = 1. / mu;
+#else
   const float X_H =
       chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
   const float yhelium = (1. - X_H) / (4. * X_H);
   const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
+#endif
 
-  return u / (mu * cooling->temp_to_u_factor);
+  return u * mu / cooling->temp_to_u_factor;
 }
 
 /**
@@ -382,6 +397,59 @@ __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
 }
 
 /**
+ * @brief Computes H and H2 self-shielding for G0 calculation.
+ * Based on Schauer et al. 2015 eqs 8,9.
+ *
+ * @param p The particle to act upon.
+ * @param cooling The properties of the cooling function.
+ */
+__attribute__((always_inline)) INLINE static float
+cooling_compute_self_shielding(const struct part *restrict p,
+                               const struct cooling_function_data *cooling) {
+
+  float fH2_shield = 1.f;
+#if COOLING_GRACKLE_MODE >= 2
+  float T_ism = p->cooling_data.subgrid_temp;
+  if (T_ism > 0.f) {
+    /* Compute self-shielding from H */
+    const float a = cooling->units.a_value;
+    const float a3_inv = 1.f / (a * a * a);
+    const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
+                                  p->rho_gradient[1] * p->rho_gradient[1] +
+                                  p->rho_gradient[2] * p->rho_gradient[2];
+    const double rho_grad_norm_inv =
+        (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
+    const double rho_com = hydro_get_comoving_density(p);
+    double L_eff_com = rho_com * rho_grad_norm_inv;
+    const double L_eff_com_max = kernel_gamma * p->h;
+    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
+    L_eff_com = fmin(L_eff_com, L_eff_com_max);
+    L_eff_com = fmax(L_eff_com, L_eff_com_min);
+    const double L_eff_in_cm = L_eff_com * a * cooling->units.length_units;
+    const double rho_to_n_cgs =
+        cooling->units.density_units * 5.97729e23 * 0.75;
+    const double rho_cgs_phys = rho_com * a3_inv * rho_to_n_cgs;
+    const double NH_cgs = rho_cgs_phys * L_eff_in_cm;
+    const double xH = NH_cgs * 3.50877e-24;
+    const double fH_shield = pow(1.f + xH, -1.62) * exp(-0.149 * xH);
+
+    fH2_shield *= fH_shield;
+    /* Extra self-shielding from H2 if present - DON'T DO THIS HERE SINCE IT IS IN CRACKLE
+    const float fH2 = p->sf_data.H2_fraction;
+    if (fH2 > 0.f) {
+      const double NH2_cgs = fH2 * NH_cgs;
+      const double DH2_cgs = 1.e-5 * sqrt(2.*1.38e-16 * T_ism * 2.98864e23);
+      const double xH2 = NH2_cgs * 1.18133e-14;
+      fH2_shield *= 0.9379 * pow(1.f + xH2 / DH2_cgs, -1.879) +
+          0.03465 * pow(1.f + xH2, -0.473) * exp(-2.293e-4 * sqrt(1.f + xH2));
+    } */
+  }
+#endif
+
+  return fH2_shield;
+}
+
+/**
  * @brief Returns the value of G0 for given particle p
  * based on symbolic regression from FIRE simulations (from Diane Salim)
  *
@@ -418,6 +486,98 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 	    p->cooling_data.subgrid_temp,
 	    p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
             p->cooling_data.dust_temperature,
+            G0);
+  }
+
+  return G0;
+}
+
+/**
+ * @brief Returns the value of G0 for given particle p
+ *
+ * @param p Pointer to the particle data.
+ * @param rho Physical density in system units.
+ * @param cooling The properties of the cooling function.
+ * @param dt The cooling timestep.
+ *
+ */
+__attribute__((always_inline)) INLINE static float cooling_compute_G0(
+    const struct part *restrict p, const float rho,
+    const struct cooling_function_data *cooling, const float mstar,
+    const float ssfr) {
+
+  /* No ISRF outside subgrid ISM */
+  if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
+
+  float G0 = 0.f;
+  float fH2_shield = 1.f;
+  /* Determine ISRF in Habing units based on chosen method */
+  if (cooling->G0_computation_method == 0) {
+    G0 = 0.f;
+  }
+  else if (cooling->G0_computation_method == 1) {
+    fH2_shield = cooling_compute_self_shielding(p, cooling);
+    G0 = fH2_shield * p->chemistry_data.local_sfr_density * cooling->G0_factor1;
+  }
+  else if (cooling->G0_computation_method == 2) {
+    G0 = ssfr * cooling->G0_factor2;
+  }
+  else if (cooling->G0_computation_method == 3) {
+    if (ssfr > 0.) {
+      G0 = ssfr * cooling->G0_factor2;
+    }
+    else {
+      fH2_shield = cooling_compute_self_shielding(p, cooling);
+      G0 = fH2_shield * p->chemistry_data.local_sfr_density *
+           cooling->G0_factor1;
+    }
+  }
+  else if (cooling->G0_computation_method == -3) {
+    if (p->chemistry_data.local_sfr_density > 0.) {
+      fH2_shield = cooling_compute_self_shielding(p, cooling);
+      G0 = fH2_shield * p->chemistry_data.local_sfr_density *
+           cooling->G0_factor1;
+    }
+    else {
+      G0 = ssfr * cooling->G0_factor2;
+    }
+  }
+#if COOLING_GRACKLE_MODE >= 2
+  /*else if (cooling->G0_computation_method == 4) {
+    // Remember SNe_ThisTimeStep stores SN **rate**
+    G0 = p->cooling_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
+  }
+  else if (cooling->G0_computation_method == 5) {
+    float pssfr = max(p->sf_data.SFR, 0.f);
+    pssfr /= max(mstar, 8. * p->mass);
+    G0 = max(ssfr, pssfr) * cooling->G0_factor2 +
+         p->cooling_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
+  }*/
+  else if (cooling->G0_computation_method == 6) {
+    G0 = cooling_G0_from_FIRE(p, rho, cooling);
+  }
+#endif
+  else {
+    error("G0_computation_method %d not recognized\n",
+          cooling->G0_computation_method);
+  }
+
+  /* Scale G0 by user-input value */
+  G0 *= cooling->G0_multiplier;
+
+  if (mstar * 1.e10 > 1.e9 && p->id % 100000 == 0 && p->cooling_data.subgrid_temp > 0) {
+  //if (p->id % 1 == 0 && p->cooling_data.subgrid_temp > 0) {
+    message("G0: id=%lld z=%g M*=%g SFR=%g rho_sfr=%g T=%g nH=%g Td=%g fshield=%g G0=%g",
+            p->id,
+            1.f / cooling->units.a_value - 1.f,
+            mstar * 1.e10,
+            mstar * 1.e10 *
+                ssfr / (1.e6 * cooling->time_to_Myr),
+            p->chemistry_data.local_sfr_density * 0.002 / 1.6,
+            p->cooling_data.subgrid_temp,
+            p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
+            p->cooling_data.dust_temperature,
+            fH2_shield,
             G0);
   }
 

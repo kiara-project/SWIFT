@@ -116,7 +116,7 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
 
   const float u = hydro_get_physical_internal_energy(p, xp, e->cosmology);
   const float ne = xp->cooling_data.e_frac;
-  *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p);
+  *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p, xp);
 }
 
 #ifdef RT_NONE
@@ -133,7 +133,10 @@ INLINE static void convert_mass_fractions(const struct engine *engine,
 INLINE static void convert_part_G0(const struct engine *e, const struct part *p,
                                    const struct xpart *xp, float *ret) {
 
-  *ret = cooling_G0_from_FIRE(p, p->cooling_data.subgrid_dens, e->cooling_func);
+  const float mstar = p->galaxy_data.stellar_mass;
+  const float ssfr = p->galaxy_data.specific_sfr;
+  const float rho = p->cooling_data.subgrid_dens;
+  *ret = cooling_compute_G0(p, rho, e->cooling_func, mstar, ssfr);
 }
 
 /**
