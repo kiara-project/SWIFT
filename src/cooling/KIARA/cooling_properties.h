@@ -53,6 +53,12 @@ struct cooling_function_data {
   /*! Convert time to Myr */
   double time_to_Myr;
 
+  /*! Convert potential to (km/s)^2 */
+  double potential_to_kms2;
+
+  /*! Constant needed for computing free-fall time */
+  double ff_const;
+
   /*! conversion unit factor for rate of change of thermal energy */
   double dudt_units;
 
@@ -117,9 +123,12 @@ struct cooling_function_data {
   /*! For subgrid model (eg KIARA) need a subgrid ISM fraction */
   double cold_ISM_frac;
 
-  /*! For Grackle subgrid model, choose way to determine G0: 1=Local SFR
-   * density; 2=Global sSFR */
+  /*! For Grackle subgrid model, choose way to determine G0: 1=Local SFR density; 
+   * 2=Global sSFR; 3=2 if sSFR != 0, else 1; -3: vice versa */
   int G0_computation_method;
+
+  /*! For Grackle subgrid model, arbitrary multiplier for G0 */
+  double G0_multiplier;
 
   /*! For Grackle subgrid model, set max density to avoid pointlessly
    * over-iterating in Grackle */
@@ -142,6 +151,10 @@ struct cooling_function_data {
 
   /*! Option to use Cloudy lookup tables when outside ISM */
   int use_tables_outside_ism;
+
+  /*! When using radiative transfer, set this on if you want thermochemistry 
+   * done within RT modules (eg in KIARART) */
+  int do_cooling_in_rt;
 };
 
 #endif /* SWIFT_COOLING_PROPERTIES_KIARA_H */

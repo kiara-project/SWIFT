@@ -317,8 +317,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
 
       /* Rennehan: Limit to maximum resolvable velocity scale */
       const float v_phys =
-          sqrtf(xp->v_full[0] * xp->v_full[0] + xp->v_full[1] * xp->v_full[1] +
-                xp->v_full[2] * xp->v_full[2]) *
+          sqrtf(p->v[0] * p->v[0] + p->v[1] * p->v[1] + p->v[2] * p->v[2]) *
           cosmo->a_inv;
       const float h_phys = cosmo->a * p->h * kernel_gamma;
       const float vel_norm_phys_max = 0.5f * v_phys / h_phys;
@@ -754,8 +753,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
     const float m = hydro_get_mass(p);
     const float v =
-        sqrtf(xp->v_full[0] * xp->v_full[0] + xp->v_full[1] * xp->v_full[1] +
-              xp->v_full[2] * xp->v_full[2]);
+          sqrtf(p->v[0] * p->v[0] + p->v[1] * p->v[1] +
+                p->v[2] * p->v[2]);
     const float dv = sqrtf(ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] +
                            ch->dv[2] * ch->dv[2]);
     float dv_phys = dv * cosmo->a_inv;
@@ -764,9 +763,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     float alpha = 1.f;
 
     if (dv >= FIREHOSE_EPSILON_TOLERANCE * v) {
-      const float v_new[3] = {xp->v_full[0] + ch->dv[0],
-                              xp->v_full[1] + ch->dv[1],
-                              xp->v_full[2] + ch->dv[2]};
+      const float v_new[3] = {p->v[0] + ch->dv[0],
+                              p->v[1] + ch->dv[1],
+                              p->v[2] + ch->dv[2]};
       const float v_new_norm = sqrtf(v_new[0] * v_new[0] + v_new[1] * v_new[1] +
                                      v_new[2] * v_new[2]);
 
@@ -784,9 +783,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
         const float target_KE_factor =
             (KE_low_flag) ? FIREHOSE_COOLLIM : FIREHOSE_HEATLIM;
 
-        const float v_dot_dv = xp->v_full[0] * ch->dv[0] +
-                               xp->v_full[1] * ch->dv[1] +
-                               xp->v_full[2] * ch->dv[2];
+        const float v_dot_dv = p->v[0] * ch->dv[0] +
+                               p->v[1] * ch->dv[1] +
+                               p->v[2] * ch->dv[2];
 
         /* How to scale all components equally? Solve quadratic:
          * v^2 + 2 * alpha * v * dv + alpha^2 * dv^2 = target_KE_factor * v^2
@@ -825,8 +824,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
               "dv[0]=%g dv[1]=%g dv[2]=%g "
               "v[0]=%g v[1]=%g v[2]=%g",
               p->id, alpha, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du,
-              ch->dv[0], ch->dv[1], ch->dv[2], xp->v_full[0], xp->v_full[1],
-              xp->v_full[2]);
+              ch->dv[0], ch->dv[1], ch->dv[2], p->v[0], p->v[1], p->v[2]);
         } else {
           ch->dv[0] = 0.f;
           ch->dv[1] = 0.f;
@@ -837,9 +835,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
               "dv=%g m=%g dm=%g u=%g du=%g "
               "dv[0]=%g dv[1]=%g dv[2]=%g "
               "v[0]=%g v[1]=%g v[2]=%g",
-              p->id, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du, ch->dv[0],
-              ch->dv[1], ch->dv[2], xp->v_full[0], xp->v_full[1],
-              xp->v_full[2]);
+              p->id, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du, 
+              ch->dv[0], ch->dv[1], ch->dv[2], p->v[0], p->v[1], p->v[2]);
         }
 
         /* Recompute the new updated limited values to set v_sig */
@@ -858,9 +855,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
       hydro_set_v_sig_based_on_velocity_kick(p, cosmo, dv_phys);
 
-      xp->v_full[0] += ch->dv[0];
-      xp->v_full[1] += ch->dv[1];
-      xp->v_full[2] += ch->dv[2];
+      p->v[0] += ch->dv[0];
+      p->v[1] += ch->dv[1];
+      p->v[2] += ch->dv[2];
 
       /* Grab the comoving internal energy at last kick */
       const double u = hydro_get_drifted_comoving_internal_energy(p);

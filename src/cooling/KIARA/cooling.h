@@ -34,7 +34,6 @@
 
 /* Local includes. */
 #include "chemistry.h"
-#include "cooling_io.h"
 #include "cooling_properties.h"
 #include "entropy_floor.h"
 #include "error.h"
@@ -44,6 +43,7 @@
 #include "part.h"
 #include "physical_constants.h"
 #include "units.h"
+#include "gravity.h"
 
 /* need to rework (and check) code if changed */
 #define GRACKLE_NPART 1
@@ -379,6 +379,49 @@ __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
     }
   }
   return temperature;
+}
+
+/**
+ * @brief Returns the value of G0 for given particle p
+ * based on symbolic regression from FIRE simulations (from Diane Salim)
+ *
+ * @param p Pointer to the particle data.
+ * @param rho Physical density in system units.
+ * @param cooling The properties of the cooling function.
+ * @param dt The cooling timestep.
+ *
+ */
+__attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
+    const struct part *restrict p, const float rho,
+    const struct cooling_function_data *cooling) {
+
+  /* No ISRF when not in subgrid ISM mode */
+  if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
+
+  const float t_ff = cooling->ff_const / sqrt(rho);
+  const float t_ff_Gyr = t_ff * cooling->time_to_Myr * 1.e-3;
+
+  const float pot = fabs(gravity_get_comoving_potential(p->gpart) / cooling->units.a_value);
+  const float pot_kms2 = pot * cooling->potential_to_kms2;
+
+  float G0 = 2.f * log(t_ff_Gyr) + pow(1.44e-6 * exp(3.f * log(pot_kms2) + log(t_ff_Gyr)) + 0.314, -0.599);
+  G0 = exp(G0);
+
+  if (p->id % 10000 == 0 ) {
+    message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g G0=%g",
+            p->id,
+	    1.f/cooling->units.a_value - 1.f,
+	    p->galaxy_data.stellar_mass * 1.e10 ,
+	    p->galaxy_data.specific_sfr * p->galaxy_data.stellar_mass * 1.e10 / (1.e6 * cooling->time_to_Myr),
+	    t_ff_Gyr*1.e3,
+	    sqrt(pot_kms2),
+	    p->cooling_data.subgrid_temp,
+	    p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
+            p->cooling_data.dust_temperature,
+            G0);
+  }
+
+  return G0;
 }
 
 /**

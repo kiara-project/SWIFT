@@ -541,12 +541,14 @@ INLINE static int sink_spawn_star(struct sink *sink, const struct engine *e,
  * @param with_cosmology If we run with cosmology.
  * @param phys_const The physical constants in internal units.
  * @param us The internal unit system.
+ * @param (return) displacement The 3D displacement vector of the star with
+ * respect to the sink position.
  */
 INLINE static void sink_copy_properties_to_star(
     struct sink *sink, struct spart *sp, const struct engine *e,
     const struct sink_props *sink_props, const struct cosmology *cosmo,
     const int with_cosmology, const struct phys_const *phys_const,
-    const struct unit_system *restrict us) {}
+    const struct unit_system *restrict us, float displacement[3]) {}
 
 /**
  * @brief Update the #sink particle properties before spawning a star.
@@ -640,5 +642,19 @@ INLINE static void sink_prepare_part_sink_formation_sink_criteria(
     struct sink *restrict si, const int with_cosmology,
     const struct cosmology *cosmo, const struct sink_props *sink_props,
     const double time) {}
+
+/**
+ * @brief Returns the current co-moving softening of a sink particle
+ *
+ * Notice that on foreign MPI ranks, we do not have access to the gpart. Hence,
+ * we directly read from the gravity props.
+ *
+ * @param sink The particle of interest
+ * @param grav_props The global gravity properties.
+ */
+__attribute__((always_inline)) INLINE static float sink_get_softening(
+    const struct sink *sink, const struct gravity_props *grav_props) {
+  return grav_props->epsilon_baryon_cur;
+}
 
 #endif /* SWIFT_BASIC_SINK_H */

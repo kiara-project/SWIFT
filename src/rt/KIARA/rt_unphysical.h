@@ -78,7 +78,6 @@ __attribute__((always_inline)) INLINE static void rt_check_unphysical_state(
   const double flux_max = rt_params.reduced_speed_of_light * *energy_density;
   if (flux_norm > flux_max) {
     const double correct = flux_max / flux_norm;
-    message("RT flux=%g max=%g edens=%g correct=%g", sqrtf(flux2), flux_max, *energy_density, correct);
     flux[0] *= correct;
     flux[1] *= correct;
     flux[2] *= correct;

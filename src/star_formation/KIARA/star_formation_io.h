@@ -70,12 +70,6 @@ __attribute__((always_inline)) INLINE static int star_formation_write_particles(
   num++;
 #endif
 
-  list[num] = io_make_output_field(
-      "InterstellarRadiationField", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
-      sf_data.G0,
-      "The interstellar radiation field strength in Habing units. ");
-  num++;
-
   return num;
 }
 

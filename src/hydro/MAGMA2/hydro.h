@@ -34,6 +34,7 @@
 #include "dimension.h"
 #include "entropy_floor.h"
 #include "equation_of_state.h"
+#include "fvpm_geometry.h"
 #include "hydro_parameters.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
@@ -578,6 +579,9 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
       p->gradients.velocity_tensor_aux_norm[i][j] = 0.;
     }
   }
+
+  /* Init geometry for FVPM Radiative Transfer */
+  fvpm_geometry_init(p);
 }
 
 /**
@@ -1425,7 +1429,34 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   const float a_inv2 = cosmo->a2_inv;
   p->density.div_v *= h_inv_dim_plus_one * rho_inv * a_inv2;
   p->density.div_v += cosmo->H * hydro_dimension;
+/**
+}
 
+ * @brief Prepare a particle for the gradient calculation.
+ *
+ * This function is called after the density loop and before the gradient loop.
+ *
+ * We use it to set the physical timestep for the particle and to copy the
+ * actual velocities, which we need to boost our interfaces during the flux
+ * calculation. We also initialize the variables used for the time step
+ * calculation.
+ *
+ * @param p The particle to act upon.
+ * @param xp The extended particle data to act upon.
+ * @param cosmo The cosmological model.
+ * @param hydro_props Hydrodynamic properties.
+ * @param pressure_floor The properties of the pressure floor.
+__attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
+    struct part *restrict p, struct xpart *restrict xp,
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props,
+    const struct pressure_floor_props *pressure_floor) {
+
+  const float h = p->h;
+  const float h_inv = 1.0f / h;                       
+  const float h_inv_dim = pow_dimension(h_inv);       
+  const float h_inv_dim_plus_one = h_inv_dim * h_inv; 
+ */
+  
   /* Need this for correct dh/dt */
   p->gradients.wcount = p->density.wcount;
 
@@ -1559,6 +1590,10 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
       }
     }
   }
+  
+
+  /* Finish matrix and volume computations for FVPM Radiative Transfer */
+  fvpm_compute_volume_and_matrix(p, h_inv_dim);
 }
 
 /**
