@@ -168,6 +168,13 @@ struct black_holes_props {
   /*! The spin of EVERY black hole */
   float fixed_spin;
 
+  /* ---------- NLT added for spin -------------*/
+
+  /*! seed spin */
+  float seed_spin;
+
+  /* ---------- end NLT -------------------------*/
+
   /*! Method to compute the dynamical time within the kernel */
   int dynamical_time_calculation_method;
 
@@ -554,7 +561,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   }
 
   /* Accretion parameters ---------------------------------- */
-
+  
   /* Conversion factor for internal mass to M_solar */
   bp->mass_to_solar_mass = 1.f / phys_const->const_solar_mass;
 
@@ -691,20 +698,35 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_decouple_time_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:jet_decouple_time_factor", f_jet_recouple);
 
+  /* --------NLT added for evolving spin ----------*/
+   
+
+  bp->seed_spin = parser_get_param_float(params, "ObsidianAGN:subgrid_seed_spin");
+  if ((bp->seed_spin <= 0.) || (bp->seed_spin > 1.)) {
+    error(
+        "The BH seed spin parameter must be strictly between 0 and 1, "
+        "not %f",
+        bp->seed_spin);
+  }
+
+  /* ---------end NLT ------------------*/
+
+
+
   bp->fixed_spin = parser_get_param_float(params, "ObsidianAGN:fixed_spin");
   if (bp->fixed_spin >= 1.f || bp->fixed_spin <= 0.f) {
     error("Black hole must have spin > 0.0 and < 1.0");
   }
   
-  bp->A_sd = powf(0.9663f - 0.9292f * bp->fixed_spin, -0.5639f);
-  bp->B_sd = powf(4.627f - 4.445f * bp->fixed_spin, -0.5524f);
-  bp->C_sd = powf(827.3f - 718.1f * bp->fixed_spin, -0.7060f);
+  bp->A_sd = powf(0.9663f - 0.9292f * bp->seed_spin, -0.5639f);
+  bp->B_sd = powf(4.627f - 4.445f * bp->seed_spin, -0.5524f);
+  bp->C_sd = powf(827.3f - 718.1f * bp->seed_spin, -0.7060f);
 
-  const float phi_bh = -20.2f * powf(bp->fixed_spin, 3.f) -
-                       14.9f * powf(bp->fixed_spin, 2.f) +
-                       34.f * bp->fixed_spin + 52.6f;
+  const float phi_bh = -20.2f * powf(bp->seed_spin, 3.f) -
+                       14.9f * powf(bp->seed_spin, 2.f) +
+                       34.f * bp->seed_spin + 52.6f;
   const float big_J =
-      bp->fixed_spin / (2.f * (1.f + sqrtf(1.f - powf(bp->fixed_spin, 2.f))));
+      bp->seed_spin / (2.f * (1.f + sqrtf(1.f - powf(bp->seed_spin, 2.f))));
   const float f_j =
       powf(big_J, 2.f) + 1.38f * powf(big_J, 4.f) - 9.2f * powf(big_J, 6.f);
 

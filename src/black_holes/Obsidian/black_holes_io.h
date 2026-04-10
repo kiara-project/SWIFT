@@ -69,12 +69,7 @@ INLINE static void black_holes_read_particles(struct bpart *bparts,
   num++;
 
   list[num] = io_make_input_field("Spins", FLOAT, 1, COMPULSORY,
-		  		  UNIT_CONV_NO_UNITS, bparts, spin);
-  num++;
-
-  list[num] = io_make_input_field("AngularMomentumDirections", FLOAT, 3,
-		                  COMPULSORY, UNIT_CONV_NO_UNITS, bparts,
-				  angular_momentum_direction);
+                                  UNIT_CONV_NO_UNITS, bparts, spin);
   num++;
 
   *num_fields = num;
@@ -293,6 +288,12 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
                            "accumulated by any merged black hole.");
   num++;
 
+  list[num] = io_make_output_field(
+      "Spins", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts, spin,
+      "Dimensionless spins of the black holes."
+      "Negative values indication retrograde accretion.");
+  num++;
+
   if (with_cosmology) {
     list[num] = io_make_output_field(
         "LastMinorMergerScaleFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
@@ -444,18 +445,6 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
       convert_bpart_potential, "Gravitational potentials of the particles");
   num++;
   
-  list[num] = io_make_output_field(
-      "Spins", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts, spin, 
-      "Dimensionless spins of the black holes."
-      "Negative values indication retrograde accretion.");
-  num++;
-
-  list[num] = io_make_output_field(
-      "AngularMomentumDirections", FLOAT, 3, UNIT_CONV_NO_UNITS, 0.f, bparts,
-      angular_momentum_direction, 
-      "Direction of the black hole spin vector, normalised to unity.");
-  num++;
-
   *num_fields = num;
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES

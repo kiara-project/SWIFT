@@ -451,7 +451,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->last_repos_vel = 0.f;
   bp->radiative_luminosity = 0.f;
   bp->delta_energy_this_timestep = 0.f;
-  bp->dt_ang_mom = 0.f;
+  /*bp->dt_ang_mom = 0.f;*/
   bp->state = BH_states_slim_disk;
   bp->radiative_efficiency = 0.f;
   bp->f_accretion = 0.f;
@@ -463,10 +463,11 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->jet_mass_kicked_this_step = 0.f;
   bp->adaf_energy_to_dump = 0.f;
   bp->adaf_energy_used_this_step = 0.f;
+  bp->spin = props->seed_spin;
   /* CBP - allow for jet direction to follow angular momentum direction*/
-  bp->jet_direction[0] = bp->angular_momentum_direction[0];
-  bp->jet_direction[1] = bp->angular_momentum_direction[1];
-  bp->jet_direction[2] = bp->angular_momentum_direction[2];
+  /*bp->jet_direction[0] = bp->angular_momentum_direction[0];*/
+  /*bp->jet_direction[1] = bp->angular_momentum_direction[1];*/
+  /*bp->jet_direction[2] = bp->angular_momentum_direction[2];*/
   /* End of CBP update */ 
 
 }
@@ -497,9 +498,9 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->velocity_gas[0] = 0.f;
   bp->velocity_gas[1] = 0.f;
   bp->velocity_gas[2] = 0.f;
-  bp->spec_angular_momentum_gas[0] = 0.f;
-  bp->spec_angular_momentum_gas[1] = 0.f;
-  bp->spec_angular_momentum_gas[2] = 0.f;
+  /*bp->spec_angular_momentum_gas[0] = 0.f;*/
+  /*bp->spec_angular_momentum_gas[1] = 0.f;*/
+  /*bp->spec_angular_momentum_gas[2] = 0.f;*/
   bp->circular_velocity_gas[0] = 0.f;
   bp->circular_velocity_gas[1] = 0.f;
   bp->circular_velocity_gas[2] = 0.f;
@@ -665,9 +666,9 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   bp->velocity_gas[0] *= m_tot_inv;
   bp->velocity_gas[1] *= m_tot_inv;
   bp->velocity_gas[2] *= m_tot_inv;
-  bp->spec_angular_momentum_gas[0] *= m_tot_inv;
-  bp->spec_angular_momentum_gas[1] *= m_tot_inv;
-  bp->spec_angular_momentum_gas[2] *= m_tot_inv;
+  /*bp->spec_angular_momentum_gas[0] *= m_tot_inv;*/
+  /*bp->spec_angular_momentum_gas[1] *= m_tot_inv;*/
+  /*bp->spec_angular_momentum_gas[2] *= m_tot_inv;*/
   bp->circular_velocity_gas[0] *= m_tot_inv;
   bp->circular_velocity_gas[1] *= m_tot_inv;
   bp->circular_velocity_gas[2] *= m_tot_inv;
@@ -988,6 +989,16 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 #endif
   /* (Subgrid) mass of the BH (internal units) */
   const double BH_mass = bp->subgrid_mass;
+
+  /*----------NLT added to evolve spin ------------*/
+  float dspin = 0.01;
+  float final_spin = -1.;
+  float spin = bp->spin;
+  final_spin = spin - dspin;
+  bp->spin = final_spin;
+  message("spin update: spin, %f",bp->spin);
+
+  /* -----------end NLT ---------------*/
 
   /* Compute the Eddington rate (internal units).
    * IMPORTANT: epsilon_r = 0.1 is the SET value for the Eddington rate.
@@ -1311,6 +1322,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const float my_adaf_mass_limit =
       get_black_hole_adaf_mass_limit(bp, props, cosmo);
 
+ 
   /* Switch between states depending on the */
   switch (bp->state) {
     case BH_states_adaf:
@@ -1555,7 +1567,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       "eps_r=%g, f_Edd=%g, f_acc=%g, "
       "luminosity=%g, accr_rate=%g Msun/yr, coupling=%g, v_kick=%g km/s, "
       "jet_mass_reservoir=%g Msun unresolved_reservoir=%g Msun "
-      "jet_mass_loading=%g, spin=%g, ang_mom_dir=%g",
+      "jet_mass_loading=%g" /*, spin=%g, ang_mom_dir=%g"*/,
       bp->id, bp->state, predicted_mdot_medd, bp->radiative_efficiency,
       bp->eddington_fraction, bp->f_accretion,
       bp->radiative_luminosity * props->conv_factor_energy_rate_to_cgs,
@@ -1564,9 +1576,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->v_kick / props->kms_to_internal,
       bp->jet_mass_reservoir * props->mass_to_solar_mass,
       bp->unresolved_mass_reservoir * props->mass_to_solar_mass,
-      bp->jet_mass_loading
-      bp->spin;
-      bp->angular_momentum_direction);
+      bp->jet_mass_loading);
+      /*bp->spin;*/
+      /*bp->angular_momentum_direction);*/
 #endif
 
 #define OBSIDIAN_BH_DETAILS
@@ -1836,7 +1848,6 @@ INLINE static void black_holes_create_from_gas(
 
   /* Initial seed mass */
   bp->subgrid_mass = props->subgrid_seed_mass;
-
 
   /* We haven't accreted anything yet */
   bp->total_accreted_mass = 0.f;
