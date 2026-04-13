@@ -161,7 +161,7 @@ struct bpart {
   float adaf_wt_sum;
 
   /*! The mass of cold disk around the black hole */
-  float cold_disk_mass;
+  float corot_gas_mass;
 
   /*! Mass in accretion disk from which BH accretes */
   float accretion_disk_mass;

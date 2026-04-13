@@ -458,7 +458,12 @@ runner_iact_nonsym_bh_gas_swallow(
                      Ly * bi->angular_momentum_gas[1] +
                      Lz * bi->angular_momentum_gas[2];
   if ((proj > 0.f) && gas_temperature_state == -1) {
-    bi->cold_disk_mass += mj;
+#if COOLING_GRACKLE_MODE >= 2
+    /* With subgrid ISM model, only allow H2 component to be accreted */
+    bi->corot_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.H2_fraction;
+#else
+    bi->corot_gas_mass += mj;
+#endif
   }
 
   /* Probability to swallow this particle */

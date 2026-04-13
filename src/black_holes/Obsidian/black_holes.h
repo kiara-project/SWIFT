@@ -454,7 +454,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->radiative_efficiency = 0.f;
   bp->f_accretion = 0.f;
   bp->m_dot_inflow = 0.f;
-  bp->cold_disk_mass = 0.f;
+  bp->corot_gas_mass = 0.f;
   bp->jet_mass_reservoir = 0.f;
   /* Default to the original value at fixed jet_velocity */
   bp->jet_mass_loading = props->jet_mass_loading;
@@ -487,7 +487,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->gas_SFR = 0.f;
   bp->hot_gas_mass = 0.f;
   bp->cold_gas_mass = 0.f;
-  bp->cold_disk_mass = 0.f;
+  bp->corot_gas_mass = 0.f;
   bp->hot_gas_internal_energy = 0.f;
   bp->sound_speed_subgrid_gas = -1.f;
   bp->velocity_gas[0] = 0.f;
@@ -1170,8 +1170,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   float f_suppress = 1.f;
 
-  const float corot_gas_mass =
-      bp->cold_gas_mass - 2. * (bp->cold_gas_mass - bp->cold_disk_mass);
+  const float disk_gas_mass =
+      bp->cold_gas_mass - 2. * (bp->cold_gas_mass - bp->corot_gas_mass);
   float torque_norm = fabs(props->torque_accretion_norm);
   if (props->torque_accretion_norm < 0.f && bp->subgrid_mass * props->mass_to_solar_mass > 1.e9) {
     torque_norm *= exp(-bp->subgrid_mass * props->mass_to_solar_mass * 1.e-9) * 2.71828; // suppress torque accr
@@ -1181,21 +1181,21 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       case 0:
         if (galaxy_mgas > 0.) {
           torque_accr_rate =
-              torque_norm * bp->cold_disk_mass * tdyn_inv;
+              torque_norm * bp->corot_gas_mass * tdyn_inv;
         }
         break;
 
       case 1:
-        if (corot_gas_mass > 0. && bp->cold_gas_mass > 0.) {
+        if (disk_gas_mass > 0. && bp->cold_gas_mass > 0.) {
           torque_accr_rate =
-              torque_norm * corot_gas_mass * tdyn_inv;
+              torque_norm * disk_gas_mass * tdyn_inv;
         }
         break;
 
       case 2:
-        if (corot_gas_mass > 0. && bp->cold_gas_mass > 0.) {
+        if (disk_gas_mass > 0. && bp->cold_gas_mass > 0.) {
           const float m_disk = bp->cold_gas_mass * f_corr_stellar;
-          const float f_disk = corot_gas_mass / bp->cold_gas_mass;
+          const float f_disk = disk_gas_mass / bp->cold_gas_mass;
 
           const float r0 = bh_h * cosmo->a * (props->length_to_parsec * 0.01);
 
@@ -1205,11 +1205,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
           const float f0 =
               0.31 * f_disk * f_disk * pow(m_disk * mass_to_1e9solar, -1. / 3.);
-          const float f_gas = corot_gas_mass / m_disk;
+          const float f_gas = disk_gas_mass / m_disk;
           const float mass_in_1e8solar = BH_mass * mass_to_1e8solar;
 
           torque_accr_rate = torque_norm * alpha *
-                             corot_gas_mass * mass_to_1e9solar *
+                             disk_gas_mass * mass_to_1e9solar *
                              powf(f_disk, 5. / 2.) *
                              powf(mass_in_1e8solar, 1. / 6.) *
                              powf(r0, -3. / 2.) / (1. + f0 / f_gas);
@@ -1304,6 +1304,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Apply suppression factor to torque accretion */
   torque_accr_rate *= f_suppress;
 
+  if (BH_mass * props->mass_to_solar_mass > 1.e9) {
+    torque_accr_rate *= exp(-(BH_mass * props->mass_to_solar_mass-1.e9) / 1.e9);
+  }
   /* If not near galaxy center, torque accr is suppressed 
   const float suppression_distance = kernel_gravity_softening_plummer_equivalent_inv *
                   props->max_reposition_distance_ratio * bp->h;
@@ -1576,7 +1579,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
                fabs(props->bh_characteristic_suppression_mass) * cosmo->a),
       bp->cold_gas_mass * props->mass_to_solar_mass,
       bp->hot_gas_mass * props->mass_to_solar_mass,
-      corot_gas_mass * props->mass_to_solar_mass, props->time_to_Myr / tdyn_inv,
+      disk_gas_mass * props->mass_to_solar_mass, props->time_to_Myr / tdyn_inv,
       bp->v_kick / props->kms_to_internal, delta_mass, bp->radiative_efficiency,
       bp->accretion_disk_mass, (1.f / tdyn_inv) * props->time_to_Myr);
 
@@ -1633,8 +1636,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->hot_gas_mass * props->mass_to_solar_mass,
       bp->cold_gas_mass * props->mass_to_solar_mass, 
       bp->stellar_mass * props->mass_to_solar_mass, 
-      bp->cold_disk_mass * props->mass_to_solar_mass, 
-      (bp->cold_gas_mass - 2. * (bp->cold_gas_mass - bp->cold_disk_mass)) * props->mass_to_solar_mass, 
+      bp->corot_gas_mass * props->mass_to_solar_mass, 
+      (bp->cold_gas_mass - 2. * (bp->cold_gas_mass - bp->corot_gas_mass)) * props->mass_to_solar_mass, 
       bp->x[0] * cosmo->a * props->length_to_parsec / 1.0e3f,
       bp->x[1] * cosmo->a * props->length_to_parsec / 1.0e3f,
       bp->x[2] * cosmo->a * props->length_to_parsec / 1.0e3f,

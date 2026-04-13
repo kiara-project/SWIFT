@@ -810,7 +810,7 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
 #if COOLING_GRACKLE_MODE >= 2
   X_H += xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac + xp->cooling_data.HM_frac;
 #endif
-  const float new_H_frac = chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
+  const float new_H_frac = p->chemistry_data.metal_mass_fraction[chemistry_element_H];
   const float H_ratio = new_H_frac / X_H;
 
   xp->cooling_data.HI_frac *= H_ratio;
@@ -823,7 +823,7 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
 
   /* Normalize helium species */
   float X_He = xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac;
-  const float new_He_frac = chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_He];
+  const float new_He_frac = p->chemistry_data.metal_mass_fraction[chemistry_element_He];
   const float He_ratio = new_He_frac / X_He;
 
   xp->cooling_data.HeI_frac *= He_ratio;
