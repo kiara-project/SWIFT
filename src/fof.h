@@ -123,6 +123,9 @@ struct fof_props {
   /*! SFR of the group a given gpart belongs to. */
   float *group_star_formation_rate;
 
+  /*! Mass of most massive BH */
+  float *group_most_massive_bh_mass;
+
   /*! Does the group have a black hole? */
   char *has_black_hole;
 

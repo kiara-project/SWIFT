@@ -1425,9 +1425,10 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   cooling_set_particle_subgrid_properties(phys_const, us, cosmo, hydro_props,
                                           floor_props, cooling, p, xp);
 
-  /* No cooling if particle is decoupled */
-  if (p->decoupled) return;
+  /* No cooling if particle is decoupled or cooling is shut off */
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) return;
 
+  /* In KIARA_RT we do cooling in rt_thermochemistry, so we don't do it here */
   if (cooling->do_cooling_in_rt) return;
 
   /* No cooling happens over zero time */

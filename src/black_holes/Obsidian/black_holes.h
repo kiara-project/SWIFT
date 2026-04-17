@@ -461,8 +461,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->jet_mass_kicked_this_step = 0.f;
   bp->adaf_energy_to_dump = 0.f;
   bp->adaf_energy_used_this_step = 0.f;
-  /* Large value signifies its not in a galaxy */
-  bp->galactocentric_radius = FLT_MAX;
+  bp->is_central_bh = 0;
 }
 
 /**
@@ -1179,21 +1178,21 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   if (torque_norm > 0.f) {
     switch (props->torque_accretion_method) {
       case 0:
-        if (galaxy_mgas > 0.) {
+        if (galaxy_mgas > 0.f && bp->corot_gas_mass > 0.f) {
           torque_accr_rate =
               torque_norm * bp->corot_gas_mass * tdyn_inv;
         }
         break;
 
       case 1:
-        if (disk_gas_mass > 0. && bp->cold_gas_mass > 0.) {
+        if (disk_gas_mass > 0.f && bp->cold_gas_mass > 0.f) {
           torque_accr_rate =
               torque_norm * disk_gas_mass * tdyn_inv;
         }
         break;
 
       case 2:
-        if (disk_gas_mass > 0. && bp->cold_gas_mass > 0.) {
+        if (disk_gas_mass > 0.f && bp->cold_gas_mass > 0.f) {
           const float m_disk = bp->cold_gas_mass * f_corr_stellar;
           const float f_disk = disk_gas_mass / bp->cold_gas_mass;
 
@@ -1304,14 +1303,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Apply suppression factor to torque accretion */
   torque_accr_rate *= f_suppress;
 
-  if (BH_mass * props->mass_to_solar_mass > 1.e9) {
-    torque_accr_rate *= exp(-(BH_mass * props->mass_to_solar_mass-1.e9) / 1.e9);
-  }
-  /* If not near galaxy center, torque accr is suppressed 
-  const float suppression_distance = kernel_gravity_softening_plummer_equivalent_inv *
-                  props->max_reposition_distance_ratio * bp->h;
-  if (bp->galactocentric_radius > suppression_distance) {
-    torque_accr_rate *= exp(-(bp->galactocentric_radius - suppression_distance) / suppression_distance);
+  /* If BH is not central, then torque model doesn't apply so no torque accretion 
+  if (bp->is_central_bh == 0) {
     torque_accr_rate = 0.f;
   }*/
 
@@ -1606,7 +1599,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   printf(
       "BH_DETAILS "
       "z=%2.12f bid=%lld galM*=%g galSFR=%g"
-      " Mdyn=%g MBH=%g h=%g R/h=%g Mres=%g BHAR=%g"
+      " Mdyn=%g MBH=%g h=%g cent=%d Mres=%g BHAR=%g"
       " Bondi=%g torque=%g dt=%g dM=%g"
       " nH=%g Thot=%g SFR=%g mngb=%g "
       " mhot=%g mcold=%g m*=%g mdisk=%g mcorot=%g "
@@ -1621,11 +1614,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->mass * props->mass_to_solar_mass,
       bp->subgrid_mass * props->mass_to_solar_mass,
       bp->h * cosmo->a * props->length_to_parsec / 1.0e3f,
-      bp->galactocentric_radius / bp->h, 
+      bp->is_central_bh,
       bp->jet_mass_reservoir * props->mass_to_solar_mass,
       bp->accretion_rate * props->mass_to_solar_mass / props->time_to_yr,
       bp->bondi_accretion_rate * props->mass_to_solar_mass / props->time_to_yr,
-      (bp->accretion_rate - bp->bondi_accretion_rate) * props->mass_to_solar_mass / props->time_to_yr,
+      torque_accr_rate * props->mass_to_solar_mass / props->time_to_yr,
       dt * props->time_to_Myr,
       bp->accretion_rate * dt * props->mass_to_solar_mass,
       (bp->rho_gas * cosmo->a3_inv) * props->rho_to_n_cgs,

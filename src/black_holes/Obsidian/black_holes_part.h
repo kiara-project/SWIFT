@@ -80,7 +80,7 @@ struct bpart {
   struct fof_galaxy_data galaxy_data;
 
   /*! Distance to host galaxy center of mass */
-  float galactocentric_radius;
+  int is_central_bh;
 #endif
 
   /*! Union for the formation time and formation scale factor */

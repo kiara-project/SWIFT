@@ -222,7 +222,8 @@ runner_iact_nonsym_bh_gas_density(
   else if (gas_temperature_state == -1) {
 #if COOLING_GRACKLE_MODE >= 2
     /* With subgrid ISM model, only allow H2 component to be accreted */
-    bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.H2_fraction;
+    //bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.H2_fraction;
+    bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.dense_gas_fraction;
 #else
     bi->cold_gas_mass += mj;
 #endif
@@ -460,7 +461,8 @@ runner_iact_nonsym_bh_gas_swallow(
   if ((proj > 0.f) && gas_temperature_state == -1) {
 #if COOLING_GRACKLE_MODE >= 2
     /* With subgrid ISM model, only allow H2 component to be accreted */
-    bi->corot_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.H2_fraction;
+    //bi->corot_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.H2_fraction;
+    bi->corot_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.dense_gas_fraction;
 #else
     bi->corot_gas_mass += mj;
 #endif
@@ -1291,6 +1293,15 @@ runner_iact_nonsym_bh_gas_feedback(
       pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
       pj->cooling_data.subgrid_fcold = 0.f;
     }
+
+    /* Turn off cooling for a bit so it won't immediately drop back into ISM mode */
+    const double u_com = u_new / cosmo->a_factor_internal_energy;
+    const double cs = gas_soundspeed_from_internal_energy(pj->rho, u_com);
+    const float h_phys = kernel_gamma * pj->h * cosmo->a;
+    const float cs_physical = cs * cosmo->a_factor_sound_speed;
+    const float dt_sound_phys = h_phys / cs_physical;
+    pj->feedback_data.cooling_shutoff_delay_time =
+              bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, dt);
 
     /* Destroy all dust in ADAF-"touched" gas and the jet */
     if (jet_flag || E_inject > 0.) {

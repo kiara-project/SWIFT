@@ -210,6 +210,9 @@ struct black_holes_props {
   /*! eps_f for the quasar mode */
   float quasar_coupling;
 
+  /*! A multiplicative factor for delaying cooling on a particle in quasar mode */
+  float quasar_cooling_shutoff_factor;
+
   /*! luminosity in system units above which to boost quasar eps_f quasar mode
    */
   double quasar_luminosity_thresh;
@@ -253,7 +256,7 @@ struct black_holes_props {
   /*! Sets maximum expansion factor for evolving ADAF mass limit */
   float adaf_mass_limit_a_min;
 
-  /*! A multiplicative factor for delaying cooling on a particle */
+  /*! A multiplicative factor for delaying cooling on a particle in ADAF mode */
   float adaf_cooling_shutoff_factor;
 
   /*! A multiplicative factor 0. < f < 1. to multiply E_inject in the ADAF mode
@@ -960,6 +963,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->adaf_cooling_shutoff_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_cooling_shutoff_factor", -1.f);
+
+  bp->quasar_cooling_shutoff_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:quasar_cooling_shutoff_factor", bp->adaf_cooling_shutoff_factor);
 
   /* Always use nibbling in Obsidian */
   bp->use_nibbling = 1;
