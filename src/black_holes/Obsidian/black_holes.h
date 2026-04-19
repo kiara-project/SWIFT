@@ -1700,6 +1700,9 @@ __attribute__((always_inline)) INLINE static void black_holes_end_reposition(
     const struct phys_const *phys_const, const struct cosmology *cosmo,
     const double dt, const integertime_t ti_begin) {
 
+  /* Check if central BH, and if not whether we should reposition */
+  if (bp->is_central_bh && props->reposition_central_only) return;
+
   /* First check: did we find any eligible neighbour particle to jump to? */
   if (bp->reposition.min_potential != FLT_MAX) {
 
