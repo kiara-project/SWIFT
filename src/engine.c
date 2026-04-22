@@ -3094,8 +3094,10 @@ struct top_particle {
     double u;
     double rho;
     double du_dt;
+    double dt_therm;
     double a;
     double HI;
+    int ncool;
 };
 
 /* Initialize top 10 array */
@@ -3103,6 +3105,8 @@ struct top_particle top10[10];
 for(int i=0;i<10;i++){
     top10[i].u = -1.0;  /* negative means empty */
 }
+
+double rho_cut = 1e3;   /* your threshold */
 
 /* Loop over local gas particles */
 for(size_t i=0;i<e->s->nr_parts;i++){
@@ -3112,6 +3116,12 @@ for(size_t i=0;i<e->s->nr_parts;i++){
     double rho = hydro_get_physical_density(p, e->cosmology);
     double du_dt = hydro_get_physical_internal_energy_dt(p, e->cosmology);
     double a = e->cosmology->a;
+    int ncool = p->cooling_data.ncool_this_step;
+    double dt_therm = p->dt_therm_debug;
+
+    /* NEW: density filter */
+    if(rho >= rho_cut)
+        continue;
 
     /* Insert into top 10 if u is larger than any current entry */
     for(int j=0;j<10;j++){
@@ -3124,7 +3134,9 @@ for(size_t i=0;i<e->s->nr_parts;i++){
             top10[j].u = u;
             top10[j].rho = rho;
 	    top10[j].du_dt = du_dt;
+	    top10[j].dt_therm = dt_therm;
 	    top10[j].a = a;
+	    top10[j].ncool = ncool;
             break;
         }
     }
@@ -3134,8 +3146,8 @@ for(size_t i=0;i<e->s->nr_parts;i++){
 printf("[HOTTEST] step=%lld\n", e->ti_current);
 for(int i=0;i<10;i++){
     if(top10[i].u < 0) break;
-    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e\n",
-           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a);
+    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e ncool=%d dt_therm=%e\n",
+           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a, top10[i].ncool, top10[i].dt_therm);
 }
 
 /* ---- END DEBUG ---- */

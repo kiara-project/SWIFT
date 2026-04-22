@@ -232,6 +232,12 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
       "Cooling times for the gas particle. If it's currently a firehose wind"
       "particle (decoupling_delay_time>0), this is the mixing layer cooling time.");
   num++;
+
+  list[num] = io_make_output_field(
+      "NumberOfTimesCoolingThisStep", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      cooling_data.ncool_this_step,
+      "Number of times cooled in grackle this step.  Units of 1 are from number of cooling in grackle for this particles in this step,");
+  num++;
 #endif
 #endif
 

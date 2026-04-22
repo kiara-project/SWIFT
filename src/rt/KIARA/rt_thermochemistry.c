@@ -442,6 +442,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
                           floor_props, cooling,
                           p, xp, iact_rates, dt, dt_therm);
 
+  /* Update cooling times this step. */
+  p->cooling_data.ncool_this_step += 1;
+
   //int target_id = 2134785;
   //int range = 50;
 

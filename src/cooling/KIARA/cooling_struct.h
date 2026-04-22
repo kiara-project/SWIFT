@@ -52,6 +52,9 @@ struct cooling_part_data {
   /*! The strength of the interstellar radiation field in Habing units */
   float G0;
 
+  /*! Particle number of cooling times this hydro step */
+  int ncool_this_step;
+
 #if COOLING_GRACKLE_MODE >= 2
   /*! Number of SNe (of any type) going off in nearby stars */
   float SNe_ThisTimeStep;

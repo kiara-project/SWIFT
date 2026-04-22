@@ -145,6 +145,9 @@ struct part {
   /*! Conduction du/dt */
   float u_dt_cond;
 
+  /*! Debug dt_therm */
+  double dt_therm_debug;
+
 #ifdef WITH_FOF_GALAXIES
   /*! Additional data used to record host galaxy information */
   struct fof_galaxy_data galaxy_data;

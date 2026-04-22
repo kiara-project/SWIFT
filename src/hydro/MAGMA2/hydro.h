@@ -582,6 +582,9 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   /* Init geometry for FVPM Radiative Transfer */
   fvpm_geometry_init(p);
+
+  /* Init ncool at beginning of each hydro steps. */
+  p->cooling_data.ncool_this_step = 0;
 }
 
 /**
@@ -1595,23 +1598,23 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
   fvpm_compute_volume_and_matrix(p, h_inv_dim);
 
   //rescale photon energy density
-  const float h_new = p->h;
-  const float h_old = p->geometry.h_old;
+  //const float h_new = p->h;
+  //const float h_old = p->geometry.h_old;
 
-  if (h_old > 0.f && h_new > 0.f) {
+  //if (h_old > 0.f && h_new > 0.f) {
 
-    const float ratio = h_old / h_new;
-    const float ratio2 = ratio * ratio;
+   // const float ratio = h_old / h_new;
+   // const float ratio2 = ratio * ratio;
 
-    for (int g = 0; g < RT_NGROUPS; g++) {
-        p->rt_data.radiation[g].energy_density *= ratio * ratio2;
-	p->rt_data.radiation[g].flux[0] *= ratio2;
-	p->rt_data.radiation[g].flux[1] *= ratio2;
-	p->rt_data.radiation[g].flux[2] *= ratio2;
-    }
-  }
+    //for (int g = 0; g < RT_NGROUPS; g++) {
+        //p->rt_data.radiation[g].energy_density *= ratio * ratio2;
+	//p->rt_data.radiation[g].flux[0] *= ratio2;
+	//p->rt_data.radiation[g].flux[1] *= ratio2;
+	//p->rt_data.radiation[g].flux[2] *= ratio2;
+    //}
+  //}
 
-  p->geometry.h_old = p->h;
+  //p->geometry.h_old = p->h;
 }
 
 /**
@@ -2236,6 +2239,8 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 
   /* Integrate the internal energy forward in time */
   const float delta_u = p->u_dt * dt_therm;
+
+  p->dt_therm_debug = dt_therm;
 
   /* Do not decrease the energy by more than a factor of 2*/
   xp->u_full = max(xp->u_full + delta_u, 0.5f * xp->u_full);

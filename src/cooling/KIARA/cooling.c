@@ -1513,6 +1513,9 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                              cooling, p, xp, iact_rates, dt, dt_therm);
 
+  /* Update cooling times this step. */
+  p->cooling_data.ncool_this_step += 1;
+
   /* Record this cooling event */
   xp->cooling_data.time_last_event = time;
 }
