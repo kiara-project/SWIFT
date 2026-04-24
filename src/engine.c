@@ -3094,10 +3094,15 @@ struct top_particle {
     double u;
     double rho;
     double du_dt;
+    double du_dt_hydro_kick;
+    double du_dt_cooling;
     double dt_therm;
     double a;
     double HI;
     int ncool;
+    double u_hydro_kick;
+    double u_cooling;
+    double u_chemistry;
 };
 
 /* Initialize top 10 array */
@@ -3118,6 +3123,11 @@ for(size_t i=0;i<e->s->nr_parts;i++){
     double a = e->cosmology->a;
     int ncool = p->cooling_data.ncool_this_step;
     double dt_therm = p->dt_therm_debug;
+    double du_dt_hydro_kick = p->u_dt_hydro_kick;
+    double du_dt_cooling = p->cooling_data.du_dt_cooling;
+    double u_hydro_kick = p->u_hydro_kick;
+    double u_cooling = p->cooling_data.u_cooling;
+    double u_chemistry = p->cooling_data.u_chemistry;
 
     /* NEW: density filter */
     if(rho >= rho_cut)
@@ -3134,9 +3144,14 @@ for(size_t i=0;i<e->s->nr_parts;i++){
             top10[j].u = u;
             top10[j].rho = rho;
 	    top10[j].du_dt = du_dt;
+	    top10[j].du_dt_hydro_kick = du_dt_hydro_kick;
+	    top10[j].du_dt_cooling = du_dt_cooling;
 	    top10[j].dt_therm = dt_therm;
 	    top10[j].a = a;
 	    top10[j].ncool = ncool;
+	    top10[j].u_hydro_kick = u_hydro_kick;
+	    top10[j].u_cooling = u_cooling;
+	    top10[j].u_chemistry = u_chemistry;
             break;
         }
     }
@@ -3146,8 +3161,8 @@ for(size_t i=0;i<e->s->nr_parts;i++){
 printf("[HOTTEST] step=%lld\n", e->ti_current);
 for(int i=0;i<10;i++){
     if(top10[i].u < 0) break;
-    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e ncool=%d dt_therm=%e\n",
-           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a, top10[i].ncool, top10[i].dt_therm);
+    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e ncool=%d dt_therm=%e du_dt_hydro_kick=%e du_dt_cooling=%e u_hydro_kick=%e u_cooling=%e u_chemistry=%e\n",
+           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a, top10[i].ncool, top10[i].dt_therm, top10[i].du_dt_hydro_kick, top10[i].du_dt_cooling, top10[i].u_hydro_kick, top10[i].u_cooling, top10[i].u_chemistry);
 }
 
 /* ---- END DEBUG ---- */

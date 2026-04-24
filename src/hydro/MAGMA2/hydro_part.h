@@ -148,6 +148,12 @@ struct part {
   /*! Debug dt_therm */
   double dt_therm_debug;
 
+  /*! Time derivative of the internal energy. */
+  float u_dt_hydro_kick;
+
+  /*! The internal energy. */
+  float u_hydro_kick;
+
 #ifdef WITH_FOF_GALAXIES
   /*! Additional data used to record host galaxy information */
   struct fof_galaxy_data galaxy_data;

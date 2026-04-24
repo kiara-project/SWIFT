@@ -195,6 +195,11 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
 
   p->cooling_data.dust_temperature = 0.f;
 #endif
+
+  /* Initialize debug properties */
+  p->cooling_data.du_dt_cooling = 0;
+  p->cooling_data.u_cooling = 0;
+  p->cooling_data.u_chemistry = 0;
 }
 
 /**
@@ -1512,6 +1517,10 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   /* Do the cooling and chemistry */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                              cooling, p, xp, iact_rates, dt, dt_therm);
+
+  /* Output du_dt and u  for debug. */
+  //p->cooling_data.du_dt_cooling = hydro_get_physical_internal_energy_dt(p, cosmo);
+  //p->cooling_data.u_cooling = hydro_get_physical_internal_energy(p, xp, cosmo);
 
   /* Update cooling times this step. */
   p->cooling_data.ncool_this_step += 1;

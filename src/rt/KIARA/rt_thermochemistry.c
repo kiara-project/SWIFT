@@ -442,6 +442,10 @@ INLINE void rt_do_thermochemistry_with_subgrid(
                           floor_props, cooling,
                           p, xp, iact_rates, dt, dt_therm);
 
+  /* Output du_dt and u  for debug. */
+  p->cooling_data.du_dt_cooling = hydro_get_physical_internal_energy_dt(p, cosmo);
+  p->cooling_data.u_cooling = hydro_get_physical_internal_energy(p, xp, cosmo);
+
   /* Update cooling times this step. */
   p->cooling_data.ncool_this_step += 1;
 

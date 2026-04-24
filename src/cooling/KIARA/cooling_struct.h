@@ -55,6 +55,15 @@ struct cooling_part_data {
   /*! Particle number of cooling times this hydro step */
   int ncool_this_step;
 
+  /*! Output du_dt for cooling. */
+  float du_dt_cooling;
+
+  /*! Output u for cooling. */
+  float u_cooling;
+
+  /*! Output u for chemistry. */
+  float u_chemistry;
+
 #if COOLING_GRACKLE_MODE >= 2
   /*! Number of SNe (of any type) going off in nearby stars */
   float SNe_ThisTimeStep;

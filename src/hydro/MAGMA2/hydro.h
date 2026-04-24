@@ -585,6 +585,9 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   /* Init ncool at beginning of each hydro steps. */
   p->cooling_data.ncool_this_step = 0;
+  p->dt_therm_debug = 0;
+  p->u_dt_hydro_kick = 0;
+  p->u_hydro_kick = 0;
 }
 
 /**
@@ -2241,6 +2244,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   const float delta_u = p->u_dt * dt_therm;
 
   p->dt_therm_debug = dt_therm;
+  p->u_dt_hydro_kick = hydro_get_physical_internal_energy_dt(p, cosmo);
 
   /* Do not decrease the energy by more than a factor of 2*/
   xp->u_full = max(xp->u_full + delta_u, 0.5f * xp->u_full);
@@ -2260,6 +2264,9 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     xp->u_full = energy_min;
     p->u_dt = 0.f;
   }
+
+  /* Get internal energy at end of kick. */
+  p->u_hydro_kick = hydro_get_physical_internal_energy(p,xp,cosmo);
 }
 
 /**
