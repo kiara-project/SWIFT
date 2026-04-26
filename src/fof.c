@@ -2511,6 +2511,9 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
   float *stellar_mass = props->group_stellar_mass;
   float *star_formation_rate = props->group_star_formation_rate;
   long long *id_gas_particle_to_convert = props->id_gas_particle_to_convert;
+#ifdef WITH_FOF_GALAXIES
+  float *most_massive_bh_mass = props->group_most_massive_bh_mass;
+#endif
 
   /* Temporary arrays to help with the CoMs */
   double *max_positions = NULL, *min_positions = NULL;
@@ -2536,6 +2539,13 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
   for (size_t i = 0; i < (size_t)props->num_groups; ++i) {
     max_part_density[i] = -FLT_MAX;
   }
+
+#ifdef WITH_FOF_GALAXIES
+  /* Initialize the most massive BH */
+  for (size_t i = 0; i < (size_t)props->num_groups; ++i) {
+    most_massive_bh_mass[i] = 0.f;
+  }
+#endif
 
   /* Collect information about the local particles and update the array of
    * properties. Recall the array is as big as all the haloes accross
@@ -2584,6 +2594,12 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     /* Check whether there is a black hole */
     if (gparts[i].type == swift_type_black_hole) {
       has_black_hole[index] = 1;
+#ifdef WITH_FOF_GALAXIES
+      if (gparts[i].mass > most_massive_bh_mass[index]) {
+        most_massive_bh_mass[index] = gparts[i].mass;
+      }
+#endif
+
     }
 
     /* Identify the densest gas particle in the group */
@@ -2627,6 +2643,10 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
                 MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, star_formation_rate, props->num_groups, MPI_FLOAT,
                 MPI_SUM, MPI_COMM_WORLD);
+#ifdef WITH_FOF_GALAXIES
+  MPI_Allreduce(MPI_IN_PLACE, most_massive_bh_mass, props->num_groups, MPI_FLOAT,
+                MPI_MAX, MPI_COMM_WORLD);
+#endif
 #endif
 
   *number_of_local_seeds = 0;
@@ -2673,7 +2693,12 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     centre_of_mass[index * 3 + 2] += gparts[i].mass * x[2];
 
     /* Should we seed a BH in this group? */
-    if (!has_black_hole[index] && group_mass[index] > seed_halo_mass) {
+    float group_mass_for_seeding = group_mass[index];
+#ifdef WITH_FOF_GALAXIES
+    /* In Kiara this is actually a limit on stellar mass not halo mass */
+    group_mass_for_seeding = stellar_mass[index];
+#endif
+    if (!has_black_hole[index] && group_mass_for_seeding > seed_halo_mass) {
 
       /* Is this a gas particle? */
       if (gparts[i].type == swift_type_gas) {
@@ -2752,7 +2777,12 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     radii[index] = fmaxf(radii[index], r);
 
     /* Should we seed a BH in this group? */
-    if (!has_black_hole[index] && group_mass[index] > seed_halo_mass) {
+    float group_mass_for_seeding = group_mass[index];
+#ifdef WITH_FOF_GALAXIES
+    /* In Kiara this is actually a limit on stellar mass not halo mass */
+    group_mass_for_seeding = stellar_mass[index];
+#endif
+    if (!has_black_hole[index] && group_mass_for_seeding > seed_halo_mass) {
 
       /* Is this a gas particle? */
       if (gparts[i].type == swift_type_gas) {
@@ -2763,6 +2793,37 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
           (*number_of_local_seeds)++;
       }
     }
+
+#ifdef WITH_FOF_GALAXIES
+    /* Get a handle on the gpart. */
+    const struct gpart *restrict gp = &gparts[i];
+
+    /* Load FoF data into particles of various types */
+    if (gp->type == swift_type_gas) {
+      struct part *restrict p = &(s->parts[-gp->id_or_neg_offset]);
+      p->galaxy_data.stellar_mass = stellar_mass[index];
+      p->galaxy_data.gas_mass = gas_mass[index];
+      if (stellar_mass[index] > 0.f) p->galaxy_data.specific_sfr =
+          star_formation_rate[index] / stellar_mass[index];
+    } else if (gp->type == swift_type_stars) {
+      struct spart *restrict sp = &(s->sparts[-gp->id_or_neg_offset]);
+      sp->galaxy_data.stellar_mass = stellar_mass[index];
+      sp->galaxy_data.gas_mass = gas_mass[index];
+      if (stellar_mass[index] > 0.f) sp->galaxy_data.specific_sfr =
+          star_formation_rate[index] / stellar_mass[index];
+    } else if (gp->type == swift_type_black_hole) {
+      struct bpart *restrict bp = &(s->bparts[-gp->id_or_neg_offset]);
+      bp->galaxy_data.stellar_mass = stellar_mass[index];
+      bp->galaxy_data.gas_mass = gas_mass[index];
+      if (stellar_mass[index] > 0.f) bp->galaxy_data.specific_sfr =
+          star_formation_rate[index] / stellar_mass[index];
+      /* Is this BH the most massive one in the group? */
+      bp->is_central_bh = 0;
+      if (gparts[i].mass == most_massive_bh_mass[index]) {
+        bp->is_central_bh = 1;
+      }
+    }
+#endif
   }
 
 #ifdef WITH_MPI
@@ -2831,6 +2892,9 @@ void fof_seed_black_holes(const struct fof_props *props,
 
   /* Direct pointers to the arrays */
   double *group_mass = props->group_mass;
+#ifdef WITH_FOF_GALAXIES
+  float *stellar_mass = props->group_stellar_mass;
+#endif
   char *has_black_hole = props->has_black_hole;
   long long *id_gas_particle_to_convert = props->id_gas_particle_to_convert;
 
@@ -2858,7 +2922,11 @@ void fof_seed_black_holes(const struct fof_props *props,
     const size_t index = gparts[i].fof_data.group_id - 1;
 
     /* Should we seed a BH in this group? */
-    if (!has_black_hole[index] && group_mass[index] > seed_halo_mass) {
+    float group_mass_for_seeding = group_mass[index];
+#ifdef WITH_FOF_GALAXIES
+    group_mass_for_seeding = stellar_mass[index];
+#endif
+    if (!has_black_hole[index] && group_mass_for_seeding > seed_halo_mass) {
 
       /* Does it match the max density for this group?
        * (i.e. is it the particle we identified as the one to convert?) */
@@ -3984,6 +4052,11 @@ void fof_compute_group_props(struct fof_props *props,
                      num_groups * sizeof(float)) != 0)
     error(
         "Failed to allocate list of group star formation rate for FOF search.");
+  if (swift_memalign("fof_most_massive_bh_mass",
+                     (void **)&props->group_most_massive_bh_mass, 32,
+                     num_groups * sizeof(float)) != 0)
+    error(
+        "Failed to allocate list of most massive BH masses for FOF search.");
   if (swift_memalign("fof_id_gas_particle_to_convert",
                      (void **)&props->id_gas_particle_to_convert, 32,
                      num_groups * sizeof(long long)) != 0)
@@ -3998,6 +4071,7 @@ void fof_compute_group_props(struct fof_props *props,
   bzero(props->group_gas_mass, num_groups * sizeof(float));
   bzero(props->group_stellar_mass, num_groups * sizeof(float));
   bzero(props->group_star_formation_rate, num_groups * sizeof(float));
+  bzero(props->group_most_massive_bh_mass, num_groups * sizeof(float));
 
   /* Initialise the IDs to convert to max possible */
   for (size_t i = 0; i < (size_t)num_groups; ++i) {
@@ -4068,6 +4142,7 @@ void fof_free_arrays(struct fof_props *props) {
   swift_free("fof_group_gas_mass", props->group_gas_mass);
   swift_free("fof_group_stellar_mass", props->group_stellar_mass);
   swift_free("fof_group_star_formation_rate", props->group_star_formation_rate);
+  swift_free("fof_most_massive_bh_mass", props->group_most_massive_bh_mass);
   swift_free("fof_id_gas_particle_to_convert",
              props->id_gas_particle_to_convert);
   swift_free("fof_has_black_hole", props->has_black_hole);
@@ -4083,6 +4158,7 @@ void fof_free_arrays(struct fof_props *props) {
   props->group_gas_mass = NULL;
   props->group_stellar_mass = NULL;
   props->group_star_formation_rate = NULL;
+  props->group_most_massive_bh_mass = NULL;
   props->id_gas_particle_to_convert = NULL;
   props->has_black_hole = NULL;
   props->group_size = NULL;
