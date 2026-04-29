@@ -64,6 +64,17 @@ struct cooling_part_data {
   /*! Output u for chemistry. */
   float u_chemistry;
 
+  /*! Output u for cooling. */
+  float u_cooling_before;
+
+  /*! Output u for feedback. */
+  float u_wind_before;
+  float u_wind_after;
+  float du_wind_this_step;
+  float u_sn_before;
+  float u_sn_after;
+  float du_sn_this_step;
+
 #if COOLING_GRACKLE_MODE >= 2
   /*! Number of SNe (of any type) going off in nearby stars */
   float SNe_ThisTimeStep;

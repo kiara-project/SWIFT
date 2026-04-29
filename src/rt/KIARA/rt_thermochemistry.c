@@ -437,6 +437,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     //message("RT rate at index %d: %.4g", i, iact_rates[i]);
   }
 
+  /* Output internal energy before cooling grackle calculation. */
+  p->cooling_data.u_cooling_before = hydro_get_physical_internal_energy(p, xp, cosmo);
+
   /* solve chemistry, update thermal energy */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props,
                           floor_props, cooling,
