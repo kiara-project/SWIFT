@@ -92,13 +92,12 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     const int with_cosmology, const struct cosmology *cosmo,
     const struct feedback_props *fb_props) {
 
-  if (p->decoupled) {
+  double dt_part;
+  if (p->feedback_data.cooling_shutoff_delay_time > 0.f || p->decoupled) {
+    /* Get particle time-step */
     const integertime_t ti_step = get_integer_timestep(p->time_bin);
     const integertime_t ti_begin =
         get_integer_time_begin(e->ti_current - 1, p->time_bin);
-
-    /* Get particle time-step */
-    double dt_part;
     if (with_cosmology) {
       dt_part =
           cosmology_get_delta_time(e->cosmology, ti_begin, ti_begin + ti_step);
@@ -106,44 +105,56 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
       dt_part = get_timestep(p->time_bin, e->time_base);
     }
 
-    /* Decrement the counter */
-    p->feedback_data.decoupling_delay_time -= dt_part;
-
-    /* Estimate if it will decouple in the next step, if so set flag=2 */
-    if (p->feedback_data.decoupling_delay_time <= dt_part) {
-      p->decoupled = 2;
+    /* Decrement cooling shutoff time */
+    if (p->feedback_data.cooling_shutoff_delay_time > 0.f) {
+      p->feedback_data.cooling_shutoff_delay_time -= dt_part;
+      if (p->feedback_data.cooling_shutoff_delay_time < 0.f) {
+      p->feedback_data.cooling_shutoff_delay_time = 0.f;
+      }
     }
 
-    /**
-     * Recouple under 3 conditions:
-     * (1) Below the density threshold.
-     * (2) If the stream radius is negative.
-     * (3) If the timer has run out.
-     */
-    const double rho_nH_cgs =
-        hydro_get_physical_density(p, cosmo) * fb_props->rho_to_n_cgs;
-    const double rho_recouple_cgs = fb_props->recouple_density_factor *
-                                    fb_props->recouple_ism_density_nH_cgs;
-
-    const int recouple = (p->feedback_data.decoupling_delay_time <= 0.f ||
-                          p->chemistry_data.radius_stream < 0.f ||
-                          rho_nH_cgs < rho_recouple_cgs);
-
-    if (recouple && p->decoupled == 1) {
-      /* If it is recoupling, do one more decoupled step to set timestep etc */
-      p->decoupled = 2;
-    } else if (recouple) {
-      /* extra decoupled step is done, now properly recouple */
-      feedback_recouple_set_flags(p, cosmo);
-    } else {
-      /* Reset subgrid properties if decoupled for safety */
-      p->cooling_data.subgrid_temp = 0.f;
-      p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-      p->cooling_data.subgrid_fcold = 0.f;
+    /* Handle decoupled particles */
+    if (p->decoupled) {
+      /* Decrement the counter */
+      p->feedback_data.decoupling_delay_time -= dt_part;
+  
+      /* Estimate if it will decouple in the next step, if so set flag=2 */
+      if (p->feedback_data.decoupling_delay_time <= dt_part) {
+        p->decoupled = 2;
+      }
+  
+      /**
+       * Recouple under 3 conditions:
+       * (1) Below the density threshold.
+       * (2) If the stream radius is negative.
+       * (3) If the timer has run out.
+       */
+      const double rho_nH_cgs =
+          hydro_get_physical_density(p, cosmo) * fb_props->rho_to_n_cgs;
+      const double rho_recouple_cgs = fb_props->recouple_density_factor *
+                                      fb_props->recouple_ism_density_nH_cgs;
+  
+      const int recouple = (p->feedback_data.decoupling_delay_time <= 0.f ||
+                            p->chemistry_data.radius_stream < 0.f ||
+                            rho_nH_cgs < rho_recouple_cgs);
+  
+      if (recouple && p->decoupled == 1) {
+        /* If it is recoupling, do one more decoupled step to set timestep etc */
+        p->decoupled = 2;
+      } else if (recouple) {
+        /* extra decoupled step is done, now properly recouple */
+        feedback_recouple_set_flags(p, cosmo);
+      } else {
+        /* Reset subgrid properties if decoupled for safety */
+        p->cooling_data.subgrid_temp = 0.f;
+        p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
+        p->cooling_data.subgrid_fcold = 0.f;
+      }
     }
   }
+  return;
 }
-
+  
 /**
  * @brief Sets the wind direction vector for feedback kicks
  *

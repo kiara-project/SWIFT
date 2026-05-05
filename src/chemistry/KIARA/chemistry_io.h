@@ -84,6 +84,12 @@ INLINE static int chemistry_write_particles(const struct part *parts,
   num++;
 
   list[num] =
+      io_make_output_field("CoolingShutoffTimes", FLOAT, 1, UNIT_CONV_TIME,
+                           0.f, parts, feedback_data.cooling_shutoff_delay_time,
+                           "Time remaining with radiative cooling/heating turned off");
+  num++;
+
+  list[num] =
       io_make_output_field("DecouplingDelayTimes", FLOAT, 1, UNIT_CONV_TIME,
                            0.f, parts, feedback_data.decoupling_delay_time,
                            "Maximum time left as a firehose wind particle");
