@@ -1847,7 +1847,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
     chemistry->dust_chemistry = 1;
     chemistry->h2_on_dust = 1;
     chemistry->use_isrf_field = 1;
-    chemistry->H2_self_shielding = 4;
+    chemistry->H2_self_shielding = 3;
     /* 2 means we specify the H2 shielding
        length ourselves (the gas smoothing length) */
     chemistry->H2_custom_shielding = 2;

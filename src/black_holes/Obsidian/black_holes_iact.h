@@ -290,8 +290,11 @@ runner_iact_nonsym_bh_gas_repos(
     const struct entropy_floor_properties *floor_props,
     const integertime_t ti_current, const double time) {
 
-  /* Ignore decoupled wind particles for repositioning BH */
-  if (pj->decoupled) return;
+  /* Ignore decoupled wind and non-cooling particles for repositioning BH */
+  if (pj->decoupled || pj->feedback_data.cooling_shutoff_delay_time > 0.f) return;
+
+  /* Only reposition onto star-forming gas, not hot or diffuse gas */
+  if (pj->sf_data.SFR == 0.f) return;
 
   float wi;
 
@@ -905,6 +908,9 @@ runner_iact_nonsym_bh_gas_feedback(
     const struct entropy_floor_properties *floor_props,
     const integertime_t ti_current, const double time) {
 
+  /* No feedback on decoupled or non-cooling particles */
+  if (pj->decoupled || pj->feedback_data.cooling_shutoff_delay_time > 0.f) return;
+
   /* Gas particle must be bound to BH kernel mass to have feedback
    * (avoids fast-moving decoupled particles) */
   const float r = sqrtf(r2);
@@ -1100,6 +1106,9 @@ runner_iact_nonsym_bh_gas_feedback(
            * twice the BH timestep as a lower limit */
           pj->feedback_data.cooling_shutoff_delay_time =
               bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, dt);
+	  /* We will immediately decrement this in recouple_part(), so 
+	   * we add dt here to ensure it will have an effect for >=1 timestep */
+	  pj->feedback_data.cooling_shutoff_delay_time += dt;
         }
 
       } /* E_heat > 0 */
@@ -1300,8 +1309,20 @@ runner_iact_nonsym_bh_gas_feedback(
     const float h_phys = kernel_gamma * pj->h * cosmo->a;
     const float cs_physical = cs * cosmo->a_factor_sound_speed;
     const float dt_sound_phys = h_phys / cs_physical;
-    pj->feedback_data.cooling_shutoff_delay_time =
+    /* Cooling shutoff for ADAF+quasar winds */
+    switch (bi->state) {
+      case BH_states_adaf:
+        pj->feedback_data.cooling_shutoff_delay_time =
               bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, dt);
+        break;
+      case BH_states_quasar:
+        pj->feedback_data.cooling_shutoff_delay_time =
+              bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, dt);
+        break;
+    }
+    /* We will immediately decrement this in recouple_part(), so 
+     * we add dt here to ensure it will have an effect for >=1 timestep */
+    pj->feedback_data.cooling_shutoff_delay_time += dt;
 
     /* Destroy all dust in ADAF-"touched" gas and the jet */
     if (jet_flag || E_inject > 0.) {
