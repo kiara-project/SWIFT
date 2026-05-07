@@ -1466,7 +1466,7 @@ void cooling_set_particle_subgrid_properties(
     struct xpart *xp) {
 
   /* No subgrid ISM if particle is decoupled */
-  if (p->decoupled) {
+  if (p->decoupled  || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
     /* Make sure these are always set for the wind particles */
     p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
     p->cooling_data.subgrid_temp = 0.;
