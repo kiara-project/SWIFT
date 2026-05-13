@@ -280,6 +280,24 @@ void DOSELF1_NAIVE(struct runner *r, const struct cell *c,
 }
 
 /**
+ * @brief Routine to check for bad values in sort index, and do a very kloodgy fix
+ * to bypass the problem.
+ *
+ * @param parts The particle list in the cell.
+ * @param i_sort The sort index.
+ * @param nparts_total Total number of gas particles in simulation.
+ */
+__attribute__((always_inline)) INLINE static struct part *check_part_sort_index(struct part *parts, long long int i_sort, long long int nparts_total)
+{
+  if (i_sort < 0 || i_sort > nparts_total) {
+    message("WARNING: part sort index is out of bounds: %lld is outside of 0-%lld, arbitrarily setting to 0.", i_sort, nparts_total);
+    return &parts[0];
+  }
+  return &parts[i_sort];
+}
+
+
+/**
  * @brief Compute the interactions between a cell pair (non-symmetric).
  *
  * @param r The #runner.
@@ -384,6 +402,8 @@ void DOPAIR1(struct runner *r, const struct cell *restrict ci,
         /* Recover pj */
         struct part *pj = &parts_j[sort_j[pjd].i];
 
+	pj = check_part_sort_index(parts_j, sort_j[pjd].i, e->total_nr_parts);
+
         /* Skip inhibited particles. */
         if (part_is_inhibited(pj, e)) continue;
 
@@ -482,6 +502,8 @@ void DOPAIR1(struct runner *r, const struct cell *restrict ci,
 
         /* Recover pi */
         struct part *pi = &parts_i[sort_i[pid].i];
+
+	pi = check_part_sort_index(parts_i, sort_i[pid].i, e->total_nr_parts);
 
         /* Skip inhibited particles. */
         if (part_is_inhibited(pi, e)) continue;
