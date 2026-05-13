@@ -1399,7 +1399,7 @@ void cooling_do_grackle_cooling(
     if (u_new < GRACKLE_COOLLIM * u_old) u_new = GRACKLE_COOLLIM * u_old;
     // u_new = max(u_new, u_warm);
     /* Get physical internal energy du_dt*/
-    const float hydro_du_dt = hydro_get_physical_internal_energy_dt(p, cosmo);
+    //const float hydro_du_dt = hydro_get_physical_internal_energy_dt(p, cosmo);
 
     /* Rennehan: Recompute the actual thermal evolution after setting min/max */
     cool_du_dt = (u_new - u_old) / dt_therm;
@@ -1407,14 +1407,14 @@ void cooling_do_grackle_cooling(
     /* check whether the the thermochemistry heating/cooling is larger
      * than du/dt of the particle. If it is, directly set the new internal energy
      * of the particle, and set du/dt = 0.*/
-    if (fabsf(cool_du_dt) > fabsf(hydro_du_dt)){
+    //if (fabsf(cool_du_dt) > fabsf(hydro_du_dt)){
       hydro_set_physical_internal_energy(p, xp, cosmo, u_new);
 
       hydro_set_physical_internal_energy_dt(p, cosmo, 0.);
-    } else {
+    //} else {
     /* If it isn't, ignore the radiative cooling and apply only hydro du/dt. */
-      hydro_set_physical_internal_energy_dt(p, cosmo, hydro_du_dt);
-     }
+    //  hydro_set_physical_internal_energy_dt(p, cosmo, hydro_du_dt);
+     //}
 
     /* Update the internal energy time derivative,
      * which will be evolved later */
