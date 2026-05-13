@@ -296,6 +296,9 @@ runner_iact_nonsym_bh_gas_repos(
   /* Only reposition onto star-forming gas, not hot or diffuse gas */
   if (pj->sf_data.SFR == 0.f) return;
 
+  /* Only reposition BH onto gas in a galaxy of same or greater mass */
+  if (bi->galaxy_data.stellar_mass > pj->galaxy_data.stellar_mass) return;
+
   float wi;
 
   /* Compute the kernel function; note that r cannot be optimised
@@ -680,6 +683,9 @@ runner_iact_nonsym_bh_bh_repos(const float r2, const float dx[3],
                                const struct gravity_props *grav_props,
                                const struct black_holes_props *bh_props,
                                const integertime_t ti_current) {
+
+  /* Only reposition/swallow bi onto bj if bj is in a larger galaxy */
+  if (bi->galaxy_data.stellar_mass > bj->galaxy_data.stellar_mass) return;
 
   /* Compute relative peculiar velocity between the two BHs
    * Recall that in SWIFT v is (v_pec * a) */
@@ -1319,10 +1325,16 @@ runner_iact_nonsym_bh_gas_feedback(
         pj->feedback_data.cooling_shutoff_delay_time =
               bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, dt);
         break;
+      case BH_states_slim_disk:
+        pj->feedback_data.cooling_shutoff_delay_time =
+              bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, dt);
+        break;
     }
     /* We will immediately decrement this in recouple_part(), so 
      * we add dt here to ensure it will have an effect for >=1 timestep */
-    pj->feedback_data.cooling_shutoff_delay_time += dt;
+    if (pj->feedback_data.cooling_shutoff_delay_time > 0.f) {
+      pj->feedback_data.cooling_shutoff_delay_time += dt;
+    }
 
     /* Destroy all dust in ADAF-"touched" gas and the jet */
     if (jet_flag || E_inject > 0.) {

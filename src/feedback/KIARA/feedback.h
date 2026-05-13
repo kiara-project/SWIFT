@@ -65,6 +65,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
     struct part *p, const struct cosmology *cosmo) {
 
   p->feedback_data.decoupling_delay_time = 0.f;
+  p->feedback_data.cooling_shutoff_delay_time = 0.f;
   p->decoupled = 0;
   p->chemistry_data.radius_stream = 0.f;
 
@@ -109,7 +110,8 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     if (p->feedback_data.cooling_shutoff_delay_time > 0.f) {
       p->feedback_data.cooling_shutoff_delay_time -= dt_part;
       if (p->feedback_data.cooling_shutoff_delay_time < 0.f) {
-      p->feedback_data.cooling_shutoff_delay_time = 0.f;
+        feedback_recouple_set_flags(p, cosmo);
+        p->feedback_data.cooling_shutoff_delay_time = 0.f;
       }
     }
 

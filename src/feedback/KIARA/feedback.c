@@ -1766,7 +1766,7 @@ void feedback_props_init(struct feedback_props *fp,
   if (firehose_on) {
     if (engine_rank == 0) {
       message(
-          "WARNING: Firehose model is on. Setting hot_wind_temperature_K to "
+          "NOTE: Firehose model is on. Setting hot_wind_temperature_K to "
           "cold_wind_temperature_K");
     }
 

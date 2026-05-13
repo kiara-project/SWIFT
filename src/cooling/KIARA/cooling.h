@@ -475,7 +475,7 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
   float G0 = 2.f * log(t_ff_Gyr) + pow(1.44e-6 * exp(3.f * log(pot_kms2) + log(t_ff_Gyr)) + 0.314, -0.599);
   G0 = exp(G0);
 
-  if (p->id % 10000 == 0 ) {
+  if (p->id % 100000000 == 0 ) {
     message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g G0=%g",
             p->id,
 	    1.f/cooling->units.a_value - 1.f,

@@ -119,17 +119,6 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
   *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p, xp);
 }
 
-#ifdef RT_NONE
-INLINE static void convert_mass_fractions(const struct engine *engine,
-                                          const struct part *part,
-                                          const struct xpart *xpart,
-                                          float *ret) {
-
-  ret[0] = (float)xpart->cooling_data.HI_frac;
-  ret[1] = (float)xpart->cooling_data.HII_frac;
-}
-#endif
-
 INLINE static void convert_part_G0(const struct engine *e, const struct part *p,
                                    const struct xpart *xp, float *ret) {
 
@@ -212,7 +201,7 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
   list[num] = io_make_output_field(
-      "SubgridColdISMFraction", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      "SubgridColdFraction", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
       cooling_data.subgrid_fcold,
       "Fraction of gas particle masses in cold component of subgrid ISM.");
   num++;
@@ -250,12 +239,6 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
 #endif
 #endif
 
-#ifdef RT_NONE
-  list[num] = io_make_output_field_convert_part(
-      "IonMassFractions", FLOAT, 2, UNIT_CONV_NO_UNITS, 0, parts, xparts,
-      convert_mass_fractions, "Mass fractions of all constituent species.");
-  num++;
-#endif
   return num;
 }
 

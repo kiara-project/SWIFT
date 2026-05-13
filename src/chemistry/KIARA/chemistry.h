@@ -1177,7 +1177,7 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
       dt_chem = cd->diffusion_beta * rho_phys * h_phys * h_phys / D_phys;
       if (dt_chem < cd->time_step_min) {
         message(
-            "Warning! dZ_dt timestep low: id=%lld (%g Myr) is below "
+            "dZ_dt timestep low: id=%lld (%g Myr) is below "
             "time_step_min (%g Myr).",
             p->id, dt_chem * cd->time_to_Myr,
             cd->time_step_min * cd->time_to_Myr);
