@@ -245,6 +245,23 @@ runner_iact_nonsym_bh_gas_density(
   bi->velocity_gas[2] += mj * dv[2];
 
   /*NLT added*/
+
+  /* Scalar product of the spin vector and position vector of the gas particle
+     relative to the BH */
+  float cosine_theta = -dx[0] * bi->angular_momentum_direction[0] -
+                       dx[1] * bi->angular_momentum_direction[1] -
+                       dx[2] * bi->angular_momentum_direction[2];
+  /* Norm of the scalar product (ang. mom. dir. is already normalized) */
+  const float norm = sqrtf(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
+
+  /* Apply the norm to find the cosine of the angle between the two vectors,
+     if norm is 0 then manually set to small value */
+  if (norm > 0.) {
+    cosine_theta = cosine_theta / norm;
+  } else {
+    cosine_theta = 0.001;
+  }
+
   /* Contribution to the specific angular momentum of gas, which is later
    * converted to the circular velocity at the smoothing length */
   /*  bi->spec_angular_momentum_gas[0] -= mj * wi * (dx[1] * dv[2] - dx[2] * dv[1]);*/
