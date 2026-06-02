@@ -669,9 +669,11 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   bp->velocity_gas[0] *= m_tot_inv;
   bp->velocity_gas[1] *= m_tot_inv;
   bp->velocity_gas[2] *= m_tot_inv;
-  /*bp->spec_angular_momentum_gas[0] *= m_tot_inv;*/
-  /*bp->spec_angular_momentum_gas[1] *= m_tot_inv;*/
-  /*bp->spec_angular_momentum_gas[2] *= m_tot_inv;*/
+  /*NLT*/
+  bp->spec_angular_momentum_gas[0] *= m_tot_inv;
+  bp->spec_angular_momentum_gas[1] *= m_tot_inv;
+  bp->spec_angular_momentum_gas[2] *= m_tot_inv;
+  /*end NLT*/
   bp->circular_velocity_gas[0] *= m_tot_inv;
   bp->circular_velocity_gas[1] *= m_tot_inv;
   bp->circular_velocity_gas[2] *= m_tot_inv;
@@ -973,7 +975,7 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
   printf(
       "BH_MERGER:"
       " z=%g bid_i=%lld bid_j=%lld mdyni=%g mdynj=%g mbhi=%g mbhj=%g nmerge=%d"
-      " galM*_i=%g galSFR_i=%g galM*_j=%g galSFR_j=%g\n",
+      " galM*_i=%g galSFR_i=%g galM*_j=%g galSFR_j=%g\n spin=%g",
       cosmo->z, bpi->id, bpj->id, 
       bpi->mass * props->mass_to_solar_mass, 
       bpj->mass * props->mass_to_solar_mass, 
@@ -983,7 +985,8 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
       galaxy_mstar_i * props->mass_to_solar_mass,
       galaxy_sfr_i * props->mass_to_solar_mass / props->time_to_yr,
       galaxy_mstar_j * props->mass_to_solar_mass,
-      galaxy_sfr_j * props->mass_to_solar_mass / props->time_to_yr);
+      galaxy_sfr_j * props->mass_to_solar_mass / props->time_to_yr),
+      bp->spin;
 //#endif
 }
 
