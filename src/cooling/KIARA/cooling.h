@@ -467,25 +467,35 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
 
   const float t_ff = cooling->ff_const / sqrt(rho);
-  const float t_ff_Gyr = t_ff * cooling->time_to_Myr * 1.e-3;
+  const float t_ff_Myr = t_ff * cooling->time_to_Myr; // * 1.e-3;
 
   const float pot = fabs(gravity_get_comoving_potential(p->gpart) / cooling->units.a_value);
-  const float pot_kms2 = pot * cooling->potential_to_kms2;
+  const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
 
-  float G0 = 2.f * log(t_ff_Gyr) + pow(1.44e-6 * exp(3.f * log(pot_kms2) + log(t_ff_Gyr)) + 0.314, -0.599);
-  G0 = exp(G0);
+  const float Z = max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6);
+  const float logT = log10(min(p->cooling_data.subgrid_temp, 1000.f));
 
-  if (p->id % 100000000 == 0 ) {
-    message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g G0=%g",
+  /* Try an ad hoc redshift dependence */
+  const float a = cooling->units.a_value;
+  const float z_fact = fmin(1. / a, 4.f);
+
+  float G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.18)) - 3.76 + 3.37 * exp(-0.173 * log10(pot_kms2)) * z_fact;
+  //float G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.3)) - 2.24;
+
+  G0 = powf(10.f, G0);
+
+  if (p->id % 10000000 == 0) {
+    message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g terms=%g %g %g G0=%g",
             p->id,
 	    1.f/cooling->units.a_value - 1.f,
 	    p->galaxy_data.stellar_mass * 1.e10 ,
 	    p->galaxy_data.specific_sfr * p->galaxy_data.stellar_mass * 1.e10 / (1.e6 * cooling->time_to_Myr),
-	    t_ff_Gyr*1.e3,
+	    t_ff_Myr, 
 	    sqrt(pot_kms2),
 	    p->cooling_data.subgrid_temp,
 	    p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
             p->cooling_data.dust_temperature,
+	    log10(t_ff_Myr), log10(pow(logT + Z, 3.18)), 3.37 * exp(-0.173 * log10(pot_kms2)), 
             G0);
   }
 

@@ -595,9 +595,9 @@ runner_iact_nonsym_bh_gas_swallow(
       /* --- The entire kernel is NOT heated here ---- */
 
       /* Heating is based on specific energy and the mass loading */
-      if (bi->adaf_energy_to_dump > 0.f && bh_props->adaf_wind_speed > 0.f) {
-        const float adaf_v2 =
-            bh_props->adaf_wind_speed * bh_props->adaf_wind_speed;
+      if (bi->adaf_energy_to_dump > 0.f && bi->v_kick > 0.f) {
+        const float adaf_v2 = bi->v_kick * bi->v_kick;
+            //bh_props->adaf_wind_speed * bh_props->adaf_wind_speed;
         const float adaf_mass_to_heat = 2.f * bi->adaf_energy_to_dump / adaf_v2;
 
         /* Bernoulli trial P = M_adaf * wi / sum(mj * wj) */
@@ -606,7 +606,6 @@ runner_iact_nonsym_bh_gas_swallow(
         /* Draw a random number (Note mixing both IDs) */
         const float adaf_rand = random_unit_interval(
             bi->id + pj->id, ti_current, random_number_BH_swallow);
-
         /* Identify ADAF heating particles by their ID, and only heat those! */
         if (adaf_rand < adaf_heat_prob) {
           if (pj->black_holes_data.adaf_id < bi->id) {
@@ -950,6 +949,9 @@ runner_iact_nonsym_bh_gas_feedback(
     dt = 0.;
   }
 
+  /* set max cooling shutoff time (probably should be an input param) */
+  float max_cooling_shutoff_delay_time = 10. * dt;
+
   /* Save gas density and entropy before feedback */
   tracers_before_black_holes_feedback(pj, xpj, cosmo->a);
 
@@ -998,24 +1000,29 @@ runner_iact_nonsym_bh_gas_feedback(
   /* Compute ramp-up in energy above ADAF mass limit */
   float jet_ramp = black_hole_compute_jet_energy_ramp(bi, cosmo, bh_props);
 
+    float wj;
+    kernel_eval(sqrtf(r2) / hi, &wj);
+
   /* ADAF heating: Only heat this particle if it is NOT a jet particle */
   if (adaf_heat_flag && !jet_flag) {
 
     /* compute kernel weights */
-    float wj;
-    kernel_eval(sqrtf(r2) / hi, &wj);
     const float mj = hydro_get_mass(pj);
 
     /* Below is equivalent to
      * E_inject_i = E_ADAF * (w_j * m_j) / Sum(w_i * mi) */
-    E_inject = bi->adaf_energy_to_dump * mj * wj / bi->adaf_wt_sum;
-
-    /* Initialise heat energy to injection energy */
-    E_heat = E_inject;
+    if (bi->adaf_wt_sum > 0.f) {
+      E_inject = bi->adaf_energy_to_dump * mj * wj / bi->adaf_wt_sum;
+      /* Initialise heat energy to injection energy */
+      E_heat = E_inject;
+    }
 
     /* Heat and/or kick the particle */
     if (E_inject > 0.f) {
 
+#if COOLING_GRACKLE_MODE >= 2
+      if (pj->cooling_data.subgrid_temp >= 0.f) {
+#else
       const double n_H_cgs =
           hydro_get_physical_density(pj, cosmo) * bh_props->rho_to_n_cgs;
       const double T_gas_cgs =
@@ -1030,32 +1037,29 @@ runner_iact_nonsym_bh_gas_feedback(
            (T_gas_cgs < bh_props->adaf_heating_T_threshold_cgs ||
             T_gas_cgs < T_EoS_cgs * bh_props->fixed_T_above_EoS_factor)) ||
           pj->sf_data.SFR > 0.f) {
+#endif
+	/* Decide if we will kick the gas, if not it will be heated */
+        const float rand_adaf_kick = random_unit_interval(bi->id + 2*pj->id, ti_current,
+                                                random_number_BH_kick);
 
-        /* Kick with some fraction of the energy, if desired */
-        if (bh_props->adaf_kick_factor > 0.f) {
+        /* If kicking, set wind speed using the available energy */
+        if (bh_props->adaf_kick_factor > rand_adaf_kick) {
 
           /* Compute kick velocity */
-          double E_kick = bh_props->adaf_kick_factor * E_inject;
-          v_kick = sqrt(2. * E_kick / mj);
+	  if (bh_props->adaf_wind_speed < 0.f) {
+            v_kick = fmin(sqrt(2. * E_inject / mj), fabs(bh_props->adaf_wind_speed));
+	  }
 
-          /* Apply ramp-up in kick velocity above ADAF mass limit */
-          const float adaf_max_speed =
-              bh_props->adaf_wind_speed * sqrtf(jet_ramp);
-
-          /* Limit kick energy if velocity exceeds max */
-          if (v_kick > adaf_max_speed) {
-            v_kick = adaf_max_speed;
-            E_kick = 0.5 * mj * v_kick * v_kick;
-          }
-
-          /* Reduce energy available to heat */
-          E_heat = E_inject - E_kick;
+          /* No energy left to heat */
+          E_heat = 0.f;  
 
           /* Later will apply velocity as if it was flagged to swallow */
           adaf_kick_flag = 1;
 
-        } /* adaf_kick_factor > 0 */
-
+        } 
+	else {
+	  v_kick = 0.f;
+	} 
       } /* If in ISM */
 
       /* Heat gas with remaining energy, if any */
@@ -1109,9 +1113,9 @@ runner_iact_nonsym_bh_gas_feedback(
           const float dt_sound_phys = h_phys / cs_physical;
 
           /* a_factor_sound_speed converts cs_physical to comoving units,
-           * twice the BH timestep as a lower limit */
+           * set cooling shutoff to chosen multiple of sound crossing time */
           pj->feedback_data.cooling_shutoff_delay_time =
-              bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, dt);
+              bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, max_cooling_shutoff_delay_time);
 	  /* We will immediately decrement this in recouple_part(), so 
 	   * we add dt here to ensure it will have an effect for >=1 timestep */
 	  pj->feedback_data.cooling_shutoff_delay_time += dt;
@@ -1135,7 +1139,7 @@ runner_iact_nonsym_bh_gas_feedback(
     /* Heat jet particle */
     float new_Tj = bh_props->jet_temperature;
 
-    /* Use the halo T_vir? */
+    /* Scale target T by the halo's T_vir? */
     if (bh_props->jet_temperature < 0.f) {
       new_Tj = fabs(bh_props->jet_temperature) * T_vir;
     }
@@ -1221,9 +1225,9 @@ runner_iact_nonsym_bh_gas_feedback(
 
       if (prefactor * norm > 1.e3 * v_mag) {
         warning(
-            "LARGE KICK! z=%g id=%lld dv=%g vkick=%g vadaf=%g vjet=%g v=%g "
+            "LARGE KICK! z=%g id=%lld dv=%g vkick=%g %g vadaf=%g vjet=%g v=%g "
             "(%g,%g,%g) dir=%g,%g,%g",
-            cosmo->z, pj->id, prefactor, v_kick, bh_props->adaf_wind_speed,
+            cosmo->z, pj->id, prefactor, v_kick, bi->v_kick, bh_props->adaf_wind_speed,
             bh_props->jet_velocity, v_mag, xpj->v_full[0], xpj->v_full[1],
             xpj->v_full[2], dir[0], dir[1], dir[2]);
       }
@@ -1254,7 +1258,7 @@ runner_iact_nonsym_bh_gas_feedback(
       pj->feedback_data.decoupling_delay_time = dt + f_decouple * t_H;
       pj->decoupled = 1;
 
-      /* Count number of decouplings */
+      /* Count number of decouplings, also reset decoupling for jets */
       if (jet_flag) {
         if (bh_props->jet_decouple_time_factor > 0.f) {
           pj->feedback_data.decoupling_delay_time =
@@ -1264,18 +1268,9 @@ runner_iact_nonsym_bh_gas_feedback(
         }
         pj->feedback_data.number_of_times_decoupled += 100000;
       } else {
-        if ((bh_props->slim_disk_decouple_time_factor > 0.f &&
-             bi->state == BH_states_slim_disk) ||
-            (bh_props->quasar_decouple_time_factor > 0.f &&
-             bi->state == BH_states_quasar)) {
-          pj->feedback_data.decoupling_delay_time =
-              dt + bh_props->slim_disk_decouple_time_factor * t_H;
-        } else {
-          pj->feedback_data.decoupling_delay_time = 0.f;
-        }
         pj->feedback_data.number_of_times_decoupled += 1000;
       }
-    } else {
+    } else {  // norm == 0
       v_kick = 0.f;
     }
   }
@@ -1301,14 +1296,6 @@ runner_iact_nonsym_bh_gas_feedback(
     xpj->cooling_data.H2I_frac = 0.f;
     xpj->cooling_data.H2II_frac = 0.f;
 
-    /* Only take it out of ISM mode if it was kicked */
-    if (v_kick > 0.f && flagged_to_kick) {
-      /* Take particle out of subgrid ISM mode */
-      pj->cooling_data.subgrid_temp = 0.f;
-      pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
-      pj->cooling_data.subgrid_fcold = 0.f;
-    }
-
     /* Turn off cooling for a bit so it won't immediately drop back into ISM mode */
     const double u_com = u_new / cosmo->a_factor_internal_energy;
     const double cs = gas_soundspeed_from_internal_energy(pj->rho, u_com);
@@ -1319,26 +1306,31 @@ runner_iact_nonsym_bh_gas_feedback(
     switch (bi->state) {
       case BH_states_adaf:
         pj->feedback_data.cooling_shutoff_delay_time =
-              bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, dt);
+              bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, max_cooling_shutoff_delay_time);
         break;
       case BH_states_quasar:
         pj->feedback_data.cooling_shutoff_delay_time =
-              bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, dt);
+              bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, max_cooling_shutoff_delay_time);
         break;
       case BH_states_slim_disk:
         pj->feedback_data.cooling_shutoff_delay_time =
-              bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, dt);
+              bh_props->quasar_cooling_shutoff_factor * min(dt_sound_phys, max_cooling_shutoff_delay_time);
         break;
     }
-    /* We will immediately decrement this in recouple_part(), so 
+    /* We will immediately decrement this by dt in recouple_part(), so 
      * we add dt here to ensure it will have an effect for >=1 timestep */
     if (pj->feedback_data.cooling_shutoff_delay_time > 0.f) {
       pj->feedback_data.cooling_shutoff_delay_time += dt;
     }
 
-    /* Destroy all dust in ADAF-"touched" gas and the jet */
-    if (jet_flag || E_inject > 0.) {
 #if COOLING_GRACKLE_MODE >= 2
+    /* Take particle out of subgrid ISM mode */
+    pj->cooling_data.subgrid_temp = 0.f;
+    pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
+    pj->cooling_data.subgrid_fcold = 0.f;
+
+    /* Destroy all dust in jet, return it to gas phase metals */
+    if (jet_flag) {
       const float old_dust_mass = pj->cooling_data.dust_mass;
       pj->cooling_data.dust_mass = 0.f;
       float new_Z_total = 0.f;
@@ -1361,14 +1353,26 @@ runner_iact_nonsym_bh_gas_feedback(
       }
 
       pj->chemistry_data.metal_mass_fraction_total = new_Z_total;
-#endif
     }
+#endif
 
     /* Impose maximal viscosity */
     hydro_diffusive_feedback_reset(pj);
 
     /* Synchronize the particle on the timeline */
     timestep_sync_part(pj);
+
+    if (bh_mass_msun > 1.e8 && bi->id % 100 == 0) {
+      message("BH_FEEDBACK: z=%g bid=%lld pid=%lld Mg=%g %g Tsub=%g state=%d(%d) mbh=%g E=%g "
+            "v_kick=%g tdel=%g T_fact=%g T=%g",
+            cosmo->z, bi->id, pj->id, bi->galaxy_data.stellar_mass, pj->galaxy_data.stellar_mass, pj->cooling_data.subgrid_temp, bi->state, jet_flag, bh_mass_msun, E_inject, 
+            v_kick / bh_props->kms_to_internal,
+            //pj->feedback_data.cooling_shutoff_delay_time * bh_props->time_to_yr * 1.e-6,
+            pj->feedback_data.cooling_shutoff_delay_time / dt, 
+	    u_new / u_init, 
+            hydro_get_physical_internal_energy(pj, xpj, cosmo) /
+                  (bh_props->T_K_to_int * bh_props->temp_to_u_factor));
+    }
 
 #ifdef OBSIDIAN_DEBUG_CHECKS
     if (E_heat > 0.f) {

@@ -829,6 +829,7 @@ void feedback_prepare_interpolation_tables(
   const double sniiz[NZSN] = {0., 0., .001, .004, .008, .02, .05};
   const double sniz[NZSN1Y] = {0., .002, .01, .02, .04, .06, .10};
   const double effHNz[NZSN] = {0.5, 0.5, 0.5, 0.4, 0.232036142, 0.01, 0.01};
+  //const double effHNz[NZSN] = {1.0, 1.0, 1.0, 0.8, 0.5, 0.2, 0.2};
 
   /* [Fe/H] */
   const double feh_ia[NZSN1R] = {-1.1, -1.0, -0.69896996, 0., 0.39794001};
