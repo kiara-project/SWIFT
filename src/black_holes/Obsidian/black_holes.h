@@ -975,7 +975,7 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
   printf(
       "BH_MERGER:"
       " z=%g bid_i=%lld bid_j=%lld mdyni=%g mdynj=%g mbhi=%g mbhj=%g nmerge=%d"
-      " galM*_i=%g galSFR_i=%g galM*_j=%g galSFR_j=%g\n spin=%g",
+      " galM*_i=%g galSFR_i=%g galM*_j=%g galSFR_j=%g\n",
       cosmo->z, bpi->id, bpj->id, 
       bpi->mass * props->mass_to_solar_mass, 
       bpj->mass * props->mass_to_solar_mass, 
@@ -985,8 +985,7 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
       galaxy_mstar_i * props->mass_to_solar_mass,
       galaxy_sfr_i * props->mass_to_solar_mass / props->time_to_yr,
       galaxy_mstar_j * props->mass_to_solar_mass,
-      galaxy_sfr_j * props->mass_to_solar_mass / props->time_to_yr),
-      bp->spin;
+      galaxy_sfr_j * props->mass_to_solar_mass / props->time_to_yr);
 //#endif
 }
 
@@ -1550,11 +1549,15 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   bp->jet_direction[2] = bp->angular_momentum_direction[2];
 
   float spin_final = -1.;
+  if (fabsf(bp->spin) < 0.01) {
+    bp->spin = 0.01;
+  }
   /* Calculate the change in the BH spin */
   if (bp->subgrid_mass > 0.) {
-    spin_final = bp->spin + delta_m_0 / bp->subgrid_mass; /* *
-                                black_hole_spinup_rate(bp, phys_const, props);*/
-  } else {
+    spin_final = bp->spin + delta_m_0 / bp->subgrid_mass *
+                                black_hole_spinup_rate(bp, phys_const, props);
+  } 
+    else {
     error(
         "Black hole with id %lld tried to evolve spin with zero "
         "(or less) subgrid mass. ",
@@ -1597,7 +1600,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 #endif
   if (bp->radiative_efficiency < 1.e-10f) bp->radiative_efficiency = 0.f;
 
-  /* NLT added second*/
+  /* ----------------NLT added second--------------------*/
 
   /* Calculate a BH angular momentum evolution time step. Two conditions are
      used, one ensures that the BH spin changes by a small amount over the

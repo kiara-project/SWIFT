@@ -441,7 +441,6 @@ black_hole_warp_angular_momentum(struct bpart *bp,
 /*--------------------------------------------------------------*/
 
 
-/*skipping deciding which acc_mode */
 
 
 /*----------------------------------------*/
@@ -539,6 +538,13 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
   }
 
   if (bp->state == BH_states_quasar) {
+    /* If we are in the thin disc and use no jets, we use the simple spinup /
+     * spindown formula, e.g. from Benson & Babul (2009). This accounts for
+     * accretion only. */
+    return l_acc(bp, constants, props) -
+           2.f * a * (1.f - bp->radiative_efficiency);
+ 
+  } else if (bp->state == BH_states_adaf) {
 
     /* Fiting function from Narayan et al. (2022) */
     return 0.45f - 12.53f * a - 7.8f * a * a + 9.44f * a * a * a +
