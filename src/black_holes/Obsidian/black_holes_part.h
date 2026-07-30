@@ -78,9 +78,6 @@ struct bpart {
 #ifdef WITH_FOF_GALAXIES
   /*! Struct for host galaxy information */
   struct fof_galaxy_data galaxy_data;
-
-  /*! Distance to host galaxy center of mass */
-  int is_central_bh;
 #endif
 
   /*! Union for the formation time and formation scale factor */

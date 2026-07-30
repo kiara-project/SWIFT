@@ -289,8 +289,8 @@ void DOSELF1_NAIVE(struct runner *r, const struct cell *c,
  */
 __attribute__((always_inline)) INLINE static struct part *check_part_sort_index(struct part *parts, long long int i_sort, long long int nparts_total)
 {
-  if (i_sort < 0 || i_sort > nparts_total) {
-    message("WARNING: part sort index is out of bounds: %lld is outside of 0-%lld, arbitrarily setting to 0.", i_sort, nparts_total);
+  if (i_sort < 0 || i_sort > nparts_total / 8) {
+    message("WARNING: part sort index is out of bounds: %lld is outside of 0-%lld, arbitrarily setting to 0.", i_sort, nparts_total / 8);
     return &parts[0];
   }
   return &parts[i_sort];

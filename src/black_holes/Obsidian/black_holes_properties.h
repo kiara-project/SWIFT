@@ -863,6 +863,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->adaf_wind_dir = parser_get_param_int(params, "ObsidianAGN:adaf_wind_dir");
 
+  bp->adaf_decouple_time_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_decouple_time_factor", 0.f);
+
   float jet_subgrid_mass_loading =
       2.f * bp->jet_efficiency *
       (phys_const->const_speed_light_c / bp->jet_subgrid_velocity) *
@@ -938,8 +941,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   }
 
   /* Do not decouple the ADAF winds */
-  bp->adaf_decouple_time_factor = 0.;
-
   bp->adaf_maximum_temperature = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_maximum_temperature_K", 5.e7f);
   bp->adaf_maximum_temperature *= T_K_to_int;
@@ -1222,7 +1223,7 @@ black_hole_compute_jet_velocity(const struct bpart *bi,
     }
     if (props->jet_velocity_scaling_with_BH_mass > 0.f) {
       float BH_mass_scaled =
-          bi->subgrid_mass * props->mass_to_solar_mass * 1.0e-8;
+          bi->subgrid_mass * props->mass_to_solar_mass * 1.0e-9;
       BH_mass_scaled = fmax(BH_mass_scaled, 1.f);
       jet_velocity *=
           powf(BH_mass_scaled, props->jet_velocity_scaling_with_BH_mass);
