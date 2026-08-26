@@ -53,6 +53,34 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
 }
 
 /**
+ * @brief Checks if particle is ineligible for RT this interaction,
+ * such as being decoupled or too far away. If so need to account for
+ * change in volume/area for the energy density/flux.
+ *
+ * @param pi Particle i.
+ * @param pj Particle j.
+ * @param r2 Squared distance between the two particles.
+ */
+__attribute__((always_inline)) INLINE static int rt_check_ineligible(
+    struct part *restrict pi, struct part *restrict pj, float r2) {
+
+  int ineligible = 0;
+
+  /* Ineligible if particles are in a wind or have their cooling shutoff */
+  if (pi->decoupled > 0.f) ineligible = 1;
+  if (pi->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
+  if (pj->decoupled > 0.f) ineligible = 1;
+  if (pj->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
+
+  /* Ineligible if particles are too far apart */
+  //const float h_ave = 0.5 * (pi->h + pj->h);  // use average h to retain symmetry
+  //if (h_ave * h_ave < r2) ineligible = 1;
+  if (pi->h * pi->h < r2 && pj->h * pj->h < r2) ineligible = 1;
+
+  return ineligible;
+}
+
+/**
  * @brief Update the gradients for the given particle with the
  * given contributions.
  *
@@ -148,6 +176,9 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
   pi->rt_data.debug_calls_iact_gradient_interaction += 1;
   pj->rt_data.debug_calls_iact_gradient_interaction += 1;
 #endif
+
+  /* Check if particles are eligible for this interaction */
+  if (rt_check_ineligible(pi, pj, r2)) return;
 
   /* Get r and 1/r. */
   const float r = sqrtf(r2);
@@ -284,6 +315,9 @@ __attribute__((always_inline)) INLINE static void rt_gradients_nonsym_collect(
   rt_debug_sequence_check(pi, 2, __func__);
   pi->rt_data.debug_calls_iact_gradient_interaction += 1;
 #endif
+
+  /* Check if particles are eligible for this interaction */
+  if (rt_check_ineligible(pi, pj, r2)) return;
 
   /* Get r and 1/r. */
   const float r = sqrtf(r2);

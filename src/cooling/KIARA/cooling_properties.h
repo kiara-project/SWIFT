@@ -59,6 +59,9 @@ struct cooling_function_data {
   /*! conversion unit factor for rate of change of thermal energy */
   double dudt_units;
 
+  /*! conversion unit factor for energy into ergs */
+  double energy_units;
+
   /*! grackle chemistry data */
   chemistry_data chemistry;
 

@@ -55,6 +55,13 @@ runner_iact_nonsym_rt_injection_prep(const float r2, const float dx[3],
    * have nothing to do here. */
   if (si->density.wcount == 0.f) return;
 
+  /* Gas particle must be within stars' smoothing length to receive energy */
+  if (hi * hi < r2) return;
+
+  /* Don't give photon energy to wind/non-cooling particles */
+  if (pj->decoupled || pj->feedback_data.decoupling_delay_time > 0.f ||
+      pj->feedback_data.cooling_shutoff_delay_time) return;
+
 #ifdef SWIFT_RT_DEBUG_CHECKS
   si->rt_data.debug_iact_hydro_inject_prep += 1;
 #endif
@@ -124,6 +131,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
 
 #endif
 
+  /* Gas particle must be within stars' smoothing length to receive energy */
+  if (hi * hi < r2) return;
+
+  /* Don't give photon energy to wind/non-cooling particles */
+  if (pj->decoupled || pj->feedback_data.decoupling_delay_time > 0.f ||
+      pj->feedback_data.cooling_shutoff_delay_time) return;
+
   /* Compute the weight of the neighbouring particle */
   const float hi_inv = 1.f / hi;
   const float r = sqrtf(r2);
@@ -168,9 +182,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
     const float injected_energy_density =
         si->rt_data.emission_this_step[g] * weight * Vinv;
     pj->rt_data.radiation[g].energy_density += injected_energy_density;
-    //if (pj->rt_data.radiation[g].energy_density > 0.f && g==0) {
-    //  message("RT_energy_inj: z=%g sid=%lld pid=%lld RTgrp=%d w=%g Vinv=%g Reff=%g h=%g Enew=%g Eold=%g frac=%g\n", 1./a-1., si->id, pj->id, g, weight, Vinv, pow(3./(4.*M_PI*Vinv), 1./3), pj->h, injected_energy_density, pj->rt_data.radiation[g].energy_density-injected_energy_density, injected_energy_density/pj->rt_data.radiation[g].energy_density);
-    //}
+    if (g==0 && injected_energy_density * pj->geometry.volume * 1.98841e+53 > 1.e57) message("RT_energy_inj: z=%g sid=%lld pid=%lld RTgrp=%d w=%g V=%g Reff=%g h=%g tdec=%g Estar=%g Einj=%g Eph=%g", 1./a-1., si->id, pj->id, g, weight, 1./Vinv, pow(3./(4.*M_PI*Vinv), 1./3), pj->h, pj->feedback_data.decoupling_delay_time, si->rt_data.emission_this_step[g] * 1.98841e+53, injected_energy_density * pj->geometry.volume * 1.98841e+53, pj->rt_data.radiation[g].energy_density * pj->geometry.volume * 1.98841e+53);
     /* Don't inject flux. */
   }
 
@@ -223,6 +235,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     pj->rt_data.debug_calls_iact_transport_interaction += 1;
   }
 #endif
+
+  /* Check if particles are eligible for this interaction */
+  if (rt_check_ineligible(pi, pj, r2)) return;
 
   /* Get r and 1/r. */
   const float r = sqrtf(r2);
@@ -363,18 +378,41 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
      * of flux_dt, we can detect inactive neighbours through their negative time
      * step. */
     /* Make sure mindt larger than 0 to avoid mindt=-1 case. */
+
+    /* Limit flux exchange to some fraction of particle's photon energy 
+    const float max_frac = 0.5f;
+    const double Ei_old = rti->radiation[g].energy_density * pi->geometry.volume;
+    const double Ej_old = rtj->radiation[g].energy_density * pj->geometry.volume;
+    if (totflux[0] * mindt > max_frac * Ei_old) {
+      const float ratio = max_frac * Ei_old / (totflux[0] * mindt);
+      totflux[0] *= ratio;
+      totflux[1] *= ratio;
+      totflux[2] *= ratio;
+      totflux[3] *= ratio;
+      warning("Limiting flux_i exchange: pid=%lld pjd=%lld Ei=%g Elim=%g ratio=%g", pi->id, pj->id, Ei_old, totflux[0]*mindt, ratio);
+    }
+    if (totflux[0] * mindt > max_frac * Ej_old) {
+      const float ratio = max_frac * Ej_old / (totflux[0] * mindt);
+      totflux[0] *= ratio;
+      totflux[1] *= ratio;
+      totflux[2] *= ratio;
+      totflux[3] *= ratio;
+      warning("Limiting flux_j exchange: pid=%lld pjd=%lld Ei=%g Elim=%g ratio=%g", pi->id, pj->id, Ej_old, totflux[0]*mindt, ratio);
+    }*/
+
     if (mindt > 0.f) {
-    rti->flux[g].energy -= totflux[0] * mindt;
-    rti->flux[g].flux[0] -= totflux[1] * mindt;
-    rti->flux[g].flux[1] -= totflux[2] * mindt;
-    rti->flux[g].flux[2] -= totflux[3] * mindt;
-    if (mode == 1 || (rtj->flux_dt < 0.f)) {
-      rtj->flux[g].energy += totflux[0] * mindt;
-      rtj->flux[g].flux[0] += totflux[1] * mindt;
-      rtj->flux[g].flux[1] += totflux[2] * mindt;
-      rtj->flux[g].flux[2] += totflux[3] * mindt;
+      rti->flux[g].energy -= totflux[0] * mindt;
+      rti->flux[g].flux[0] -= totflux[1] * mindt;
+      rti->flux[g].flux[1] -= totflux[2] * mindt;
+      rti->flux[g].flux[2] -= totflux[3] * mindt;
+      if (mode == 1 || (rtj->flux_dt < 0.f)) {
+        rtj->flux[g].energy += totflux[0] * mindt;
+        rtj->flux[g].flux[0] += totflux[1] * mindt;
+        rtj->flux[g].flux[1] += totflux[2] * mindt;
+        rtj->flux[g].flux[2] += totflux[3] * mindt;
+      }
     }
-    }
+    //if (g==0 && totflux[0] != 0. && (Ei > 1.e60 || Ej > 1.e60)) message("RT_energy_exch: z=%g pid=%lld pjd=%lld fluxdt=%g mindt=%g Ftot=%g Ei=%g Eiprev=%g Ej=%g Ejprev=%g hi=%g hj=%g r=%g", 1./a-1., pi->id, pj->id, rtj->flux_dt, mindt, totflux[g] * mindt * 1.98841e+53, rti->flux[g].energy * 1.98841e+53, Ei_prev, rtj->flux[g].energy * 1.98841e+53, Ej_prev, pi->h, pj->h, sqrtf(r2));
   }
 }
 

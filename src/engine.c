@@ -2102,7 +2102,7 @@ void engine_run_rt_sub_cycles(struct engine *e) {
   /* Collect and print info before it's gone */
   engine_collect_end_of_sub_cycle(e);
 
-  if (e->nodeID == 0) {
+  if (e->nodeID == -1) {
 
     printf(
         " [rt-sc] %-4d %12e %11.6f %11.6f %13e %4d %4d %12lld %12s %12s "
@@ -2187,7 +2187,7 @@ void engine_run_rt_sub_cycles(struct engine *e) {
     /* Keep track how far we have integrated over. */
     rt_integration_end += rt_step_size;
 
-    if (e->nodeID == 0) {
+    if (e->nodeID == -1) {
 
       const double dead_time =
           e->global_deadtime / (e->nr_nodes * e->nr_threads);
@@ -3206,11 +3206,11 @@ for(size_t i=0;i<e->s->nr_parts;i++){
 }
 
 /* Print top 10 */
-printf("[HOTTEST] step=%lld\n", e->ti_current);
+//printf("[HOTTEST] step=%lld\n", e->ti_current);
 for(int i=0;i<10;i++){
     if(top10[i].u < 0) break;
-    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e ncool=%d dt_therm=%e du_dt_hydro_kick=%e du_dt_cooling=%e u_cooling=%e u_chemistry=%e u_cooling_before=%e u_wind_before=%e u_wind_after=%e du_wind_this_step=%e u_sn_before=%e u_sn_after=%e du_sn_this_step=%e u_hydro_kick_before=%e u_hydro_kick_after=%e u_full_hydro_kick_before=%e u_full_hydro_kick_after=%e u_hydro_drift_before=%e u_hydro_drift_after=%e u_full_hydro_drift_before=%e u_full_hydro_drift_after=%e du_dt_hydro_drift=%e is_active=%d\n",
-           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a, top10[i].ncool, top10[i].dt_therm, top10[i].du_dt_hydro_kick, top10[i].du_dt_cooling, top10[i].u_cooling, top10[i].u_chemistry, top10[i].u_cooling_before, top10[i].u_wind_before, top10[i].u_wind_after, top10[i].du_wind_this_step, top10[i].u_sn_before, top10[i].u_sn_after, top10[i].du_sn_this_step, top10[i].u_hydro_kick_before, top10[i].u_hydro_kick_after, top10[i].u_full_hydro_kick_before, top10[i].u_full_hydro_kick_after, top10[i].u_hydro_drift_before, top10[i].u_hydro_drift_after, top10[i].u_full_hydro_drift_before, top10[i].u_full_hydro_drift_after, top10[i].du_dt_hydro_drift, top10[i].is_active);
+//    printf("  rank=%d  id=%lld  u=%e  rho=%e  du_dt=%e a=%e ncool=%d dt_therm=%e du_dt_hydro_kick=%e du_dt_cooling=%e u_cooling=%e u_chemistry=%e u_cooling_before=%e u_wind_before=%e u_wind_after=%e du_wind_this_step=%e u_sn_before=%e u_sn_after=%e du_sn_this_step=%e u_hydro_kick_before=%e u_hydro_kick_after=%e u_full_hydro_kick_before=%e u_full_hydro_kick_after=%e u_hydro_drift_before=%e u_hydro_drift_after=%e u_full_hydro_drift_before=%e u_full_hydro_drift_after=%e du_dt_hydro_drift=%e is_active=%d\n",
+//           engine_rank, top10[i].id, top10[i].u, top10[i].rho, top10[i].du_dt, top10[i].a, top10[i].ncool, top10[i].dt_therm, top10[i].du_dt_hydro_kick, top10[i].du_dt_cooling, top10[i].u_cooling, top10[i].u_chemistry, top10[i].u_cooling_before, top10[i].u_wind_before, top10[i].u_wind_after, top10[i].du_wind_this_step, top10[i].u_sn_before, top10[i].u_sn_after, top10[i].du_sn_this_step, top10[i].u_hydro_kick_before, top10[i].u_hydro_kick_after, top10[i].u_full_hydro_kick_before, top10[i].u_full_hydro_kick_after, top10[i].u_hydro_drift_before, top10[i].u_hydro_drift_after, top10[i].u_full_hydro_drift_before, top10[i].u_full_hydro_drift_after, top10[i].du_dt_hydro_drift, top10[i].is_active);
 }
 
 /* ---- END DEBUG ---- */

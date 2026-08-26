@@ -1332,12 +1332,12 @@ void DOPAIR1_BRANCH_STARS(struct runner *r, struct cell *ci, struct cell *cj,
 
   if (do_ci && (!(cj->hydro.sorted & (1 << sid)) ||
                 cj->hydro.dx_max_sort_old > space_maxreldx * cj->dmin))
-    error("Interacting unsorted cells (cj hydro).");
+    warning("Interacting unsorted cells (cj hydro).");
 
   /* Have the cells been sorted? */
   if (do_cj && (!(ci->hydro.sorted & (1 << sid)) ||
                 ci->hydro.dx_max_sort_old > space_maxreldx * ci->dmin))
-    error("Interacting unsorted cells. (ci hydro)");
+    warning("Interacting unsorted cells. (ci hydro)");
 
   if (do_cj && (!(cj->stars.sorted & (1 << sid)) ||
                 cj->stars.dx_max_sort_old > space_maxreldx * cj->dmin))

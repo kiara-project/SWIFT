@@ -42,6 +42,9 @@ struct rt_part_data {
   /* Particle RT time step. */
   float flux_dt;
 
+  /* Particle previous smoothing length (for tracking volume). */
+  float h_prev;
+
   /* gradients of the radiation state. */
   /* for the flux[3][3] quantity:
    *    first index: x, y, z coordinate of the flux.

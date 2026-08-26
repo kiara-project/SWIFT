@@ -99,7 +99,7 @@ rt_compute_stellar_emission_rate(struct spart* restrict sp, double time,
           (365.25f * 24.f * 60.f * 60.f * 1e6f);
     const double energy_units =
       units_cgs_conversion_factor(internal_units, UNIT_CONV_ENERGY);
-    if(star_age_begin_of_step * time_to_Myr < 5) message("RT_energy: id=%lld dE=%g (%g erg) age_start=%g age_now=%g Z=%g", sp->id, emission_this_step[0], emission_this_step[0] * energy_units, star_age_begin_of_step * time_to_Myr, star_age * time_to_Myr, sp->chemistry_data.metal_mass_fraction_total);
+    if(star_age_begin_of_step * time_to_Myr < 0) message("RT_energy: id=%lld dE=%g (%g erg) age_start=%g age_now=%g Z=%g", sp->id, emission_this_step[0], emission_this_step[0] * energy_units, star_age_begin_of_step * time_to_Myr, star_age * time_to_Myr, sp->chemistry_data.metal_mass_fraction_total);
 
   } else {
     error("Unknown stellar emission rate model %d",
@@ -180,6 +180,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_part_reset_mass_fluxes(p);
   rt_reset_part_each_subcycle(p, cosmo, 0.);
   rt_part_reset_fluxes(p);
+  p->rt_data.h_prev = p->h;
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   p->rt_data.debug_radiation_absorbed_tot = 0ULL;
@@ -372,15 +373,14 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   }
   if (total_energy_density <= 0.) return 1e20f;
 
-  /* just mimic the gizmo particle "size" for now 
-  const float psize = cosmo->a * cosmo->a *
-                      powf(p->geometry.volume / hydro_dimension_unit_sphere,
-                           hydro_dimension_inv);*/
-  /* Set particle size based on h, with minimum at grav softening */
-  float psize;
-  psize = cosmo->a * fmax(p->h, grav_props->epsilon_baryon_comoving);
+  /* Size from max of geometric radius, smoothing length, grav softening */
+  float psize = p->h;
+  const float gsize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
+                           hydro_dimension_inv);
+  psize = fmax(psize, gsize);
+  psize = fmax(psize, grav_props->epsilon_baryon_comoving);
   float dt = psize * rt_params.reduced_speed_of_light_inverse *
-             cosmo->a * rt_props->CFL_condition;
+             cosmo->a * cosmo->a * rt_props->CFL_condition;
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -532,6 +532,25 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 #endif
 
   struct rt_part_data* restrict rtd = &p->rt_data;
+
+  /* If particle is wind/non-cooling, then we haven't done transport,
+   * we just need to adjust the energy density & flux for change in h */
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
+    if (rtd->h_prev != p->h) {
+      const float h_inv = 1.f / p->h;
+      const float A_factor = rtd->h_prev * rtd->h_prev * h_inv * h_inv;
+      const float V_factor = rtd->h_prev * h_inv * A_factor;
+      for (int g = 0; g < RT_NGROUPS; g++) {
+        rtd->radiation[g].energy_density *= V_factor;
+        rtd->radiation[g].flux[0] *= A_factor;
+        rtd->radiation[g].flux[1] *= A_factor;
+        rtd->radiation[g].flux[2] *= A_factor;
+      }
+      //if (rtd->radiation[0].energy_density * p->geometry.volume * 1.98841e+53 > 1.e57) message("VFACT: z=%g pid=%lld h=%g hprev=%g Vfact=%g Eph=%g", cosmo->z, p->id, p->h, rtd->h_prev, V_factor, rtd->radiation[0].energy_density * p->geometry.volume * 1.98841e+53);
+      rtd->h_prev = p->h;
+    }
+  }
+
   const float Vinv = 1.f / p->geometry.volume;
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
@@ -545,6 +564,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
      * So we'll need the division by the volume here. */
 
     rtd->radiation[g].energy_density += rtd->flux[g].energy * Vinv;
+
     rtd->radiation[g].energy_density -=
         rtd->radiation[g].energy_density *
         redshift_factor;  // Energy lost due to redshift
