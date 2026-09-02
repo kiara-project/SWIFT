@@ -143,6 +143,11 @@ struct bpart {
   /*! angular momentum evolution of limited time-step of BH */
   float dt_ang_mom;
 
+  float jet_efficiency;
+
+  float A_sd;
+  float B_sd;
+  float C_sd;
   /* ------------ end NLT --------*/  
   /*! The radiative efficiency associated with M_dot,bh */
   float radiative_efficiency;

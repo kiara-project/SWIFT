@@ -891,6 +891,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
 
   /* NLT: change fixed_spin to evolved spin */
+  /* jet efficiency and disk claculations moved to black_hole_spin.h */
+
   bp->fixed_spin = parser_get_param_float(params, "ObsidianAGN:fixed_spin");
   if (bp->fixed_spin >= 1.f || bp->fixed_spin <= 0.f) {
     error("Black hole must have spin > 0.0 and < 1.0");
@@ -941,6 +943,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       (R / 16.f) * bp->A_sd *
       ((0.985f / (R + (5.f / 8.f) * bp->B_sd)) +
        (0.015f / (R + (5.f / 8.f) * bp->C_sd)));
+
+  /*-----------------------*/
+
 
   /* If we scale BH v_jet, choose power law scaling with MBH/1.e8 or LBH/1.e45.
    * The minimum v_jet is always given by jet_subgrid_velocity */
