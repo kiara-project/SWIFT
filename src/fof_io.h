@@ -64,8 +64,13 @@ INLINE static int fof_write_parts(const struct part *parts,
                                   const struct xpart *xparts,
                                   struct io_props *list) {
 
-#ifdef WITH_FOF
-
+#ifdef WITH_FOF_GALAXIES
+  list[0] = io_make_output_field_convert_part(
+      "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
+      convert_part_group_id,
+      "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
+  return 1;
+#elif WITH_FOF
   list[0] = io_make_output_field_convert_part(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
       convert_part_group_id,
@@ -89,10 +94,18 @@ INLINE static int fof_write_gparts(const struct gpart *gparts,
 
 #ifdef WITH_FOF
 
+#ifdef WITH_FOF_GALAXIES
+  list[0] = io_make_output_field(
+      "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, gparts,
+      fof_data.group_id,
+      "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
+  return 1;
+#elif WITH_FOF
   list[0] = io_make_output_field(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, gparts,
       fof_data.group_id,
       "Friends-Of-Friends ID of the group the particles belong to");
+#endif
 
   return 1;
 #else
@@ -113,11 +126,20 @@ INLINE static int fof_write_sinks(const struct sink *sinks,
 
 #ifdef WITH_FOF
 
+#ifdef WITH_FOF_GALAXIES
+  list[0] = io_make_output_field_convert_sink(
+      "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, sinks,
+      convert_sink_group_id,
+      "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
+  return 1;
+#elif WITH_FOF
   list[0] = io_make_output_field_convert_sink(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, sinks,
       convert_sink_group_id,
       "Friends-Of-Friends ID of the group the particles belong to");
   return 1;
+#endif
+
 #else
   return 0;
 #endif
@@ -136,11 +158,20 @@ INLINE static int fof_write_sparts(const struct spart *sparts,
 
 #ifdef WITH_FOF
 
+#ifdef WITH_FOF_GALAXIES
+  list[0] = io_make_output_field_convert_spart(
+      "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, sparts, 
+      convert_spart_group_id,
+      "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
+  return 1;
+#elif WITH_FOF
   list[0] = io_make_output_field_convert_spart(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
       convert_spart_group_id,
       "Friends-Of-Friends ID of the group the particles belong to");
   return 1;
+#endif
+
 #else
   return 0;
 #endif
@@ -159,11 +190,20 @@ INLINE static int fof_write_bparts(const struct bpart *bparts,
 
 #ifdef WITH_FOF
 
+#ifdef WITH_FOF_GALAXIES
+  list[0] = io_make_output_field_convert_bpart(
+      "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, bparts, 
+      convert_bpart_group_id,
+      "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
+  return 1;
+#elif WITH_FOF
   list[0] = io_make_output_field_convert_bpart(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
       convert_bpart_group_id,
       "Friends-Of-Friends ID of the group the particles belong to");
   return 1;
+#endif
+
 #else
   return 0;
 #endif
