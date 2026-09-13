@@ -204,6 +204,9 @@ __attribute__((always_inline)) INLINE static integertime_t get_part_timestep(
   /* Limit timestep within the allowed range */
   new_dt = min(new_dt, e->dt_max);
 
+  if (new_dt < 2.f * e->dt_min) {
+    warning("LOW TIMESTEP: z=%g id=%lld dt=%g dtgrav=%g dthyd=%g dtcool=%g dth=%g dtchem=%g", e->cosmology->z, p->id, new_dt / e->cosmology->time_step_factor, new_dt_grav, new_dt_hydro, new_dt_cooling, dt_h_change, new_dt_chemistry);
+  }
   if (new_dt < e->dt_min)
     error("part (id=%lld) wants a time-step (%e) below dt_min (%e)", p->id,
           new_dt, e->dt_min);

@@ -170,9 +170,6 @@ struct bpart {
   /*! Smoothed sound speed of the gas surrounding the black hole. */
   float sound_speed_gas;
 
-  /*! Total gravitational gas mass within the kernel */
-  float gravitational_ngb_mass;
-
   /*! Subgrid physical sound speed of the gas (updated when using the subgrid
    * Bondi model) */
   float sound_speed_subgrid_gas;
@@ -193,9 +190,6 @@ struct bpart {
 
   /*! Integer number of neighbours */
   int num_ngbs;
-
-  /*! Integer number of gravitational neighbors */
-  int num_gravitational_ngbs;
 
   /*! Number of seeds in this BH (i.e. itself + the merged ones) */
   int cumulative_number_seeds;

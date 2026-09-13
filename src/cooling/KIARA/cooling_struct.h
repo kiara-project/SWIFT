@@ -51,11 +51,6 @@ struct cooling_part_data {
 
   /*! The strength of the interstellar radiation field in Habing units */
   float G0;
-
-#if COOLING_GRACKLE_MODE >= 2
-  /*! Number of SNe (of any type) going off in nearby stars */
-  float SNe_ThisTimeStep;
-#endif
 };
 
 /**

@@ -94,7 +94,7 @@ void hydro_props_init(struct hydro_props *p,
       (pow_dimension(delta_eta) - pow_dimension(p->eta_neighbours)) *
       kernel_norm;
 
-#ifdef MAGMA2_SPH
+#ifdef MAGMA2_SPH_PEDANTIC
 #ifndef const_kernel_target_neighbours
   error(
       "When using MAGMA2 SPH, the constant "

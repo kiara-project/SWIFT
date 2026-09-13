@@ -222,6 +222,8 @@ gravity_compute_timestep_self(const struct gpart *const gp,
   const float dt = sqrtf(2. * kernel_gravity_softening_plummer_equivalent_inv *
                          cosmo->a * grav_props->eta * epsilon * ac_inv);
 
+  if( dt < 1.e-10) message("LOW TIMESTEP GRAV: z=%g a=%g eps=%g dt=%g", cosmo->z, sqrtf(ac2), epsilon, dt);
+
   return dt;
 }
 

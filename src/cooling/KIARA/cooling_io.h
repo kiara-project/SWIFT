@@ -125,7 +125,8 @@ INLINE static void convert_part_G0(const struct engine *e, const struct part *p,
   const float mstar = p->galaxy_data.stellar_mass;
   const float ssfr = p->galaxy_data.specific_sfr;
   const float rho = p->cooling_data.subgrid_dens;
-  *ret = cooling_compute_G0(p, rho, e->cooling_func, mstar, ssfr);
+  const float dt = get_timestep(p->time_bin, e->time_base);
+  *ret = cooling_compute_G0(p, xp, rho, 1.e4, e->cooling_func, mstar, ssfr, dt);
 }
 
 /**

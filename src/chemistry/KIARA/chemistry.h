@@ -1178,9 +1178,11 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
       if (dt_chem < cd->time_step_min) {
         message(
             "dZ_dt timestep low: id=%lld (%g Myr) is below "
-            "time_step_min (%g Myr).",
+            "time_step_min (%g Myr): n=%g h=%g D=%g",
             p->id, dt_chem * cd->time_to_Myr,
-            cd->time_step_min * cd->time_to_Myr);
+            cd->time_step_min * cd->time_to_Myr,
+	    rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc, 
+	    D_phys * cd->mass_to_solar_mass / (cd->time_to_Myr * cd->length_to_kpc));
       }
 
       dt_chem = max(dt_chem, cd->time_step_min);

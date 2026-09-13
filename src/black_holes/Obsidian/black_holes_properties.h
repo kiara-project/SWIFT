@@ -124,9 +124,8 @@ struct black_holes_props {
   /*! Where do we distinguish between cold gas for torque accretion? */
   float cold_gas_temperature_cut;
 
-  /*! Number of dynamical times over which gas is accreted from accretion disk
-   */
-  float dynamical_time_factor;
+  /*! Inverse of number of dynamical times over which gas is accreted from accretion disk */
+  float inverse_dynamical_time_factor;
 
   /*! Max dynamical time over which gas is accreted from accretion disk */
   float dynamical_time_max;
@@ -574,8 +573,14 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->environment_temperature_cut *= T_K_to_int;
   bp->cold_gas_temperature_cut *= T_K_to_int;
 
-  bp->dynamical_time_factor = parser_get_opt_param_float(
-      params, "ObsidianAGN:dynamical_time_factor", 1.f);
+  bp->inverse_dynamical_time_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:dynamical_time_factor", 0.f);
+  if (bp->inverse_dynamical_time_factor > 0.f) {
+    bp->inverse_dynamical_time_factor = 1.f / bp->inverse_dynamical_time_factor;
+  }
+  else {
+    bp->inverse_dynamical_time_factor = -1.f;
+  }
 
   bp->dynamical_time_max = parser_get_opt_param_float(
       params, "ObsidianAGN:dynamical_time_max_in_Myr", 0.f);
