@@ -1174,7 +1174,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_cooling_shutoff_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_cooling_shutoff_factor", 0.f);
 
-   bp->quasar_cooling_shutoff_factor = parser_get_opt_param_float(
+  bp->quasar_cooling_shutoff_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:quasar_cooling_shutoff_factor", bp->adaf_cooling_shutoff_factor);
 
 
