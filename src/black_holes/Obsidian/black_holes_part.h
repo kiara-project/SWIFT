@@ -79,8 +79,6 @@ struct bpart {
   /*! Struct for host galaxy information */
   struct fof_galaxy_data galaxy_data;
 
-  /*! Distance to host galaxy center of mass */
-  float galactocentric_radius;
 #endif
 
   /*! Union for the formation time and formation scale factor */
@@ -183,7 +181,7 @@ struct bpart {
   float adaf_wt_sum;
 
   /*! The mass of cold disk around the black hole */
-  float cold_disk_mass;
+  float corot_gas_mass;
 
   /*! Mass in accretion disk from which BH accretes */
   float accretion_disk_mass;

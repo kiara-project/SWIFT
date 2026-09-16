@@ -303,6 +303,9 @@ struct black_holes_props {
   /*! eps_f for the quasar mode */
   float quasar_coupling;
 
+  /*! A multiplicative factor for delaying cooling on a particle in quasar mode */
+  float quasar_cooling_shutoff_factor;
+
   /*! luminosity in system units above which to boost quasar eps_f quasar mode
    */
   double quasar_luminosity_thresh;
@@ -346,7 +349,7 @@ struct black_holes_props {
   /*! Sets maximum expansion factor for evolving ADAF mass limit */
   float adaf_mass_limit_a_min;
 
-  /*! A multiplicative factor for delaying cooling on a particle */
+  /*! A multiplicative factor for delaying cooling on a particle in ADAF mode */
   float adaf_cooling_shutoff_factor;
 
   /*! A multiplicative factor 0. < f < 1. to multiply E_inject in the ADAF mode
@@ -462,6 +465,8 @@ struct black_holes_props {
   /*! Correct potential of BH? */
   int correct_bh_potential_for_repositioning;
 
+  /*! Flag to only reposition if central (i.e. most massive) BH */
+  int reposition_central_only;
   /* ---- Properties of the merger model ---------- */
 
   /*! Mass ratio above which a merger is considered 'minor' */
@@ -1064,6 +1069,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->adaf_wind_dir = parser_get_param_int(params, "ObsidianAGN:adaf_wind_dir");
 
+  bp->adaf_decouple_time_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_decouple_time_factor", 0.f);
+
   float jet_subgrid_mass_loading =
       2.f * bp->jet_efficiency *
       (phys_const->const_speed_light_c / bp->jet_subgrid_velocity) *
@@ -1139,8 +1147,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   }
 
   /* Do not decouple the ADAF winds */
-  bp->adaf_decouple_time_factor = 0.;
-
   bp->adaf_maximum_temperature = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_maximum_temperature_K", 5.e7f);
   bp->adaf_maximum_temperature *= T_K_to_int;
@@ -1166,7 +1172,11 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:adaf_mass_limit_a_min", 0.f);
 
   bp->adaf_cooling_shutoff_factor = parser_get_opt_param_float(
-      params, "ObsidianAGN:adaf_cooling_shutoff_factor", -1.f);
+      params, "ObsidianAGN:adaf_cooling_shutoff_factor", 0.f);
+
+   bp->quasar_cooling_shutoff_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:quasar_cooling_shutoff_factor", bp->adaf_cooling_shutoff_factor);
+
 
   /* Always use nibbling in Obsidian */
   bp->use_nibbling = 1;
@@ -1249,6 +1259,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->correct_bh_potential_for_repositioning =
       parser_get_param_int(params, "ObsidianAGN:with_potential_correction");
 
+  bp->reposition_central_only =
+      parser_get_opt_param_int(params, "ObsidianAGN:reposition_central_only", 0);
   /* Merger parameters ------------------------------------- */
 
   bp->minor_merger_threshold =
@@ -1417,7 +1429,7 @@ black_hole_compute_jet_velocity(const struct bpart *bi,
     }
     if (props->jet_velocity_scaling_with_BH_mass > 0.f) {
       float BH_mass_scaled =
-          bi->subgrid_mass * props->mass_to_solar_mass * 1.0e-8;
+          bi->subgrid_mass * props->mass_to_solar_mass * 1.0e-9;
       BH_mass_scaled = fmax(BH_mass_scaled, 1.f);
       jet_velocity *=
           powf(BH_mass_scaled, props->jet_velocity_scaling_with_BH_mass);
