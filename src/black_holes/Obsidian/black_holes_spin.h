@@ -903,8 +903,7 @@ black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj,
 }
 
 /* ------------- NLT added jet efficiency -----------------*/
-__attribute__((always_inline)) INLINE static float black_hole_jet_efficiency(struct bpart *bp, const struct black_holes_props *props) {
-
+__attribute__((always_inline)) INLINE static float black_hole_jet_efficiency(struct bpart *bp, const struct black_holes_props *props, const struct phys_const *phys_const) {
   bp->A_sd = powf(0.9663f - 0.9292f * bp->spin, -0.5639f);
   bp->B_sd = powf(4.627f - 4.445f * bp->spin, -0.5524f);
   bp->C_sd = powf(827.3f - 718.1f * bp->spin, -0.7060f);
