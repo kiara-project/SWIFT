@@ -1,0 +1,41 @@
+/* ------------- NLT added jet efficiency -----------------*/
+__attribute__((always_inline)) INLINE static float black_hole_jet_efficiency(struct bpart *bp, const struct black_holes_props *props, const struct phys_const *phys_const) {
+  bp->A_sd = powf(0.9663f - 0.9292f * bp->spin, -0.5639f);
+  bp->B_sd = powf(4.627f - 4.445f * bp->spin, -0.5524f);
+  bp->C_sd = powf(827.3f - 718.1f * bp->spin, -0.7060f);
+
+  const float phi_bh = -20.2f * powf(bp->spin, 3.f) -
+                       14.9f * powf(bp->spin, 2.f) +
+                       34.f * bp->spin + 52.6f;
+  const float big_J =
+      bp->spin / (2.f * (1.f + sqrtf(1.f - powf(bp->spin, 2.f))));
+  const float f_j =
+      powf(big_J, 2.f) + 1.38f * powf(big_J, 4.f) - 9.2f * powf(big_J, 6.f);
+
+  bp->jet_efficiency = (1.f / (24.f * M_PI * M_PI)) * powf(phi_bh, 2.f) * f_j;
+  return jet_efficiency;
+}
+
+__attribute__((always_inline)) INLINE static double black_hole_compute_jet_mass_loading(struct bpart *bpart, const struct black_holes_props *props, const struct phys_const *phys_const) {
+	const double c_over_v = phys_const->const_speed_light_c / jet_velocity;
+
+  /* How are we loading the jet? Momentum, mixed, or energy? */
+  if (bp->jet_loading_type == BH_jet_momentum_loaded) {
+    return bp->jet_efficiency * c_over_v;
+  } else if (bp->jet_loading_type == BH_jet_mixed_loaded) {
+    bp->jet_frac_energy =
+        parser_get_param_float(params, "ObsidianAGN:jet_frac_energy_loaded");
+    if (bp->jet_frac_energy <= 0.f || bp->jet_frac_energy >= 1.f) {
+      error("jet_frac_energy_loaded must be >0 and <1.");
+    }
+
+    const double energy_loading = 2. * bp->jet_efficiency * pow(c_over_v, 2.);
+    const double momentum_loading = bp->jet_efficiency * c_over_v;
+    const double energy_term = bp->jet_frac_energy * energy_loading;
+    const double momentum_term = (1. - bp->jet_frac_energy) * momentum_loading;
+    bp->jet_mass_loading = energy_term + momentum_term;
+  } else {
+    bp->jet_mass_loading = 2. * bp->jet_efficiency * pow(c_over_v, 2.);
+  }
+}
+

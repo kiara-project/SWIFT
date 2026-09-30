@@ -201,7 +201,6 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
  
   return v_kick;
   }
-
 }
 
 /**
@@ -464,6 +463,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->adaf_energy_to_dump = 0.f;
   bp->adaf_energy_used_this_step = 0.f;
   bp->spin = props->seed_spin;
+  /*bp->jet_efficiency = black_hole_jet_efficiency(bp->spin);*/
   /* CBP - allow for jet direction to follow angular momentum direction*/
   bp->jet_direction[0] = bp->angular_momentum_direction[0];
   bp->jet_direction[1] = bp->angular_momentum_direction[1];
@@ -1582,6 +1582,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   /* Update the spin */
   bp->spin = spin_final;
+  /*bp->jet_efficiency = black_hole_jet_efficiency(bp->spin);*/
   message("update: spin, %f, ang_mom_direction_0, %f",bp->spin,bp->angular_momentum_direction[0]);
 
   /*-----------------------------------------------------------------*/
@@ -1742,11 +1743,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       const double c_over_v = phys_const->const_speed_light_c / fabs(jet_velocity);
 
       if (props->jet_loading_type == BH_jet_momentum_loaded) {
-        bp->jet_mass_loading = bp->jet_efficiency * c_over_v;
+        bp->jet_mass_loading = props->jet_efficiency * c_over_v;
       } else if (props->jet_loading_type == BH_jet_mixed_loaded) {
         const double energy_loading =
-            2. * bp->jet_efficiency * pow(c_over_v, 2.);
-        const double momentum_loading = bp->jet_efficiency * c_over_v;
+            2. * props->jet_efficiency * pow(c_over_v, 2.);
+        const double momentum_loading = props->jet_efficiency * c_over_v;
 
         /* Divide the contribution between energy and momentum loading */
         const double energy_term = props->jet_frac_energy * energy_loading;
@@ -1755,7 +1756,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
         bp->jet_mass_loading = energy_term + momentum_term;
       } else {
-        bp->jet_mass_loading = 2. * bp->jet_efficiency * pow(c_over_v, 2.);
+        bp->jet_mass_loading = 2. * props->jet_efficiency * pow(c_over_v, 2.);
       }
 
       /* Psi_jet*M_dot,acc*dt is the total mass expected in the jet this step */
