@@ -255,10 +255,8 @@ INLINE static int star_formation_is_star_forming(
     const struct unit_system *us, const struct cooling_function_data *cooling,
     const struct entropy_floor_properties *entropy_floor_props) {
 
-  /* Decide whether we should form stars or not */
-
-  /* No star formation for particles in the wind */
-  if (p->decoupled) return 0;
+  /* No star formation for particles in the wind or with cooling shut off */
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) return 0;
 
   /* No star formation when outside subgrid model */
   if (cooling_get_subgrid_temperature(p, xp) <= 0.f) return 0;
@@ -307,7 +305,7 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
       starform->schmidt_law.mdot_const * sqrt(physical_density);
 
   /* Store the SFR */
-  p->sf_data.SFR = p->sf_data.H2_fraction * SFRpergasmass * hydro_get_mass(p);
+  p->sf_data.SFR = p->sf_data.dense_gas_fraction * SFRpergasmass * hydro_get_mass(p);
 }
 
 /**
@@ -404,12 +402,12 @@ INLINE static void star_formation_compute_SFR_wn07(
   const double z = z_num / z_den;
 
   /* fraction of dense gas */
-  const double fc = 0.5 * erfc(z);
+  const double f_c = 0.5 * erfc(z);
 
   /* This is the SFR density from eq. 17, except use actual
    * density rho_V not estimated density rho_c. 3pi/32=0.294524.
    */
-  const double rhosfr = epsc * sqrt(0.294524 * phys_const->const_newton_G * rho_V) * fc;
+  const double rhosfr = epsc * sqrt(0.294524 * phys_const->const_newton_G * rho_V) * f_c;
 
   /* multiply by dense gas effective volume to get SFR (rho_V appears in both
    * this eqn and previous one so it is cancelled out for efficiency) */
@@ -417,7 +415,11 @@ INLINE static void star_formation_compute_SFR_wn07(
       rhosfr * (p->cooling_data.subgrid_fcold * hydro_get_mass(p));
 
   /* Multiply by the H2 fraction */
-  p->sf_data.SFR = starform->lognormal.epsilon * sfr * p->sf_data.H2_fraction;
+  const float H2_frac = (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  p->sf_data.SFR = starform->lognormal.epsilon * sfr * H2_frac;
+
+  /* Record the dense gas fraction */
+  p->sf_data.dense_gas_fraction = f_c;
 }
 
 /**
@@ -444,7 +446,7 @@ INLINE static void star_formation_compute_SFR_lognormal(
   const double rho_limit = 1.001 * starform->lognormal.rho0;
 
   /* H2 fraction in the particle */
-  const double f_H2 = p->sf_data.H2_fraction;
+  const float H2_frac = (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
 
   /* Mean density of the gas described by a lognormal PDF
    * (i.e. subgrid ISM gas) PHYSICAL */
@@ -453,7 +455,7 @@ INLINE static void star_formation_compute_SFR_lognormal(
   /* SF cannot occur below characteristic
    * density~1 cm^-3 (formulae below give nans)
    */
-  if (rho_V < rho_limit || f_H2 <= 0.) {
+  if (rho_V < rho_limit || H2_frac <= 0.) {
     p->sf_data.SFR = 0.f;
     return;
   }
@@ -479,10 +481,13 @@ INLINE static void star_formation_compute_SFR_lognormal(
    */
   const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_phys);
 
-  const double mass = f_H2 * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
+  const double mass = H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
 
   /* Store the SFR */
   p->sf_data.SFR = starform->lognormal.epsilon * sSFR * mass;
+
+  /* Record the dense gas fraction */
+  p->sf_data.dense_gas_fraction = f_c;
 }
 
 /**
@@ -509,16 +514,23 @@ INLINE static void star_formation_compute_SFR(
     return;
   }
 
+  /* No star formation for particles in the wind or with cooling shut off */
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
+    p->sf_data.SFR = 0.f;
+    return;
+  }
+
   /* Physical gas density of the particle */
   const double physical_density = hydro_get_physical_density(p, cosmo);
 
   /* Compute the H2 fraction of the particle */
   switch (starform->H2_model) {
     case kiara_star_formation_density_thresh:
-      p->sf_data.H2_fraction = 1.f;
+      /* Only get here if p is above the density threshold in _is_star_forming() */
+      p->sf_data.dense_gas_fraction = 1.f;
       break;
     case kiara_star_formation_kmt_model:
-      p->sf_data.H2_fraction = 0.f;
+      p->sf_data.dense_gas_fraction = 0.f;
 
       /* gas_sigma is double because we do some cgs conversions */
       double gas_sigma = 0.f;
@@ -560,18 +572,17 @@ INLINE static void star_formation_compute_SFR(
               (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
 
           if (s > 0.f && s < 2.f) {
-            p->sf_data.H2_fraction = 1.f - 0.75f * (s / (1.f + 0.25f * s));
+            p->sf_data.dense_gas_fraction = 1.f - 0.75f * (s / (1.f + 0.25f * s));
           }
         }
       }
       break;
     case kiara_star_formation_grackle_model:
 #if COOLING_GRACKLE_MODE >= 2
-      p->sf_data.H2_fraction =
-          p->cooling_data.subgrid_fcold *
+      p->sf_data.dense_gas_fraction =
           (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
 #else
-      p->sf_data.H2_fraction = 1. - xp->cooling_data.HI_frac;
+      p->sf_data.dense_gas_fraction = 1. - xp->cooling_data.HI_frac;
 #endif
       break;
     default:
@@ -1036,14 +1047,14 @@ star_formation_part_has_no_neighbours(struct part *p, struct xpart *xp,
  * @brief Sets the star_formation properties of the (x-)particles to a valid
  * state to start the density loop.
  *
- * Nothing to do here. We do not need to compute any quantity in the hydro
- * density loop for the KIARA star formation model.
- *
  * @param data The global star_formation information used for this run.
  * @param p Pointer to the particle data.
  */
 __attribute__((always_inline)) INLINE static void star_formation_init_part(
-    struct part *p, const struct star_formation *data) {}
+    struct part *p, const struct star_formation *data) {
+  /* Reset dense gas fraction */
+  p->sf_data.dense_gas_fraction = 0.f;
+}
 
 /**
  * @brief Sets the star_formation properties of the (x-)particles to a valid
@@ -1063,7 +1074,6 @@ star_formation_first_init_part(const struct phys_const *phys_const,
                                const struct star_formation *data,
                                struct part *p, struct xpart *xp) {
   /* This may need to be updated elsewhere */
-  p->sf_data.H2_fraction = 0.f;
   star_formation_init_part(p, data);
 }
 

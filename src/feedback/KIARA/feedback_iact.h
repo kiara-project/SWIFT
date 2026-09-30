@@ -479,11 +479,11 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     const float galaxy_mstar = si->galaxy_data.stellar_mass;
     const float galaxy_ssfr = si->galaxy_data.specific_sfr;
 
-    printf(
+    message(
         "WIND_LOG z=%.5f sid=%lld mlaunch=%g mkicked=%g Nkicked=%g zbirth=%g "
         "M*=%g sSFR=%g pid=%lld vw=%g vwx=%g vwy=%g vwz=%g h=%g x=%g "
         "y=%g z=%g vx=%g vy=%g vz=%g "
-        "T=%g nH=%g tdel=%g Ndec=%d fZ=%g\n",
+        "T=%g nH=%g tdel=%g Ndec=%d fZ=%g",
         cosmo->z, si->id,
         si->feedback_data.mass_to_launch * fb_props->mass_to_solar_mass,
         si->feedback_data.total_mass_kicked * fb_props->mass_to_solar_mass,

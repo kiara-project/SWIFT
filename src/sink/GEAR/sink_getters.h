@@ -183,17 +183,26 @@ sink_compute_angular_momenta_criterion(
 }
 
 /**
- * @brief Returns the current co-moving softening of a sink particle
+ * @brief Return the current instantaneous accretion rate of the sink.
  *
- * Notice that on foreign MPI ranks, we do not have access to the gpart. Hence,
- * we directly read from the gravity props.
- *
- * @param sink The particle of interest
- * @param grav_props The global gravity properties.
+ * @param sink the #sink.
  */
-__attribute__((always_inline)) INLINE static float sink_get_softening(
-    const struct sink *sink, const struct gravity_props *grav_props) {
-  return grav_props->epsilon_baryon_cur;
+__attribute__((always_inline)) INLINE static float sink_get_accretion_rate(
+    const struct sink *sink) {
+  return sink->accretion_rate;
+}
+
+/**
+ * @brief Return the star formation rate of a particle.
+ *
+ * @param sink the #sink.
+ */
+__attribute__((always_inline)) INLINE static float sink_get_SFR(
+    const struct sink *sink) {
+  if (sink->SFR <= 0.0)
+    return 0.0;
+  else
+    return sink->SFR;
 }
 
 #endif /* SWIFT_GEAR_SINK_GETTERS_H */

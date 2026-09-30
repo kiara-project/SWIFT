@@ -2590,15 +2590,22 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     if (gparts[i].type == swift_type_gas) {
       const size_t gas_index = -gparts[i].id_or_neg_offset;
       const float rho_com = hydro_get_comoving_density(&parts[gas_index]);
+      const float sfr = star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
+#ifdef WITH_FOF_GALAXIES
+      /* In Kiara, include only SF gas in the galaxy */
+      if (sfr > 0.f) {
+#endif
 #ifdef SWIFT_DEBUG_CHECKS
-      if (rho_com == 0.f) {
-        error("Found a particle with 0-density! id=%lld", parts[gas_index].id);
+        if (rho_com == 0.f) {
+          error("Found a particle with 0-density! id=%lld", parts[gas_index].id);
+        }
+#endif
+        max_part_density[index] = fmaxf(rho_com, max_part_density[index]);
+        star_formation_rate[index] += sfr;
+        gas_mass[index] += gparts[i].mass;
+#ifdef WITH_FOF_GALAXIES
       }
 #endif
-      max_part_density[index] = fmaxf(rho_com, max_part_density[index]);
-      star_formation_rate[index] +=
-          star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
-      gas_mass[index] += gparts[i].mass;
     }
 
     /* Add to the stellar mass */
@@ -2684,9 +2691,16 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
       if (gparts[i].type == swift_type_gas) {
         const size_t gas_index = -gparts[i].id_or_neg_offset;
         const float rho_com = hydro_get_comoving_density(&parts[gas_index]);
+#ifdef WITH_FOF_GALAXIES
+        const float sfr = star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
+#endif
 
         /* Is this the gas paricle which is the densest? */
-        if (rho_com == max_part_density[index]) {
+        if (rho_com == max_part_density[index]
+#ifdef WITH_FOF_GALAXIES
+            && sfr > 0.f
+#endif
+	    ) {
 
           /* If so, is this the minimum ID we have seen with this density? */
           if (parts[gas_index].id < id_gas_particle_to_convert[index])
@@ -2797,7 +2811,6 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
       bp->galaxy_data.gas_mass = gas_mass[index];
       if (stellar_mass[index] > 0.f) bp->galaxy_data.specific_sfr =
           star_formation_rate[index] / stellar_mass[index];
-      bp->galactocentric_radius = r;
     }
 #endif
   }

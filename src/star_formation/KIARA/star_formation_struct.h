@@ -38,8 +38,8 @@ struct star_formation_part_data {
    * last SF episode */
   float SFR;
 
-  /*! The fraction of H2 in this gas particle */
-  float H2_fraction;
+  /*! The fraction of dense gas (WN07 model only) in this gas particle */
+  float dense_gas_fraction;
 };
 
 /**

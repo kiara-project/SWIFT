@@ -644,6 +644,9 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   chi->du += new_pi_u - old_pi_u;
   chj->du += new_pj_u - old_pj_u;
 
+  /* Impose maximal viscosity */
+  hydro_diffusive_feedback_reset(pj);
+
 #ifdef FIREHOSE_DEBUG_CHECKS
   message(
       "FIREHOSE_EXCHANGE: pi=%lld pj=%lld si=%d sj=%d npi_u=%g npj_u=%g "
