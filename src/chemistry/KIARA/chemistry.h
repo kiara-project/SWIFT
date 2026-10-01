@@ -335,6 +335,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
                            velocity_gradient_norm;
 
       cpd->diffusion_coefficient = D_phys;
+
+      /* Turn off diffusion in underdense IGM */
+      if (rho_phys < cosmo->mean_density_Omega_b) {
+        //message("Setting D to ~0: id=%lld rhobar=%g rho=%g h=%g", p->id, cosmo->mean_density_Omega_b * cd->rho_to_n_cgs, rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc);
+        cpd->diffusion_coefficient = 1.e-10;
+      }
     }
   } /* end Smagorinsky diffusion */
 
@@ -1175,7 +1181,7 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
       const float D_phys = ch->diffusion_coefficient;
       const float rho_phys = hydro_get_physical_density(p, cosmo);
       dt_chem = cd->diffusion_beta * rho_phys * h_phys * h_phys / D_phys;
-      if (dt_chem < cd->time_step_min) {
+      /*if (dt_chem < cd->time_step_min) {
         message(
             "dZ_dt timestep low: id=%lld (%g Myr) is below "
             "time_step_min (%g Myr): n=%g h=%g D=%g",
@@ -1183,7 +1189,7 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
             cd->time_step_min * cd->time_to_Myr,
 	    rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc, 
 	    D_phys * cd->mass_to_solar_mass / (cd->time_to_Myr * cd->length_to_kpc));
-      }
+      }*/
 
       dt_chem = max(dt_chem, cd->time_step_min);
     }

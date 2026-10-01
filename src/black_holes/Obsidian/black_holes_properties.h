@@ -768,9 +768,14 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->lum_thresh_always_jet = parser_get_opt_param_float(
       params, "ObsidianAGN:lum_thresh_always_jet_1e45_erg_s", 0.f);
-  bp->lum_thresh_always_jet *=
+  if (bp->lum_thresh_always_jet == 0.f) {
+    bp->lum_thresh_always_jet = FLT_MAX;
+  }
+  else {
+    bp->lum_thresh_always_jet *=
       1.e45 * units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
       units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+  }
 
   /* We need to keep epsilon_r continuous over all M_dot,BH/M_dot,Edd */
   bp->epsilon_r = eta_at_slim_disk_boundary;
@@ -782,11 +787,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_z_scaling", 0.f);
   bp->quasar_coupling =
       parser_get_param_float(params, "ObsidianAGN:quasar_coupling");
-  bp->quasar_luminosity_thresh = parser_get_opt_param_float(
-      params, "ObsidianAGN:quasar_lum_thresh_1e45_erg_s", 0.f);
-  bp->quasar_luminosity_thresh *=
-      units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
-      units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) * 1.e45;
   bp->slim_disk_coupling = parser_get_opt_param_float(
       params, "ObsidianAGN:slim_disk_coupling", bp->quasar_coupling);
 

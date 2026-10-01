@@ -146,6 +146,7 @@ void gravity_props_init(struct gravity_props *p, struct swift_params *params,
   /* Geometric opening angle */
   p->theta_crit = parser_get_param_double(params, "Gravity:theta_cr");
   if (p->theta_crit >= 1.) error("Theta too large. FMM won't converge.");
+  message("%g", p->theta_crit );
 
   /* Adaptive opening angle tolerance */
   if (p->use_adaptive_tolerance)

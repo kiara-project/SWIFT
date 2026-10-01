@@ -54,8 +54,8 @@ __attribute__((always_inline)) INLINE static double get_black_hole_coupling(
   switch (BH_state) {
     case BH_states_adaf: {
       float scaling = 1.f;
-      if (props->adaf_coupling < 0.f) {
-        min(pow(1. + cosmo->z, props->adaf_z_scaling), 1.);
+      if (props->adaf_z_scaling > 0.f) {
+        scaling = min(pow(1. + cosmo->z, props->adaf_z_scaling), 0.2);
       }
       return fabs(props->adaf_coupling) * scaling;
       break;
@@ -311,7 +311,16 @@ get_black_hole_accretion_factor(const struct black_holes_props *props,
 
   switch (BH_state) {
     case BH_states_adaf:
-      return props->adaf_f_accretion;
+      float jet_subgrid_velocity = props->jet_subgrid_velocity;
+      if (jet_subgrid_velocity < 0.f) {
+        jet_subgrid_velocity = fabs(jet_subgrid_velocity) * sqrtf(cosmo->a_inv);
+      }
+      const float jet_subgrid_mass_loading =
+        2.f * props->jet_efficiency *
+        (phys_const->const_speed_light_c / props->jet_subgrid_velocity) *
+        (phys_const->const_speed_light_c / props->jet_subgrid_velocity);
+      const float adaf_f_accretion = 1.f / (1.f + jet_subgrid_mass_loading);
+      return adaf_f_accretion;
       break;
     case BH_states_quasar: {
       float v_kick = 0.f;
@@ -1453,10 +1462,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       if (bp->subgrid_mass < my_adaf_mass_limit) {
         bp->adaf_energy_to_dump = 0.f;
       }
-      /*else if (bp->subgrid_mass < 1.5f * my_adaf_mass_limit) {
-        bp->adaf_energy_to_dump *=
-            4.f * powf(bp->subgrid_mass / my_adaf_mass_limit - 1.f, 2.f);
-      }*/
       else {
         bp->adaf_energy_to_dump =
             get_black_hole_coupling(bp, props, cosmo, phys_const) *
@@ -1470,10 +1475,12 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     }
   }
 
+  float lum_thresh_always_jet = props->lum_thresh_always_jet;
+  if (lum_thresh_always_jet < 0.f) lum_thresh_always_jet *= -pow(10.f, fmax(2.f - cosmo->z, 0));
+
   if (bp->state == BH_states_adaf ||
       (props->slim_disk_jet_active && bp->state == BH_states_slim_disk) ||
-      (bp->radiative_luminosity > props->lum_thresh_always_jet &&
-      props->lum_thresh_always_jet > 0.f)) {
+      bp->radiative_luminosity > lum_thresh_always_jet) {
 
     float jet_velocity = black_hole_compute_jet_velocity(bp, cosmo, props);
 

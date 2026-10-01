@@ -382,6 +382,7 @@ hydro_set_drifted_physical_internal_energy(
   const float v_sig = const_viscosity_alpha_prefactor * soundspeed;
 
   p->dt_min = min(p->dt_min, p->h_min / v_sig);
+  if (p->dt_min < 1.e-10) warning("LOW COURANT TIMESTEP: id=%lld h=%g v_sig=%g", p->id, p->h_min, v_sig);
 }
 
 /**
@@ -409,6 +410,7 @@ hydro_set_v_sig_based_on_velocity_kick(struct part *p,
   const float v_sig = v_sig_sound + v_sig_kick;
 
   p->dt_min = min(p->dt_min, p->h_min / v_sig);
+  if (p->dt_min < 1.e-10) warning("LOW KICK TIMESTEP: id=%lld vsig_sound=%g vsig_kick=%g v_sig=%g", p->id, v_sig_sound, v_sig_kick, v_sig);
 }
 
 /**
