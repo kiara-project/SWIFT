@@ -560,9 +560,10 @@ feedback_do_chemical_enrichment_of_gas_around_star(
         "wi=%g rho_j=%g",
         si->id, Omega_frac, si->count_since_last_enrichment,
         si->feedback_data.kernel_wt_sum, wi, rho_j);
-    if (Omega_frac < 0.f || (Omega_frac > 1.01f && ui < 1.f)) {
-      error("Omega_frac negative or too large! aborting");
-    }
+    Omega_frac = 0.f;
+    //if (Omega_frac < 0.f || (Omega_frac > 1.01f && ui < 1.f)) {
+    //  error("Omega_frac negative or too large! aborting");
+    //}
 
     Omega_frac = fmin(Omega_frac, 1.f);
   }
@@ -759,13 +760,14 @@ feedback_do_chemical_enrichment_of_gas_around_star(
         (current_dust_mass + delta_dust_mass);
   }
 
-  /* Sum up each element to get total dust mass */
+  /* Sum up each element to get total new dust mass */
   pj->cooling_data.dust_mass = 0.;
   for (int elem = chemistry_element_He; elem < chemistry_element_count;
        elem++) {
     pj->cooling_data.dust_mass += pj->cooling_data.dust_mass_fraction[elem];
   }
 
+  /* Compute inverse of new dust mass */
   if (pj->cooling_data.dust_mass > 0.) {
     const double dust_mass_inv = 1. / pj->cooling_data.dust_mass;
 
@@ -776,16 +778,17 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     }
 
     /* Check for inconsistency */
-    if (pj->cooling_data.dust_mass > pj->mass) {
+    if (pj->cooling_data.dust_mass > 0.2f * pj->mass) {
       for (int elem = chemistry_element_He; elem < chemistry_element_count;
            elem++) {
-        message("DUST EXCEEDS MASS elem=%d md=%g delta=%g \n", elem,
+        message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n", 
+	        pj->id, elem,
+		pj->chemistry_data.metal_mass_fraction[elem] * pj->mass, 
                 pj->cooling_data.dust_mass_fraction[elem] *
                     pj->cooling_data.dust_mass,
                 si->feedback_data.delta_dust_mass[elem] * Omega_frac);
       }
-
-      error("DUST EXCEEDS MASS mgas=%g  mdust=%g\n", pj->mass,
+      warning("TOTAL DUST EXCEEDS MASS mgas=%g  mdust=%g\n", pj->mass,
             pj->cooling_data.dust_mass);
     }
   } else {

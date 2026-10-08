@@ -41,8 +41,7 @@ void feedback_get_ejecta_from_star_particle(
     double dt, double *N_SNe, double *ejecta_energy, double *ejecta_mass,
     double *ejecta_unprocessed, double ejecta_metal_mass[chem5_element_count]);
 void feedback_dust_production_condensation(
-    struct spart *sp, double star_age, const struct feedback_props *fb_props,
-    double delta_metal_mass[chemistry_element_count]);
+    struct spart *sp, double star_age, const struct feedback_props *fb_props);
 double feedback_life_time(const struct feedback_props *fb_props, const double m,
                           const double z);
 double feedback_imf(const struct feedback_props *fb_props, const double m);
@@ -710,6 +709,12 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
         fmax(sp->feedback_data.firehose_radius_stream, kernel_gamma * sp->h);
   }
 
+  /* Check that ejecta or metal masses are not <0 */
+  if (ejecta_unprocessed < 0.f) {
+    warning("STELLAR EJECTA <0: z=%g sid=%lld ej=%g, setting to 0", cosmo->z, sp->id, ejecta_unprocessed);
+    ejecta_unprocessed = 0.f;
+  }
+
   /* D. Rennehan: Do some magic that I still don't understand
    */
   double dum = 0.;
@@ -723,6 +728,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     const int elem_conv = feedback_props->element_index_conversions[elem];
     ejecta_metal_mass[elem_conv] += dum;
     if (ejecta_metal_mass[elem_conv] < 0.) {
+      warning("EJECTA METAL MASS<0: z=%g sid=%lld elem=%d %d Z*=%g ej=%g Zej=%g, setting to 0", cosmo->z, sp->id, elem, elem_conv, sp->chemistry_data.metal_mass_fraction[elem], ejecta_unprocessed, ejecta_metal_mass[elem_conv]);
       ejecta_metal_mass[elem_conv] = 0.;
       flag_negative = 1;
       /* Do not break here, we need the zeroed elements where negative */
@@ -762,8 +768,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   /* Put some of the ejecta metals into dust.  Must be done after
      chem5->chemistry conversion map is applied */
   if (sp->feedback_data.total_metal_mass > 0.) {
-    feedback_dust_production_condensation(sp, star_age_beg_step, feedback_props,
-                                          sp->feedback_data.metal_mass);
+    feedback_dust_production_condensation(sp, star_age_beg_step, feedback_props);
   }
 #endif
 

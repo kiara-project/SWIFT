@@ -53,6 +53,9 @@ struct cooling_function_data {
   /*! Convert time to Myr */
   double time_to_Myr;
 
+  /*! Convert mass to Msun */
+  double mass_to_solar_mass;
+
   /*! Convert potential to (km/s)^2 */
   double potential_to_kms2;
 

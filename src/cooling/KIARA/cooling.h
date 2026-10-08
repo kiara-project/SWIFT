@@ -460,31 +460,69 @@ cooling_compute_self_shielding(const struct part *restrict p,
  *
  */
 __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
-    const struct part *restrict p, const float rho,
-    const struct cooling_function_data *cooling) {
+    const struct part *restrict p, const struct xpart *restrict xp,  
+    const float rho, const float T_warm, const struct cooling_function_data *cooling) {
 
   /* No ISRF when not in subgrid ISM mode */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
 
-  const float t_ff = cooling->ff_const / sqrt(rho);
-  const float t_ff_Myr = t_ff * cooling->time_to_Myr; // * 1.e-3;
+  float t_ff = cooling->ff_const / sqrt(p->cooling_data.subgrid_dens);
+  float t_ff_Myr = t_ff * cooling->time_to_Myr; // * 1.e-3;
+  float t_ff_Gyr = t_ff * cooling->time_to_Myr * 1.e-3;
 
   const float pot = fabs(gravity_get_comoving_potential(p->gpart) / cooling->units.a_value);
   const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
 
-  const float Z = max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6);
-  const float logT = log10(min(p->cooling_data.subgrid_temp, 1000.f));
+  const float Z = max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6) * 74.627;  // to solar
+  //const float logT = log10(p->cooling_data.subgrid_temp);
+  const float logT = log10(T_warm);
+
+  const float ne = xp->cooling_data.e_frac;
 
   /* Try an ad hoc redshift dependence */
   const float a = cooling->units.a_value;
-  const float z_fact = fmin(1. / a, 4.f);
+  const float redshift = 1.f / a - 1.f;
 
-  float G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.18)) - 3.76 + 3.37 * exp(-0.173 * log10(pot_kms2)) * z_fact;
-  //float G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.3)) - 2.24;
+  // From Diane Salim 28 July 2026 (with t_ff in Myr instead of Gyr
+  //const float z_fact = fmin(redshift + 1.f, 4.f);
+  //float log_G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.18)) - 3.76 + 3.37 * exp(-0.173 * log10(pot_kms2)) * z_fact;
+  //float log_G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.3)) - 2.24;
+  //
+  /* From Diane Salim 28 July 2026 (with t_ff being computed with *comoving* density)
+  float log_G0;
+  const float t_ff_com = t_ff_Gyr * pow(redshift + 1.f, 1.5); // in Gyr, corrected for comoving density
+  const float log_sfr40 = log10(p->sf_data.SFR * cooling->mass_to_solar_mass / cooling->time_to_Myr * 1.e-6 * 64);
+  if (redshift < 4.f) {
+    log_G0 = log10(t_ff_com) + 3.61 * exp(log_sfr40) + log10(pow(logT + pow(Z,1.41) - 0.604, 2.4)) - 1.69;
+  }
+  else if (redshift < 5.f) {
+    const float log_G0_lowz = log10(t_ff_com) + 3.61 * exp(log_sfr40) + log10(pow(logT + pow(Z,1.41) - 0.604, 2.4)) - 1.69;
+    const float log_G0_hiz = ne + log10(pow(log10(t_ff_com) + pow(Z, 0.208) + 2.f, 3.3)) - 3.76;
+    log_G0 = (redshift-4.f) * log_G0_hiz + (5.f-redshift) * log_G0_lowz;
+  }
+  else {
+    log_G0 = ne + log10(pow(log10(t_ff_com) + pow(Z, 0.208) + 2.f, 3.3)) - 3.76;
+  }
+  */
+     
+  /* From Diane Salim 5 August 2026, not using sfr40 */
+  float log_G0;
+  const float logZ = log10(Z);
+  if (redshift < 4.f) {
+    log_G0 = log10(t_ff_Myr) + log10(logT - 0.793) - 0.553;
+  }
+  else if (redshift < 5.f) {
+    const float log_G0_lowz = log10(t_ff_Myr) + log10(logT - 0.793) - 0.553;
+    const float log_G0_hiz = 1.67 * exp(log10(t_ff_Myr)) + exp(logZ) + log10(pow(logT+ne-0.855, 2.03)) - 4.26;
+    log_G0 = (redshift-4.f) * log_G0_hiz + (5.f-redshift) * log_G0_lowz;
+  }
+  else {
+    log_G0 = 1.67 * exp(log10(t_ff_Myr)) + exp(logZ) + log10(pow(logT+ne-0.855, 2.03)) - 4.26;
+  }
 
-  G0 = powf(10.f, G0);
+  const float G0 = powf(10.f, log_G0);
 
-  if (p->id % 10000000 == 0) {
+  if (p->id % 100000 == 0) {
     message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g terms=%g %g %g G0=%g",
             p->id,
 	    1.f/cooling->units.a_value - 1.f,
@@ -495,7 +533,7 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 	    p->cooling_data.subgrid_temp,
 	    p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
             p->cooling_data.dust_temperature,
-	    log10(t_ff_Myr), log10(pow(logT + Z, 3.18)), 3.37 * exp(-0.173 * log10(pot_kms2)), 
+	    log10(t_ff_Gyr), log10(logT - 0.793), log10(pow(logT+ne-0.855, 2.03)),
             G0);
   }
 
@@ -512,9 +550,10 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
  *
  */
 __attribute__((always_inline)) INLINE static float cooling_compute_G0(
-    const struct part *restrict p, const float rho,
+    const struct part *restrict p, const struct xpart *restrict xp, 
+    const float rho, const float T_warm,
     const struct cooling_function_data *cooling, const float mstar,
-    const float ssfr) {
+    const float ssfr, const float dt) {
 
   /* No ISRF outside subgrid ISM */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
@@ -553,18 +592,18 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     }
   }
 #if COOLING_GRACKLE_MODE >= 2
-  /*else if (cooling->G0_computation_method == 4) {
+  else if (cooling->G0_computation_method == 4) {
     // Remember SNe_ThisTimeStep stores SN **rate**
-    G0 = p->cooling_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
+    G0 = p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
   }
   else if (cooling->G0_computation_method == 5) {
     float pssfr = max(p->sf_data.SFR, 0.f);
     pssfr /= max(mstar, 8. * p->mass);
     G0 = max(ssfr, pssfr) * cooling->G0_factor2 +
-         p->cooling_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
-  }*/
+         p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
+  }
   else if (cooling->G0_computation_method == 6) {
-    G0 = cooling_G0_from_FIRE(p, rho, cooling);
+    G0 = cooling_G0_from_FIRE(p, xp, rho, T_warm, cooling);
   }
 #endif
   else {
@@ -575,8 +614,7 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   /* Scale G0 by user-input value */
   G0 *= cooling->G0_multiplier;
 
-  if (mstar * 1.e10 > 1.e9 && p->id % 100000 == 0 && p->cooling_data.subgrid_temp > 0) {
-  //if (p->id % 1 == 0 && p->cooling_data.subgrid_temp > 0) {
+  /*if (mstar * 1.e10 > 1.e9 && p->id % 100000 == 0 && p->cooling_data.subgrid_temp > 0) {
     message("G0: id=%lld z=%g M*=%g SFR=%g rho_sfr=%g T=%g nH=%g Td=%g fshield=%g G0=%g",
             p->id,
             1.f / cooling->units.a_value - 1.f,
@@ -589,7 +627,7 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
             p->cooling_data.dust_temperature,
             fH2_shield,
             G0);
-  }
+  }*/
 
   return G0;
 }

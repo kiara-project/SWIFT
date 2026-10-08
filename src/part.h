@@ -93,6 +93,10 @@ struct threadpool;
 #include "./hydro/Gasoline/hydro_part.h"
 #define hydro_need_extra_init_loop 0
 #define EXTRA_HYDRO_LOOP
+#elif defined(MAGMA_SPH)
+#include "./hydro/MAGMA/hydro_part.h"
+#define hydro_need_extra_init_loop 0
+#define EXTRA_HYDRO_LOOP
 #elif defined(MAGMA2_SPH)
 #include "./hydro/MAGMA2/hydro_part.h"
 #define hydro_need_extra_init_loop 0
@@ -138,6 +142,8 @@ struct threadpool;
 #include "./black_holes/SPIN_JET/black_holes_part.h"
 #elif defined(BLACK_HOLES_OBSIDIAN)
 #include "./black_holes/Obsidian/black_holes_part.h"
+#elif defined(BLACK_HOLES_GEAR)
+#include "./black_holes/GEAR/black_holes_part.h"
 #else
 #error "Invalid choice of black hole particle"
 #endif

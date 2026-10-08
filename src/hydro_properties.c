@@ -94,7 +94,7 @@ void hydro_props_init(struct hydro_props *p,
       (pow_dimension(delta_eta) - pow_dimension(p->eta_neighbours)) *
       kernel_norm;
 
-#ifdef MAGMA2_SPH
+#ifdef MAGMA2_SPH_PEDANTIC
 #ifndef const_kernel_target_neighbours
   error(
       "When using MAGMA2 SPH, the constant "
@@ -154,6 +154,8 @@ void hydro_props_init(struct hydro_props *p,
 
   /* Time integration properties */
   p->CFL_condition = parser_get_param_float(params, "SPH:CFL_condition");
+  if (p->CFL_condition <= 0.f)
+    error("SPH:CFL_condition must be > 0, got %e.", p->CFL_condition);
   const float max_volume_change = parser_get_opt_param_float(
       params, "SPH:max_volume_change", hydro_props_default_volume_change);
   p->log_max_h_change = logf(powf(max_volume_change, hydro_dimension_inv));

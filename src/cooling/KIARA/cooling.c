@@ -347,12 +347,12 @@ void cooling_copy_to_grackle2(
         p->cooling_data.dust_mass / p->mass * species_densities[12];
     data->dust_density = &species_densities[20];
     species_densities[21] =
-        p->cooling_data.SNe_ThisTimeStep * dt / p->mass * species_densities[12];
+        p->feedback_data.SNe_ThisTimeStep * dt / p->mass * species_densities[12];
     /* need to pass the number of SNe per volume of particle;
      * recall SNe_ThisTimeStep is the SNe rate */
 
     // if (species_densities[21] > 1.e15) message("SNe_density: %g %g %g
-    // %g\n",p->mass, species_densities[12], p->cooling_data.SNe_ThisTimeStep,
+    // %g\n",p->mass, species_densities[12], p->feedback_data.SNe_ThisTimeStep,
     // species_densities[21]);
     data->SNe_ThisTimeStep = &species_densities[21];
     // if( chemistry_get_total_metal_mass_fraction_for_cooling(p)>0.f)
@@ -900,9 +900,6 @@ gr_float cooling_grackle_driver(
       }
 
       p->cooling_data.dust_temperature = t_dust;
-
-      /* Reset accumulated local variables to zero */
-      p->cooling_data.SNe_ThisTimeStep = 0.f;
 #endif
       break;
 
@@ -1280,17 +1277,16 @@ void cooling_do_grackle_cooling(
   const float galaxy_mstar = p->galaxy_data.stellar_mass;
   const float galaxy_ssfr = p->galaxy_data.specific_sfr;
 
-  /* Compute the ISRF */
-  p->cooling_data.G0 =
-      fmax(cooling_compute_G0(p, p->cooling_data.subgrid_dens, cooling,
-                              galaxy_mstar, galaxy_ssfr),
-           0.);
-
   /* Compute the entropy floor */
   // const double T_warm = entropy_floor_temperature(p, cosmo, floor_props);
   const double T_warm = warm_ISM_temperature(p, cooling, phys_const, cosmo);
   const double u_warm =
       cooling_convert_temp_to_u(T_warm, xp->cooling_data.e_frac, cooling, p, xp);
+
+  /* Compute the ISRF */
+  p->cooling_data.G0 =
+      fmax(cooling_compute_G0(p, xp, p->cooling_data.subgrid_dens, T_warm, cooling,
+                              galaxy_mstar, galaxy_ssfr, dt), 0.);
 
   /* Do grackle cooling */
   const float u_old = hydro_get_physical_internal_energy(p, xp, cosmo);
@@ -1608,6 +1604,9 @@ float cooling_timestep(const struct cooling_function_data *restrict cooling,
 void cooling_split_part(struct part *p, struct xpart *xp, double n) {
 
   xp->cooling_data.radiated_energy /= n;
+#if COOLING_GRACKLE_MODE >= 2
+  p->cooling_data.dust_mass /= n;
+#endif
 }
 
 /**
@@ -1667,6 +1666,7 @@ void cooling_init_units(const struct unit_system *us,
       units_cgs_conversion_factor(us, UNIT_CONV_LENGTH) / 3.08567758e18f;
 
   cooling->time_to_Myr = time_to_yr * 1.e-6;
+  cooling->mass_to_solar_mass = mass_to_solar_mass;
 
   const double vel_to_km_s =  units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY) * 1.e-5;
   cooling->potential_to_kms2 = vel_to_km_s * vel_to_km_s;

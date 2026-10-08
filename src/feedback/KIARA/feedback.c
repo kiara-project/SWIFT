@@ -142,8 +142,7 @@ double feedback_get_lum_from_star_particle(
 }
 
 void feedback_dust_production_condensation(
-    struct spart *sp, double star_age, const struct feedback_props *fb_props,
-    double delta_metal_mass[chemistry_element_count]) {
+    struct spart *sp, double star_age, const struct feedback_props *fb_props) {
 
   const double *delta_table;
   int k;
@@ -156,18 +155,18 @@ void feedback_dust_production_condensation(
     sp->feedback_data.delta_dust_mass[k] = 0.f;
   }
 
-  const double C_minus_O = delta_metal_mass[chemistry_element_C] -
-                           delta_metal_mass[chemistry_element_O];
+  const double C_minus_O = sp->feedback_data.metal_mass[chemistry_element_C] -
+                           sp->feedback_data.metal_mass[chemistry_element_O];
   if (star_age > 100. && C_minus_O > 0.) {
     /* Compute dust mass created in high-C/O AGB stars
      * (atomic C forms graphite)
      */
     sp->feedback_data.delta_dust_mass[chemistry_element_C] =
         fb_props->delta_AGBCOG1[chemistry_element_C] *
-        (delta_metal_mass[chemistry_element_C] -
-         0.75 * delta_metal_mass[chemistry_element_O]);
+        (sp->feedback_data.metal_mass[chemistry_element_C] -
+         0.75 * sp->feedback_data.metal_mass[chemistry_element_O]);
     const double max_dust_C =
-        fb_props->max_dust_fraction * delta_metal_mass[chemistry_element_C];
+        fb_props->max_dust_fraction * sp->feedback_data.metal_mass[chemistry_element_C];
     /* Cap the new dust mass formed to some fraction of total ejecta
      * metals in that element
      */
@@ -176,7 +175,7 @@ void feedback_dust_production_condensation(
     }
 
     /* Subtract this from ejecta metals */
-    delta_metal_mass[chemistry_element_C] -=
+    sp->feedback_data.metal_mass[chemistry_element_C] -=
         sp->feedback_data.delta_dust_mass[chemistry_element_C];
   } else {
     /* Choose dust table: If age > 100 Myr, assume ejecta is from AGB,
@@ -196,26 +195,31 @@ void feedback_dust_production_condensation(
           chemistry_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
         sp->feedback_data.delta_dust_mass[k] =
             16.0 * (delta_table[chemistry_element_Mg] *
-                        delta_metal_mass[chemistry_element_Mg] / 24.305 +
+                        sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
                     delta_table[chemistry_element_Si] *
-                        delta_metal_mass[chemistry_element_Si] / 28.0855 +
+                        sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
                     fb_props->delta_AGBCOL1[chemistry_element_S] *
-                        delta_metal_mass[chemistry_element_S] / 32.065 +
+                        sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
                     fb_props->delta_AGBCOL1[chemistry_element_Ca] *
-                        delta_metal_mass[chemistry_element_Ca] / 40.078 +
+                        sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
                     fb_props->delta_AGBCOL1[chemistry_element_Fe] *
-                        delta_metal_mass[chemistry_element_Fe] / 55.845);
+                        sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
         sp->feedback_data.delta_dust_mass[k] =
-            delta_table[k] * delta_metal_mass[k];
+            delta_table[k] * sp->feedback_data.metal_mass[k];
       }
 
-      const double max_dust = fb_props->max_dust_fraction * delta_metal_mass[k];
+      const double max_dust = fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
       if (sp->feedback_data.delta_dust_mass[k] > max_dust) {
         sp->feedback_data.delta_dust_mass[k] = max_dust;
       }
 
-      delta_metal_mass[k] -= sp->feedback_data.delta_dust_mass[k];
+      /* Remove dust from gas-phase metals to be distributed from star */
+      sp->feedback_data.metal_mass[k] -= sp->feedback_data.delta_dust_mass[k];
+      sp->feedback_data.total_metal_mass -= sp->feedback_data.delta_dust_mass[k];
+
+      /* We will use element 0 of dust to store total change in dust mass */
+      sp->feedback_data.delta_dust_mass[0] += sp->feedback_data.delta_dust_mass[k];
     }
   }
 }

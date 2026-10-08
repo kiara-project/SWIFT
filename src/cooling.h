@@ -55,6 +55,8 @@
 #include "./cooling/PS2020/cooling.h"
 #elif defined(COOLING_KIARA)
 #include "./cooling/KIARA/cooling.h"
+#elif defined(COOLING_TREECOOL)
+#include "./cooling/TREECOOL/cooling.h"
 #else
 #error "Invalid choice of cooling function."
 #endif
