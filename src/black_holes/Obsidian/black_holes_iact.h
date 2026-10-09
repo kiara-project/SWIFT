@@ -53,12 +53,13 @@ black_hole_set_kick_direction(const struct bpart *bi, const struct part *pj,
   float kick_dir = 1.f;
   double random_number = 1.;
   switch (dir_flag) {
-    /* Isotropic */
+    /* Isotropic: one random direction per BH per step (same for all
+     * particles, for coherence); theta and phi use independent streams */
     case 0: {
-      const double random_for_theta =
-          random_unit_interval(bi->id, ti_current, random_number_BH_feedback);
-      const double random_for_phi =
-          random_unit_interval(bi->id, ti_current, random_number_BH_feedback);
+      const double random_for_theta = random_unit_interval(
+          bi->id, ti_current, random_number_isotropic_AGN_feedback_ray_theta);
+      const double random_for_phi = random_unit_interval(
+          bi->id, ti_current, random_number_isotropic_AGN_feedback_ray_phi);
 
       const float theta = acosf(2.f * random_for_theta - 1.f);
       const float phi = 2.f * M_PI * random_for_phi;
@@ -251,28 +252,40 @@ runner_iact_nonsym_bh_gas_density(
   const float dv[3] = {pj->v[0] - bi->v[0], pj->v[1] - bi->v[1],
                        pj->v[2] - bi->v[2]};
 
+  const float L_x = mj * (dx[1] * dv[2] - dx[2] * dv[1]);
+  const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
+  const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
+
   /* Classify gas as hot or cold for accretion */
   const int gas_temperature_state = black_hole_gas_hot_or_cold(bi, pj, cosmo, bh_props);
 
   if (gas_temperature_state == 1) {
     bi->hot_gas_mass += mj;
     bi->hot_gas_internal_energy += mj * uj; /* Not kernel weighted */
-  } 
+  }
   else if (gas_temperature_state == -1) {
 #if COOLING_GRACKLE_MODE >= 2
     /* With subgrid ISM model, only allow cold dense component to be accreted */
     //bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.H2_fraction;
-    bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.dense_gas_fraction;
+    const float m_cold = mj * pj->cooling_data.subgrid_fcold * pj->sf_data.dense_gas_fraction;
 #else
-    bi->cold_gas_mass += mj;
+    const float m_cold = mj;
 #endif
+    bi->cold_gas_mass += m_cold;
+
+    /* Cold gas corotating with the kernel gas angular momentum. The total is
+     * not known until this loop completes, so use the previous step's vector
+     * (the gas L accumulated below is -L_x etc.). With no previous vector
+     * (new BH), treat all cold gas as corotating. */
+    const float *L_prev = bi->angular_momentum_gas_prev;
+    const int have_L_prev =
+        (L_prev[0] != 0.f || L_prev[1] != 0.f || L_prev[2] != 0.f);
+    const float proj = -(L_x * L_prev[0] + L_y * L_prev[1] + L_z * L_prev[2]);
+    if (!have_L_prev || proj > 0.f) bi->corot_gas_mass += m_cold;
+
     bi->gas_SFR += max(pj->sf_data.SFR, 0.);
     //if (bi->id == 19280572) message("BH_SFR z=%g bid=%lld pid=%lld mj=%g psfr=%g nH=%g nsub=%g T=%g Tsub=%g Mc=%g Mn=%g fc=%g", cosmo->z, bi->id, pj->id, mj * bh_props->mass_to_solar_mass, pj->sf_data.SFR * bh_props->mass_to_solar_mass / bh_props->time_to_yr, pj->rho * bh_props->conv_factor_density_to_cgs / 1.673e-24 * pow(cosmo->a, -3.), cooling_get_subgrid_density(pj, xpj) * bh_props->conv_factor_density_to_cgs / 1.673e-24, pj->u * cosmo->a_factor_internal_energy / (bh_props->T_K_to_int * bh_props->temp_to_u_factor), pj->cooling_data.subgrid_temp, bi->cold_gas_mass * bh_props->mass_to_solar_mass, bi->ngb_mass * bh_props->mass_to_solar_mass, pj->cooling_data.subgrid_fcold);
   }
-
-  const float L_x = mj * (dx[1] * dv[2] - dx[2] * dv[1]);
-  const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
-  const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
 
   /* Gas angular momentum in kernel */
   bi->angular_momentum_gas[0] -= L_x;
@@ -471,30 +484,8 @@ runner_iact_nonsym_bh_gas_swallow(
   const float ui = r * hi_inv;
   kernel_eval(ui, &wi);
 
-  /* Sum up cold disk mass corotating relative to total angular momentum.
-   * This can't be used to compute accretion since it is not summable
-   * prior to this swallow routine; we need an intermediate loop
-   * if we want to use this to set accretion ala Simba.*/
-   
+  /* Corotating cold gas mass is now summed in the density loop */
   const float mj = hydro_get_mass(pj);
-
-  /* Classify gas as hot or cold for accretion */
-  const int gas_temperature_state = black_hole_gas_hot_or_cold(bi, pj, cosmo, bh_props);
-
-  const float Lx = mj * (dx[1] * dv[2] - dx[2] * dv[1]);
-  const float Ly = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
-  const float Lz = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
-  const float proj = Lx * bi->angular_momentum_gas[0] +
-                     Ly * bi->angular_momentum_gas[1] +
-                     Lz * bi->angular_momentum_gas[2];
-  if ((proj > 0.f) && gas_temperature_state == -1) {
-#if COOLING_GRACKLE_MODE >= 2
-    /* With subgrid ISM model, only allow cold dense component to be accreted */
-    bi->corot_gas_mass += mj * pj->cooling_data.subgrid_fcold * pj->sf_data.dense_gas_fraction;
-#else
-    bi->corot_gas_mass += mj;
-#endif
-  }
 
   /* Probability to swallow this particle */
   float prob = -1.f;
@@ -627,9 +618,9 @@ runner_iact_nonsym_bh_gas_swallow(
         /* Bernoulli trial P = M_adaf * wi / sum(mj * wj) */
         const float adaf_heat_prob = adaf_mass_to_heat * kernel_wt;
 
-        /* Draw a random number (Note mixing both IDs) */
-        const float adaf_rand = random_unit_interval(
-            bi->id + pj->id, ti_current, random_number_BH_swallow);
+        /* Draw a random number independent of the swallow draw above */
+        const float adaf_rand = random_unit_interval_two_IDs(
+            bi->id, pj->id, ti_current, random_number_BH_feedback);
         /* Identify ADAF heating particles by their ID, and only heat those! */
         if (adaf_rand < adaf_heat_prob) {
           if (pj->black_holes_data.adaf_id < bi->id) {
@@ -1007,13 +998,17 @@ runner_iact_nonsym_bh_gas_feedback(
   float lum_thresh_always_jet = bh_props->lum_thresh_always_jet;
   if (lum_thresh_always_jet < 0.f) lum_thresh_always_jet *= -pow(10.f, fmax(2.f - cosmo->z, 0));
 
+  /* Compute ramp-up in energy above ADAF mass limit */
+  float jet_ramp = black_hole_compute_jet_energy_ramp(bi, cosmo, bh_props);
+
   if (bi->radiative_luminosity > lum_thresh_always_jet &&
       swallow_flag && !jet_flag && bi->state == BH_states_slim_disk) {
     jet_flag = 1;
   }
 
-  /* Compute ramp-up in energy above ADAF mass limit */
-  float jet_ramp = black_hole_compute_jet_energy_ramp(bi, cosmo, bh_props);
+  /* No jet energy below the ADAF mass limit: treat the particle as a non-jet
+   * particle, so that wind particles keep their wind kick */
+  if (jet_ramp <= 0.f) jet_flag = 0;
 
   /* ADAF heating/kicking: Only heat this particle if it is NOT a jet particle */
   if (adaf_heat_flag && !jet_flag) {
@@ -1036,7 +1031,8 @@ runner_iact_nonsym_bh_gas_feedback(
     if (E_inject > 0.f) {
 
 #if COOLING_GRACKLE_MODE >= 2
-      if (pj->cooling_data.subgrid_temp >= 0.f) {
+      /* subgrid_temp == 0 flags gas that is not in the subgrid ISM */
+      if (pj->cooling_data.subgrid_temp > 0.f) {
 #else
       const double n_H_cgs =
           hydro_get_physical_density(pj, cosmo) * bh_props->rho_to_n_cgs;
@@ -1101,40 +1097,31 @@ runner_iact_nonsym_bh_gas_feedback(
           }
         }
 
-        /* Reset in case clipped at the upper limit */
-        E_heat = (u_new - u_init) * mj;
+        /* Only heat if the (possibly clipped) energy is above the current
+         * one; never cool a particle already hotter than the cap */
+        if (u_new > u_init) {
 
-        /* Heat particle: We are overwriting the internal energy of the
-         * particle */
-        hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
-        hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
+          /* Reset in case clipped at the upper limit */
+          E_heat = (u_new - u_init) * mj;
+
+          /* Heat particle: We are overwriting the internal energy of the
+           * particle */
+          hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
+          hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
 
 #if COOLING_GRACKLE_MODE >= 2
-	/* Take AGN-heated gas out of subgrid ISM mode */
-	pj->cooling_data.subgrid_temp = 0.f;
-	pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
-	pj->cooling_data.subgrid_fcold = 0.f;
-	pj->sf_data.dense_gas_fraction = 0.f;
+          /* Take AGN-heated gas out of subgrid ISM mode */
+          pj->cooling_data.subgrid_temp = 0.f;
+          pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
+          pj->cooling_data.subgrid_fcold = 0.f;
+          pj->sf_data.dense_gas_fraction = 0.f;
 #endif
 
-        /* Shut off cooling for some time, if desired */
-        if (bh_props->adaf_cooling_shutoff_factor > 0.f) {
-
-          /* u_init is physical so cs_physical is physical */
-          const double u_com = u_new / cosmo->a_factor_internal_energy;
-          const double cs = gas_soundspeed_from_internal_energy(pj->rho, u_com);
-
-          const float h_phys = kernel_gamma * pj->h * cosmo->a;
-          const float cs_physical = cs * cosmo->a_factor_sound_speed;
-          const float dt_sound_phys = h_phys / cs_physical;
-
-          /* a_factor_sound_speed converts cs_physical to comoving units,
-           * set cooling shutoff to chosen multiple of sound crossing time */
-          pj->feedback_data.cooling_shutoff_delay_time =
-              bh_props->adaf_cooling_shutoff_factor * min(dt_sound_phys, max_cooling_shutoff_delay_time);
-	  /* We will immediately decrement this in recouple_part(), so 
-	   * we add dt here to ensure it will have an effect for >=1 timestep */
-	  pj->feedback_data.cooling_shutoff_delay_time += dt;
+          /* Cooling shutoff is set below for all particles touched by
+           * BH feedback */
+        } else {
+          E_heat = 0.;
+          u_new = u_init;
         }
 
       } /* E_heat > 0 */
@@ -1151,7 +1138,9 @@ runner_iact_nonsym_bh_gas_feedback(
     /* Set jet velocity, accounting for energy ramp-up */
     float v_jet = black_hole_compute_jet_velocity(bi, cosmo, bh_props);
     v_jet *= sqrtf(jet_ramp);
-    v_kick += v_jet;
+
+    /* Jet particles get the jet speed only, not the wind speed as well */
+    v_kick = v_jet;
 
     /* Heat jet particle */
     float new_Tj = bh_props->jet_temperature;
@@ -1180,10 +1169,6 @@ runner_iact_nonsym_bh_gas_feedback(
     }
 
   } /* jet_flag */
-
-#ifdef OBSIDIAN_DEBUG_CHECKS
-  float pj_vel_norm = FLT_MAX;
-#endif
 
   /* HERE WE WILL DO THE ACTUAL KICKING */
   /* Flagged if it is a jet particle, marked to swallow (i.e. kick) or
@@ -1226,12 +1211,6 @@ runner_iact_nonsym_bh_gas_feedback(
 
     if (norm > 0.f) {
       const float prefactor = v_kick * cosmo->a * dirsign / norm;
-
-#ifdef OBSIDIAN_DEBUG_CHECKS
-      pj_vel_norm = sqrtf(xpj->v_full[0] * xpj->v_full[0] +
-                          xpj->v_full[1] * xpj->v_full[1] +
-                          xpj->v_full[2] * xpj->v_full[2]);
-#endif
 
       xpj->v_full[0] += prefactor * dir[0];
       xpj->v_full[1] += prefactor * dir[1];

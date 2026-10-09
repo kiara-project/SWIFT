@@ -148,7 +148,7 @@ struct black_holes_props {
   float suppression_sf_eff;
 
   /*! Gaussian spread in infall times when using SF-based growth suppression. */
-  int tdyn_sigma;
+  float tdyn_sigma;
 
   /*! Method to suppress early growth of BH */
   int suppress_growth;
@@ -212,10 +212,6 @@ struct black_holes_props {
   /*! A multiplicative factor for delaying cooling on a particle in quasar mode */
   float quasar_cooling_shutoff_factor;
 
-  /*! luminosity in system units above which to boost quasar eps_f quasar mode
-   */
-  double quasar_luminosity_thresh;
-
   /*! The disk wind efficiency from Benson & Babul 2009 */
   float adaf_disk_efficiency;
 
@@ -227,6 +223,9 @@ struct black_holes_props {
 
   /*! eps_f for the ADAF mode */
   float adaf_coupling;
+
+  /*! Maximum eps_f for the ADAF mode when scaling with (1+z) */
+  float adaf_max_coupling;
 
   /*! Power-law scaling of adaf_coupling with (1+z) */
   float adaf_z_scaling;
@@ -283,8 +282,8 @@ struct black_holes_props {
   /*! Minimum BH mass for the v_kick formula (internal units) */
   float minimum_black_hole_mass_v_kick;
 
-  /*! Minimum kick velocity for variable v_kick */
-  float minimum_v_kick_km_s;
+  /*! Minimum kick velocity for variable v_kick (internal units) */
+  float minimum_v_kick;
 
   /*! The phi term for the slim disk mode (Eq. 9 from Rennehan+24) */
   float slim_disk_phi;
@@ -689,6 +688,16 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->eddington_fraction_upper_boundary = parser_get_param_float(
       params, "ObsidianAGN:eddington_fraction_upper_boundary");
 
+  if (bp->eddington_fraction_lower_boundary <= 0.f ||
+      bp->eddington_fraction_upper_boundary <=
+          bp->eddington_fraction_lower_boundary) {
+    error(
+        "Need 0 < eddington_fraction_lower_boundary (%g) < "
+        "eddington_fraction_upper_boundary (%g).",
+        bp->eddington_fraction_lower_boundary,
+        bp->eddington_fraction_upper_boundary);
+  }
+
   const double kpc_per_km = 3.24078e-17;
   const double age_s = 13800. * Myr_in_cgs; /* Approximate age at z = 0 */
   const double jet_velocity_kpc_s =
@@ -783,8 +792,18 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->adaf_coupling =
       parser_get_param_float(params, "ObsidianAGN:adaf_coupling");
+  bp->adaf_max_coupling =
+      parser_get_opt_param_float(params, "ObsidianAGN:adaf_max_coupling", bp->adaf_coupling);
   bp->adaf_z_scaling =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_z_scaling", 0.f);
+  if (bp->adaf_z_scaling > 0. &&
+      bp->adaf_max_coupling <= fabs(bp->adaf_coupling)) {
+    error(
+        "adaf_z_scaling (%g) has no effect since adaf_max_coupling (%g) <= "
+        "adaf_coupling (%g); set adaf_max_coupling > adaf_coupling or else "
+        "set adaf_z_scaling = 0.",
+        bp->adaf_z_scaling, bp->adaf_max_coupling, bp->adaf_coupling);
+  }
   bp->quasar_coupling =
       parser_get_param_float(params, "ObsidianAGN:quasar_coupling");
   bp->slim_disk_coupling = parser_get_opt_param_float(
@@ -993,8 +1012,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:minimum_black_hole_mass_v_kick_Msun");
   bp->minimum_black_hole_mass_v_kick /= bp->mass_to_solar_mass;
 
-  bp->minimum_v_kick_km_s = parser_get_opt_param_float(
+  bp->minimum_v_kick = parser_get_opt_param_float(
       params, "ObsidianAGN:minimum_v_kick_km_s", 100.f);
+  bp->minimum_v_kick *= bp->kms_to_internal;
 
   /* Reposition parameters --------------------------------- */
 
@@ -1155,12 +1175,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     message("Black hole jet efficiency is %g", bp->jet_efficiency);
     message("Black hole jet recouple factor is %g", f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g", bp->epsilon_r);
-    if (bp->quasar_luminosity_thresh > 0.f) {
-      message(
-          "Black hole quasar coupling %g is boosted above Lbol>%g erg/s",
-          bp->quasar_coupling,
-          bp->quasar_luminosity_thresh * bp->conv_factor_energy_rate_to_cgs);
-    }
     if (bp->lum_thresh_always_jet > 0.f) {
       message("Black hole jet mode always on above Lbol>%g erg/s",
               bp->lum_thresh_always_jet * bp->conv_factor_energy_rate_to_cgs);
@@ -1180,7 +1194,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     message("Black hole slim disk recouple factor is %g", f_slim_disk_recouple);
     message("Black hole ADAF mass loading (energy) is %g",
             bp->adaf_wind_mass_loading);
-    message("Black hole ADAF f_accretion is %g", bp->adaf_f_accretion);
+    message("Black hole ADAF f_accretion is %g (at z=0)",
+            bp->adaf_f_accretion);
     message("Black hole ADAF v_wind is %g km/s (thermally dumped)",
             bp->adaf_wind_speed / bp->kms_to_internal);
   }
@@ -1198,7 +1213,7 @@ get_black_hole_adaf_mass_limit(const struct bpart *const bp,
                                const struct black_holes_props *props,
                                const struct cosmology *cosmo) {
   double mass_min = fabs(props->adaf_mass_limit);
-  if (props->adaf_mass_limit < 0.)
+  if (props->adaf_mass_limit_a_scaling > 0.)
     mass_min *= pow(fmax(cosmo->a, props->adaf_mass_limit_a_min),
                     props->adaf_mass_limit_a_scaling);
   mass_min += 0.01f * (float)(bp->id % 100) * props->adaf_mass_limit_spread;

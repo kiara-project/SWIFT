@@ -540,13 +540,13 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   const float FIRE_eta_upper_slope = feedback_props->FIRE_eta_upper_slope;
   const float FIRE_eta_lower_slope_EOR =
       feedback_props->FIRE_eta_lower_slope;
-  const float wind_velocity_suppression_redshift =
-      feedback_props->wind_velocity_suppression_redshift;
+  const float wind_eta_suppression_redshift =
+      feedback_props->wind_eta_suppression_redshift;
 
   float eta = feedback_mass_loading_factor(
       cosmo, M_star, M_star_min, FIRE_eta_norm, FIRE_eta_break,
       FIRE_eta_lower_slope, FIRE_eta_upper_slope, FIRE_eta_lower_slope_EOR,
-      wind_velocity_suppression_redshift);
+      wind_eta_suppression_redshift);
 
   /* velocity in internal units which is a^2*comoving, or a*physical */
   float v_internal = feedback_compute_kick_velocity(M_star, sp->id, cosmo,

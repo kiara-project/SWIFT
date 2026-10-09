@@ -40,6 +40,41 @@
 #include <math.h>
 
 /**
+ * @brief Redshift boost of the ADAF coupling relative to adaf_coupling.
+ *
+ * The coupling is min(adaf_coupling * (1+z)^adaf_z_scaling,
+ * adaf_max_coupling); this returns that value divided by adaf_coupling,
+ * so it can also be applied to the jet efficiency.
+ *
+ * @param props The properties of the black hole scheme.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+get_black_hole_adaf_z_scaling(const struct black_holes_props *props,
+                              const struct cosmology *cosmo) {
+  const double coupling = fabs(props->adaf_coupling);
+  if (props->adaf_z_scaling <= 0.f || coupling <= 0.) return 1.;
+
+  const double boosted = coupling * pow(1. + cosmo->z, props->adaf_z_scaling);
+  return fmin(boosted, props->adaf_max_coupling) / coupling;
+}
+
+/**
+ * @brief ADAF wind mass loading, scaled with the ADAF coupling.
+ *
+ * Zero when the whole kernel is heated (adaf_f_quasar_psi < 0).
+ *
+ * @param props The properties of the black hole scheme.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+get_black_hole_adaf_wind_mass_loading(const struct black_holes_props *props,
+                                      const struct cosmology *cosmo) {
+  return props->adaf_wind_mass_loading *
+         get_black_hole_adaf_z_scaling(props, cosmo);
+}
+
+/**
  * @brief How much of the feedback actually couples to the medium?
  *
  * @param bp The black hole particle.
@@ -52,29 +87,13 @@ __attribute__((always_inline)) INLINE static double get_black_hole_coupling(
     const struct cosmology *cosmo, const struct phys_const *phys_const) {
   const int BH_state = bp->state;
   switch (BH_state) {
-    case BH_states_adaf: {
-      float scaling = 1.f;
-      if (props->adaf_z_scaling > 0.f) {
-        scaling = min(pow(1. + cosmo->z, props->adaf_z_scaling), 0.2);
-      }
-      return fabs(props->adaf_coupling) * scaling;
+    case BH_states_adaf:
+      return fabs(props->adaf_coupling) *
+             get_black_hole_adaf_z_scaling(props, cosmo);
       break;
-    }
-    case BH_states_quasar: {
-      float quasar_coupling = fabs(props->quasar_coupling);
-      const double c = phys_const->const_speed_light_c;
-      const double luminosity =
-          bp->radiative_efficiency * bp->accretion_rate * c * c;
-      const float mass_limit = get_black_hole_adaf_mass_limit(bp, props, cosmo);
-      if (luminosity > props->quasar_luminosity_thresh &&
-          props->quasar_luminosity_thresh > 0.f &&
-          bp->subgrid_mass * props->mass_to_solar_mass > mass_limit) {
-        quasar_coupling = fmin(
-            quasar_coupling * luminosity / props->quasar_luminosity_thresh, 1.);
-      }
-      return quasar_coupling;
+    case BH_states_quasar:
+      return fabs(props->quasar_coupling);
       break;
-    }
     case BH_states_slim_disk:
       return fabs(props->slim_disk_coupling);
       break;
@@ -112,7 +131,9 @@ get_black_hole_slim_disk_efficiency(const struct black_holes_props *props,
 __attribute__((always_inline)) INLINE static double
 get_black_hole_adaf_efficiency(const struct black_holes_props *props,
                                const double f_Edd) {
-  return props->epsilon_r * f_Edd; /* scales with M_dot,BH */
+  /* Scales with M_dot,BH, continuous with the quasar mode at the boundary */
+  return props->epsilon_r *
+         fmin(f_Edd / props->eddington_fraction_lower_boundary, 1.);
 }
 
 /**
@@ -170,11 +191,11 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
         v_kick_var = fabs(props->quasar_wind_speed) + (fabs(props->slim_disk_wind_speed) / 3.f) * dlog10_BH_mass * dlog10_BH_mass;
       }
       /* Sometimes can get very small leading to huge mass loadings */
-      v_kick_var = fmax(v_kick_var, props->minimum_v_kick_km_s);
+      v_kick_var = fmax(v_kick_var, props->minimum_v_kick);
       /* Quasar/slim disk winds should not exceed jet velocity (should not really happen anyways) */
       if (v_kick_var > fabs(props->jet_velocity)) v_kick_var = fabs(props->jet_velocity);
 
-      v_kick_var *= props->kms_to_internal;
+      /* All speeds above are already in internal units */
     }
   }
 
@@ -310,18 +331,24 @@ get_black_hole_accretion_factor(const struct black_holes_props *props,
   if (m_dot_inflow <= 0. || BH_mass <= 0.) return 0.;
 
   switch (BH_state) {
-    case BH_states_adaf:
+    case BH_states_adaf: {
       float jet_subgrid_velocity = props->jet_subgrid_velocity;
       if (jet_subgrid_velocity < 0.f) {
         jet_subgrid_velocity = fabs(jet_subgrid_velocity) * sqrtf(cosmo->a_inv);
       }
+      /* Scale jet efficiency with the ADAF coupling, as for the jet itself */
       const float jet_subgrid_mass_loading =
         2.f * props->jet_efficiency *
-        (phys_const->const_speed_light_c / props->jet_subgrid_velocity) *
-        (phys_const->const_speed_light_c / props->jet_subgrid_velocity);
-      const float adaf_f_accretion = 1.f / (1.f + jet_subgrid_mass_loading);
+        get_black_hole_adaf_z_scaling(props, cosmo) *
+        (phys_const->const_speed_light_c / jet_subgrid_velocity) *
+        (phys_const->const_speed_light_c / jet_subgrid_velocity);
+      /* f_acc = 1 / (1 + psi_jet,sub + psi_ADAF), as in the props setup */
+      const float adaf_f_accretion =
+          1.f / (1.f + jet_subgrid_mass_loading +
+                 get_black_hole_adaf_wind_mass_loading(props, cosmo));
       return adaf_f_accretion;
       break;
+    }
     case BH_states_quasar: {
       float v_kick = 0.f;
       float f_accretion = 0.f;
@@ -456,12 +483,16 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[2] = 0.f;
   bp->last_repos_vel = 0.f;
   bp->radiative_luminosity = 0.f;
+  bp->jet_power = 0.f;
   bp->delta_energy_this_timestep = 0.f;
   bp->state = BH_states_slim_disk;
   bp->radiative_efficiency = 0.f;
   bp->f_accretion = 0.f;
   bp->m_dot_inflow = 0.f;
   bp->corot_gas_mass = 0.f;
+  bp->angular_momentum_gas_prev[0] = 0.f;
+  bp->angular_momentum_gas_prev[1] = 0.f;
+  bp->angular_momentum_gas_prev[2] = 0.f;
   bp->jet_mass_reservoir = 0.f;
   /* Default to the original value at fixed jet_velocity */
   bp->jet_mass_loading = props->jet_mass_loading;
@@ -754,9 +785,8 @@ black_holes_get_bolometric_luminosity(const struct bpart *bp,
  */
 __attribute__((always_inline)) INLINE static double black_holes_get_jet_power(
     const struct bpart *bp, const struct phys_const *phys_const) {
-  const double c = phys_const->const_speed_light_c;
-  /* accretion_rate is M_dot,acc from the paper */
-  return bp->radiative_efficiency * bp->accretion_rate * c * c;
+  /* Computed in black_holes_prepare_feedback() */
+  return bp->jet_power;
 }
 
 /**
@@ -900,6 +930,14 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
   /* Update the energy reservoir */
   bpi->jet_mass_reservoir += bpj->jet_mass_reservoir;
 
+  /* Carry over the other subgrid reservoirs so nothing is lost */
+  bpi->accretion_disk_mass += bpj->accretion_disk_mass;
+  bpi->unresolved_mass_reservoir += bpj->unresolved_mass_reservoir;
+  bpi->adaf_energy_to_dump += bpj->adaf_energy_to_dump;
+
+  /* Total mass ever accreted, as in EAGLE */
+  bpi->total_accreted_mass += bpj->total_accreted_mass;
+
   /* Add up all the BH seeds */
   bpi->cumulative_number_seeds += bpj->cumulative_number_seeds;
 
@@ -939,15 +977,15 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
  * @brief Function to generate a random number from a Gaussian distribution.
  * @param mu Mean of Gaussian
  * @param sigma Standard deviation of Gaussian
- * @param u1 Random number in (0,1)
- * @param u2 Random number in (0,1)
+ * @param u1 Random number in [0,1)
+ * @param u2 Random number in [0,1)
  */
 __attribute__((always_inline)) INLINE static float gaussian_random_number(
     float mu, float sigma, double u1, double u2) {
   double mag, z0, z1;
 
-  /* Apply the Box-Muller transform */
-  mag = sigma * sqrt(-2.0 * log(u1));
+  /* Apply the Box-Muller transform (guard against log(0)) */
+  mag = sigma * sqrt(-2.0 * log(fmax(u1, DBL_MIN)));
   z0 = mag * cos(2.0 * M_PI * u2) + mu;
   z1 = mag * sin(2.0 * M_PI * u2) + mu;
   if (u1 + u2 < 1.f) {
@@ -980,6 +1018,15 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   /* Record that the black hole has another active time step */
   bp->number_of_time_steps++;
+
+  /* No jet unless one is launched below */
+  bp->jet_power = 0.f;
+
+  /* Store the converged kernel gas angular momentum; the next step's density
+   * loop uses it to identify corotating cold gas */
+  bp->angular_momentum_gas_prev[0] = bp->angular_momentum_gas[0];
+  bp->angular_momentum_gas_prev[1] = bp->angular_momentum_gas[1];
+  bp->angular_momentum_gas_prev[2] = bp->angular_momentum_gas[2];
 
   if (dt == 0. || bp->rho_gas == 0. || bp->h == 0.) return;
 
@@ -1125,11 +1172,10 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       break;
     }
 
-    /* Assume BH potential */
+    /* Assume BH potential: t_dyn^-1 = sqrt(|phi_phys|) / r_phys, with
+     * phi_phys = phi_comoving / a and r_phys = a * r_comoving */
     case 1:
-      if (potential >= 0.f) {
-        tdyn_inv = (sqrt(potential) / bh_h) * cosmo->a2_inv;
-      }
+      tdyn_inv = (sqrt(potential) / bh_h) * cosmo->a_inv * sqrt(cosmo->a_inv);
       break;
 
     /* Assume dynamical time from the kernel mass */
@@ -1158,10 +1204,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
    * free-fall time=0.5*tdyn */
   const float tdyn_sigma = props->tdyn_sigma;
   if (tdyn_sigma > 0.f) {
-    const double ran1 =
-        random_unit_interval(bp->id, ti_begin, random_number_BH_swallow);
-    const double ran2 =
-        random_unit_interval(bp->id, ti_begin, random_number_BH_swallow);
+    /* Two independent numbers for the Box-Muller transform */
+    const double ran1 = random_unit_interval_part_ID_and_index(
+        bp->id, 1, ti_begin, random_number_BH_swallow);
+    const double ran2 = random_unit_interval_part_ID_and_index(
+        bp->id, 2, ti_begin, random_number_BH_swallow);
     const float gaussian_random =
         gaussian_random_number(0.f, tdyn_sigma, ran1, ran2);
     tdyn_inv /= 0.5 * (1.f + fabs(gaussian_random));
@@ -1392,11 +1439,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Track Bondi accretion separately for diagnostics (remainder is torque) */
   bp->bondi_accretion_rate = bondi_accr_rate * bp->f_accretion;
 
-  if (!props->bondi_use_all_gas) {
-    /* Now we can Eddington limit. */
-    bp->accretion_rate =
-        min(bp->accretion_rate, f_Edd_maximum * Eddington_rate);
-  }
+  /* Now we can Eddington limit. */
+  bp->accretion_rate = min(bp->accretion_rate, f_Edd_maximum * Eddington_rate);
 
   /* All accretion is done, now we can set the eddington fraction */
   bp->eddington_fraction = bp->accretion_rate / Eddington_rate;
@@ -1446,6 +1490,14 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     /* Recompute accretion rate based on the reservoir change */
     bp->accretion_rate = delta_mass / (dt * (1. - bp->radiative_efficiency));
+
+    /* Make the derived quantities consistent with what actually reaches
+     * the BH (the state and radiative efficiency stay as set by the
+     * inflow rate above) */
+    mass_rate = delta_mass / dt;
+    bp->eddington_fraction = bp->accretion_rate / Eddington_rate;
+    bp->radiative_luminosity =
+        bp->radiative_efficiency * bp->accretion_rate * c * c;
   }
 
   bp->subgrid_mass += delta_mass;
@@ -1459,18 +1511,14 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     /* ergs to dump in a kernel-weighted fashion */
     if (props->adaf_wind_mass_loading == 0.f) {
-      if (bp->subgrid_mass < my_adaf_mass_limit) {
-        bp->adaf_energy_to_dump = 0.f;
-      }
-      else {
-        bp->adaf_energy_to_dump =
-            get_black_hole_coupling(bp, props, cosmo, phys_const) *
-            props->adaf_disk_efficiency * bp->accretion_rate * c * c * dt;
-      }
+      bp->adaf_energy_to_dump =
+          get_black_hole_coupling(bp, props, cosmo, phys_const) *
+          props->adaf_disk_efficiency * bp->accretion_rate * c * c * dt;
     } else {
       const float adaf_v2 = bp->v_kick * bp->v_kick;
       const float mass_this_step =
-          props->adaf_wind_mass_loading * bp->accretion_rate * dt;
+          get_black_hole_adaf_wind_mass_loading(props, cosmo) *
+          bp->accretion_rate * dt;
       bp->adaf_energy_to_dump += 0.5f * mass_this_step * adaf_v2;
     }
   }
@@ -1483,36 +1531,43 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->radiative_luminosity > lum_thresh_always_jet) {
 
     float jet_velocity = black_hole_compute_jet_velocity(bp, cosmo, props);
+    /* If ADAF coupling is variable, scale jet efficiency by same factor */
+    const float jet_efficiency =
+        props->jet_efficiency * get_black_hole_adaf_z_scaling(props, cosmo);
 
-    /* If there is a variable jet velocity we must recalculate the mass loading
-     */
-    if (jet_velocity != props->jet_velocity) {
-      const double c_over_v = phys_const->const_speed_light_c / fabs(jet_velocity);
+    /* With a variable jet velocity we must recalculate the mass loading */
+    const double c_over_v = phys_const->const_speed_light_c / fabs(jet_velocity);
 
-      if (props->jet_loading_type == BH_jet_momentum_loaded) {
-        bp->jet_mass_loading = props->jet_efficiency * c_over_v;
-      } else if (props->jet_loading_type == BH_jet_mixed_loaded) {
-        const double energy_loading =
-            2. * props->jet_efficiency * pow(c_over_v, 2.);
-        const double momentum_loading = props->jet_efficiency * c_over_v;
+    if (props->jet_loading_type == BH_jet_momentum_loaded) {
+      bp->jet_mass_loading = jet_efficiency * c_over_v;
+    } else if (props->jet_loading_type == BH_jet_mixed_loaded) {
+      const double energy_loading =
+          2. * jet_efficiency * pow(c_over_v, 2.);
+      const double momentum_loading = jet_efficiency * c_over_v;
 
-        /* Divide the contribution between energy and momentum loading */
-        const double energy_term = props->jet_frac_energy * energy_loading;
-        const double momentum_term =
-            (1. - props->jet_frac_energy) * momentum_loading;
+      /* Divide the contribution between energy and momentum loading */
+      const double energy_term = props->jet_frac_energy * energy_loading;
+      const double momentum_term =
+          (1. - props->jet_frac_energy) * momentum_loading;
 
-        bp->jet_mass_loading = energy_term + momentum_term;
-      } else {
-        bp->jet_mass_loading = 2. * props->jet_efficiency * pow(c_over_v, 2.);
-      }
+      bp->jet_mass_loading = energy_term + momentum_term;
+    } else {
+      bp->jet_mass_loading = 2. * jet_efficiency * pow(c_over_v, 2.);
+    }
 
+    /* No jet below the ADAF mass limit (the feedback loop ignores jet
+     * particles there), so do not build up the reservoir */
+    const float jet_ramp = black_hole_compute_jet_energy_ramp(bp, cosmo, props);
+    if (jet_ramp > 0.f) {
       /* Psi_jet*M_dot,acc*dt is the total mass expected in the jet this step */
       bp->jet_mass_reservoir += bp->jet_mass_loading * bp->accretion_rate * dt;
-    } else {
-      bp->jet_mass_reservoir +=
-          props->jet_mass_loading * bp->accretion_rate * dt;
+
+      /* Kinetic jet power as injected in the feedback loop, where the kick
+       * speed is scaled by sqrt(jet_ramp) */
+      bp->jet_power = 0.5 * bp->jet_mass_loading * bp->accretion_rate *
+                      jet_velocity * jet_velocity * jet_ramp;
     }
-  }
+  } 
 
   if (bp->subgrid_mass < bp->mass) {
     /* In this case, the BH is still accreting from its (assumed) subgrid gas
@@ -1529,7 +1584,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     /* Make sure not to destroy low mass galaxies */
     if (bp->subgrid_mass > props->minimum_black_hole_mass_unresolved &&
-        bp->state != BH_states_adaf) {
+        bp->state != BH_states_adaf && bp->f_accretion > 0.f) {
       /* Make sure if many mergers have driven up the dynamical mass at low
        * subgrid mass, that we still kick out particles! */
       const float psi = (1.f - bp->f_accretion) / bp->f_accretion;
@@ -1560,7 +1615,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->subgrid_mass * props->mass_to_solar_mass,
       delta_mass * props->mass_to_solar_mass, bp->state,
       torque_accr_rate * bp->f_accretion * props->mass_to_solar_mass / props->time_to_yr,
-      bp->bondi_accr_rate * props->mass_to_solar_mass / props->time_to_yr,
+      bp->bondi_accretion_rate * props->mass_to_solar_mass / props->time_to_yr,
       bp->eddington_fraction, bp->f_accretion,
       1. - exp(-bp->subgrid_mass * props->mass_to_solar_mass /
                fabs(props->bh_characteristic_suppression_mass) * cosmo->a),
@@ -1589,7 +1644,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
 #define OBSIDIAN_BH_DETAILS
 #ifdef OBSIDIAN_BH_DETAILS
-  const float galaxy_sfr = bp->galaxy_data.stellar_mass * bp->galaxy_data.specific_sfr;
+  const float galaxy_sfr_details =
+      bp->galaxy_data.stellar_mass * bp->galaxy_data.specific_sfr;
   printf(
       "BH_DETAILS "
       "z=%2.12f bid=%lld galM*=%g galSFR=%g"
@@ -1604,7 +1660,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       " fedd=%g madaf=%g tdyn=%g fsupp=%g vkick=%g\n",
       cosmo->z, bp->id, 
       galaxy_mstar * props->mass_to_solar_mass,
-      galaxy_sfr * props->mass_to_solar_mass / props->time_to_yr,
+      galaxy_sfr_details * props->mass_to_solar_mass / props->time_to_yr,
       bp->mass * props->mass_to_solar_mass,
       bp->subgrid_mass * props->mass_to_solar_mass,
       BH_mass * props->mass_to_solar_mass,
@@ -1878,6 +1934,9 @@ INLINE static void black_holes_create_from_gas(
   bp->number_of_reposition_attempts = 0;
   bp->last_repos_vel = 0.f;
 
+  /* No jet yet */
+  bp->jet_power = 0.f;
+
   /* Copy over the splitting struct */
   bp->split_data = xp->split_data;
 
@@ -1891,6 +1950,11 @@ INLINE static void black_holes_create_from_gas(
   bp->swallowed_angular_momentum[0] = 0.f;
   bp->swallowed_angular_momentum[1] = 0.f;
   bp->swallowed_angular_momentum[2] = 0.f;
+
+  /* No previous kernel angular momentum to define corotation */
+  bp->angular_momentum_gas_prev[0] = 0.f;
+  bp->angular_momentum_gas_prev[1] = 0.f;
+  bp->angular_momentum_gas_prev[2] = 0.f;
 
   /* Last time of mergers */
   bp->last_minor_merger_time = -1.;

@@ -181,6 +181,10 @@ struct bpart {
   /*! The real angular momentum of the gas in the kernel */
   float angular_momentum_gas[3];
 
+  /*! Gas angular momentum in the kernel from the previous step, used to
+   * classify corotating gas in the density loop (not reset each step) */
+  float angular_momentum_gas_prev[3];
+
   /*! Circular velocity of the gas around the black hole at the smoothing
    * radius (calculated as j_gas / h_BH, where j is specific ang. mom.) */
   float circular_velocity_gas[3];
@@ -243,6 +247,9 @@ struct bpart {
 
   /*! The radiative luminosity of the black hole */
   float radiative_luminosity;
+
+  /*! Kinetic power of the launched jet this step (internal units) */
+  float jet_power;
 
   /*! How much energy has been given away in this timestep? */
   float delta_energy_this_timestep;

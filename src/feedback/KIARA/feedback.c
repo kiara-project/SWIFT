@@ -1839,6 +1839,13 @@ void feedback_props_init(struct feedback_props *fp,
           fp->wind_velocity_suppression_redshift);
     }
 
+    if (fabs(fp->wind_eta_suppression_redshift) != 0.f) {
+      message(
+          "Feedback mass loading early suppression enabled "
+          "above redshift: %g",
+          fp->wind_eta_suppression_redshift);
+    }
+
     message("Feedback use Chem5 SNII energy: %d",
             fp->with_SNII_energy_from_chem5);
     message("Feedback use Chem5 SNIa energy: %d",
