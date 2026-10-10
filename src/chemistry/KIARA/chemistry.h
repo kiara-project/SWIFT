@@ -323,15 +323,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
     /* Never set D for wind, or ISM particles */
     if (!(p->decoupled) && !(p->cooling_data.subgrid_temp > 0.f)) {
 
-      /* Rennehan: Limit to maximum resolvable velocity scale */
-      const float v_phys =
-          sqrtf(p->v[0] * p->v[0] + p->v[1] * p->v[1] + p->v[2] * p->v[2]) *
-          cosmo->a_inv;
       const float h_phys = cosmo->a * p->h * kernel_gamma;
-      const float vel_norm_phys_max = 0.5f * v_phys / h_phys;
-      if (velocity_gradient_norm > vel_norm_phys_max) {
-        velocity_gradient_norm = vel_norm_phys_max;
-      }
 
       /* Compute the diffusion coefficient in physical coordinates.
        * The norm is already in physical coordinates.
@@ -366,8 +358,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
   } /* end Smagorinsky diffusion */
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* Finish SFR density calculation. The kernel sum uses comoving h, so
-   * convert to the physical density that the G0 calculation expects. */
+  /* Finish SFR density calculation, adding the particle's own SFR. The
+   * kernel sum uses comoving h, so convert to the physical density that the
+   * G0 calculation expects. */
+  cpd->local_sfr_density += kernel_root * max(0.f, p->sf_data.SFR);
   cpd->local_sfr_density *= h_inv_dim * cosmo->a3_inv;
 #endif
 
@@ -412,8 +406,10 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
   }
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* If there is no nearby SF, set to zero */
-  cpd->local_sfr_density = 0.f;
+  /* No neighbours, so only the particle's own SFR contributes */
+  const float h_inv = 1.0f / p->h;
+  cpd->local_sfr_density = kernel_root * max(0.f, p->sf_data.SFR) *
+                           pow_dimension(h_inv) * cosmo->a3_inv;
 #endif
 }
 
