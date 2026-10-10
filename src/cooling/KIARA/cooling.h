@@ -269,6 +269,7 @@ INLINE static double cooling_convert_temp_to_u(
   mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
   mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
   mu += xp->cooling_data.e_frac;
+  mu = 1. / mu;
 #else
   const float X_H =
       chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
