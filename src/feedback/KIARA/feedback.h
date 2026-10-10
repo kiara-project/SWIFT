@@ -517,8 +517,6 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
       sp, star_age_end_step, feedback_props, dt, &N_SNe, &ejecta_energy,
       &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
 
-  ejecta_mass *= 0.5f;  // fudge factor to get stellar mass loss rate correct.  unclear why?
-
   if (!feedback_double_is_finite(ejecta_mass)) {
     for (elem = 0; elem < chem5_element_count; elem++) {
       message("ejecta_metal_mass[%d]=%g", elem, ejecta_metal_mass[elem]);
