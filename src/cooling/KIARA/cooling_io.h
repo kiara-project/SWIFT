@@ -320,6 +320,14 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->use_grackle_dust_evol = 0;
 #endif
 
+  /* The SN rate that stellar feedback deposits on the gas is used (and
+   * decays) here, so its smoothing time is read with the cooling */
+  cooling->SNe_smoothing_time =
+      parser_get_opt_param_double(parameter_file,
+                                  "KIARAFeedback:SNe_smoothing_time_in_Myr",
+                                  0.) *
+      phys_const->const_year * 1e6;
+
   /* These are dust parameters for KIARA's dust model (MODE>=2); irrelevant
    * otherwise */
   cooling->dust_destruction_eff = parser_get_opt_param_double(

@@ -1477,24 +1477,37 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   cooling_set_particle_subgrid_properties(phys_const, us, cosmo, hydro_props,
                                           floor_props, cooling, p, xp);
 
-  /* No cooling if particle is decoupled or cooling is shut off */
-  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) return;
-
   /* In KIARA_RT we do cooling in rt_thermochemistry, so we don't do it here */
   if (cooling->do_cooling_in_rt) return;
 
   /* No cooling happens over zero time */
   if (dt == 0.f || dt_therm == 0.f) return;
 
-  /* Interaction rates for RT; not used here */
-  gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
+  /* Cool unless the particle is decoupled or its cooling is shut off */
+  if (!p->decoupled && !(p->feedback_data.cooling_shutoff_delay_time > 0.f)) {
 
-  /* Do the cooling and chemistry */
-  cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
-                             cooling, p, xp, iact_rates, dt, dt_therm);
+    /* Interaction rates for RT; not used here */
+    gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
 
-  /* Record this cooling event */
-  xp->cooling_data.time_last_event = time;
+    /* Do the cooling and chemistry */
+    cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
+                               cooling, p, xp, iact_rates, dt, dt_therm);
+
+    /* Record this cooling event */
+    xp->cooling_data.time_last_event = time;
+  }
+
+#if COOLING_GRACKLE_MODE >= 2
+  /* The SN rate deposited by stellar feedback has now been used (for the
+   * dust and G0) over this step: let it decay, or drop it if there is no
+   * smoothing, so that it does not accumulate. */
+  if (cooling->SNe_smoothing_time > 0.) {
+    p->feedback_data.SNe_ThisTimeStep *=
+        exp(-dt / cooling->SNe_smoothing_time);
+  } else {
+    p->feedback_data.SNe_ThisTimeStep = 0.f;
+  }
+#endif
 }
 
 /**

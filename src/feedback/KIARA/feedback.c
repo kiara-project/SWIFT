@@ -1798,8 +1798,6 @@ void feedback_props_init(struct feedback_props *fp,
 #if COOLING_GRACKLE_MODE >= 2
   fp->max_dust_fraction = parser_get_opt_param_double(
       params, "KIARAFeedback:max_dust_fraction", 0.9);
-  fp->SNe_smoothing_time_in_Myr = parser_get_opt_param_double(
-      params, "KIARAFeedback:SNe_smoothing_time_in_Myr", 0.);
 #endif
 
   /* Convert Kelvin to internal energy and internal units */

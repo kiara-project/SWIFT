@@ -104,6 +104,10 @@ struct cooling_function_data {
   /*! track dust growth and destruction (only available in KIARA) */
   int use_grackle_dust_evol;
 
+  /*! Timescale (internal units) over which the SN rate deposited on gas
+   * particles by stellar feedback decays (0: used for one cooling step) */
+  double SNe_smoothing_time;
+
   /*! track H2 formation; this is set within the code based on selection options
    */
   int use_grackle_h2_form;

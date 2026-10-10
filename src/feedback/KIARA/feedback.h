@@ -355,6 +355,9 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
   p->feedback_data.mass_limiter_count = 0;
   p->feedback_data.heating_limiter_count = 0;
   for (int i = 0; i < 3; i++) p->feedback_data.wind_direction[i] = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+  p->feedback_data.SNe_ThisTimeStep = 0.f;
+#endif
 }
 
 /**
