@@ -106,7 +106,8 @@ struct star_formation {
   /*! Which H2 model are we using? */
   enum star_formation_H2_model H2_model;
 
-  /*! Scaling factor for the clumping factor in the KMT H2 model */
+  /*! Clumping factor <n^2>/<n>^2 at the resolved scale in the KMT H2 model
+   * (~30 at ~1 kpc resolution, lower at higher resolution; >= 1) */
   float clumping_factor_scaling;
 
   /*! Convert g/cm^2 to Msun/pc^2 */
@@ -312,7 +313,8 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
       float gas_Z = 0.f;
       float chi = 0.f;
       float s = 0.f;
-      float clumping_factor = 30.f;
+      /* Clumping factor <n^2>/<n>^2 at the resolved scale (>= 1) */
+      float clumping_factor = starform->clumping_factor_scaling;
       float gas_gradrho_mag = 0.f;
 
       gas_Z = p->chemistry_data.metal_mass_fraction_total;
@@ -333,9 +335,6 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
           gas_sigma *=
               starform->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
 
-          /* Lower clumping factor with higher resolution
-            (CF = 30 @ ~1 kpc resolution) */
-          clumping_factor *= starform->clumping_factor_scaling;
           if (clumping_factor < 1.f) {
             clumping_factor = 1.f;
           }
@@ -903,8 +902,8 @@ INLINE static void starformation_init_backend(
     error("Invalid H2 model in SF params %s", H2_model);
   }
 
-  /* Read the ISM subgrid clumping factor value at the resolved scale
-   * (KMT model only)
+  /* Read the ISM subgrid clumping factor <n^2>/<n>^2 at the resolved
+   * scale (KMT model only)
    */
   starform->clumping_factor_scaling = parser_get_opt_param_double(
       parameter_file, "KIARAStarFormation:clumping_factor_scaling", 30.f);
