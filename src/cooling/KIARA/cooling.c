@@ -27,6 +27,7 @@
 #include <float.h>
 #include <hdf5.h>
 #include <math.h>
+#include <string.h>
 #include <time.h>
 
 /* Include header */
@@ -78,7 +79,6 @@ void cooling_update(const struct phys_const *phys_const,
   if (cooling->redshift == -1) {
     cooling->units.a_value = cosmo->a;
   } else {
-    cooling->redshift = cosmo->z;
     cooling->units.a_value = 1. / (1. + cooling->redshift);
   }
 }
@@ -185,8 +185,11 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
   /* Initialize grackle ionization fractions */
   cooling_grackle_init_part(cooling, p, xp);
 
+  p->cooling_data.subgrid_temp = 0.f;
+  p->cooling_data.subgrid_dens = 0.f;
   p->cooling_data.subgrid_fcold = 0.f;
   p->cooling_data.G0 = 0.f;
+  p->cooling_data.mixing_layer_cool_time = 0.f;
 
   /* Initialize dust properties */
 #if COOLING_GRACKLE_MODE >= 2
@@ -666,6 +669,10 @@ void cooling_copy_to_grackle(
   static int grid_end[GRACKLE_RANK] = {GRACKLE_NPART - 1, 0, 0};
   static int grid_end_no_uvb[GRACKLE_RANK] = {-1, 0, 0};
 
+  /* Start from a clean struct so any field not set below is NULL rather
+   * than garbage (callers' stack structs are uninitialized) */
+  memset(data, 0, sizeof(*data));
+
   int i;
   /* set values */
   /* grid */
@@ -808,7 +815,7 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
   X_H += xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac + xp->cooling_data.HM_frac;
 #endif
   const float new_H_frac = p->chemistry_data.metal_mass_fraction[chemistry_element_H];
-  const float H_ratio = new_H_frac / X_H;
+  const float H_ratio = (X_H > 0.f) ? new_H_frac / X_H : 1.f;
 
   xp->cooling_data.HI_frac *= H_ratio;
   xp->cooling_data.HII_frac *= H_ratio;
@@ -821,7 +828,7 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
   /* Normalize helium species */
   float X_He = xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac;
   const float new_He_frac = p->chemistry_data.metal_mass_fraction[chemistry_element_He];
-  const float He_ratio = new_He_frac / X_He;
+  const float He_ratio = (X_He > 0.f) ? new_He_frac / X_He : 1.f;
 
   xp->cooling_data.HeI_frac *= He_ratio;
   xp->cooling_data.HeII_frac *= He_ratio;
@@ -1160,7 +1167,7 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
           p->id,
           hydro_get_physical_density(p, cosmo) * cooling->units.density_units *
               0.75 / 1.673e-24,
-          u_old * cosmo->a_factor_internal_energy / cooling->temp_to_u_factor,
+          u * cosmo->a_factor_internal_energy / cooling->temp_to_u_factor,
           p->chemistry_data.rho_ambient,
           p->chemistry_data.u_ambient * cosmo->a_factor_internal_energy /
               cooling->temp_to_u_factor,
@@ -1568,7 +1575,7 @@ float cooling_get_subgrid_density(const struct part *p,
  * @param p #part data.
  * @param xp Pointer to the #xpart data.
  */
-double Cooling_get_ycompton(const struct phys_const *phys_const,
+double cooling_get_ycompton(const struct phys_const *phys_const,
                             const struct hydro_props *hydro_props,
                             const struct unit_system *us,
                             const struct cosmology *cosmo,

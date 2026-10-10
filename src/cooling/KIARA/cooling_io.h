@@ -258,7 +258,7 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
       parser_get_param_int(parameter_file, "KIARACooling:with_metal_cooling");
 
   cooling->provide_volumetric_heating_rates = parser_get_opt_param_int(
-      parameter_file, "KIARACooling:provide_volumetric_heating_rates", -1);
+      parameter_file, "KIARACooling:provide_volumetric_heating_rates", 0);
 
   cooling->provide_specific_heating_rates = parser_get_opt_param_int(
       parameter_file, "KIARACooling:provide_specific_heating_rates", 1);

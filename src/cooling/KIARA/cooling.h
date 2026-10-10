@@ -250,64 +250,59 @@ INLINE static double cooling_get_electron_pressure(
 }
 
 /**
+ * @brief Return 1/mu, the number of particles per proton mass, from the
+ * grackle species mass fractions (electrons stored as n_e * m_H / rho).
+ *
+ * @param xp #xpart data.
+ */
+INLINE static float cooling_get_inverse_mu(const struct xpart *xp) {
+
+  float mu_inv = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac;
+  mu_inv += 0.25f * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac +
+                     xp->cooling_data.HeIII_frac);
+#if COOLING_GRACKLE_MODE >= 2
+  mu_inv += xp->cooling_data.HM_frac;
+  mu_inv += 0.5f * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+#endif
+  mu_inv += xp->cooling_data.e_frac;
+  return mu_inv;
+}
+
+/**
  * @brief Return the specific thermal energy (physical) for a given
  * temperature.
  *
  * @param temperature Particle temperature in K
- * @param ne Electron number density relative to H atom density
+ * @param ne Electron number density relative to H atom density (unused;
+ * the electron fraction is taken from xp)
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
+ * @param xp #xpart data.
  */
 INLINE static double cooling_convert_temp_to_u(
     const double temperature, const double ne,
     const struct cooling_function_data *cooling, const struct part *p,
     const struct xpart *xp) {
 
-  float mu = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-  mu = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
-  mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
-  mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
-  mu += xp->cooling_data.e_frac;
-  mu = 1. / mu;
-#else
-  const float X_H =
-      chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
-  const float yhelium = (1. - X_H) / (4. * X_H);
-  const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
-#endif
-
-  return temperature * cooling->temp_to_u_factor / mu;
+  return temperature * cooling->temp_to_u_factor * cooling_get_inverse_mu(xp);
 }
 
 /**
  * @brief Return the temperature for a given physical specific energy
  *
  * @param u Physical specific energy
- * @param ne Electron number density relative to H atom density
+ * @param ne Electron number density relative to H atom density (unused;
+ * the electron fraction is taken from xp)
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
+ * @param xp #xpart data.
  */
 INLINE static double cooling_convert_u_to_temp(
     const double u, const double ne,
     const struct cooling_function_data *cooling, const struct part *p,
     const struct xpart *xp) {
 
-  float mu = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-  mu = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
-  mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
-  mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
-  mu += xp->cooling_data.e_frac;
-  mu = 1. / mu;
-#else
-  const float X_H =
-      chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
-  const float yhelium = (1. - X_H) / (4. * X_H);
-  const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
-#endif
-
-  return u * mu / cooling->temp_to_u_factor;
+  return u / (cooling->temp_to_u_factor * cooling_get_inverse_mu(xp));
 }
 
 /**
@@ -463,15 +458,13 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
     const struct part *restrict p, const struct xpart *restrict xp,  
     const float rho, const float T_warm, const struct cooling_function_data *cooling) {
 
-  /* No ISRF when not in subgrid ISM mode */
+  /* No ISRF when not in subgrid ISM mode. Also guard the logs/sqrt below
+   * (built with -ffast-math, so infs/NaNs are not handled reliably) */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
+  if (p->cooling_data.subgrid_dens <= 0.f || T_warm <= 10.f) return 0.f;
 
   float t_ff = cooling->ff_const / sqrt(p->cooling_data.subgrid_dens);
   float t_ff_Myr = t_ff * cooling->time_to_Myr; // * 1.e-3;
-  float t_ff_Gyr = t_ff * cooling->time_to_Myr * 1.e-3;
-
-  const float pot = fabs(gravity_get_comoving_potential(p->gpart) / cooling->units.a_value);
-  const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
 
   const float Z = max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6) * 74.627;  // to solar
   //const float logT = log10(p->cooling_data.subgrid_temp);
@@ -522,6 +515,11 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 
   const float G0 = powf(10.f, log_G0);
 
+#ifdef KIARA_G0_DEBUG
+  const float t_ff_Gyr = t_ff_Myr * 1.e-3;
+  const float pot = fabs(gravity_get_comoving_potential(p->gpart) /
+                         cooling->units.a_value);
+  const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
   if (p->id % 100000 == 0) {
     message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g terms=%g %g %g G0=%g",
             p->id,
@@ -536,6 +534,7 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 	    log10(t_ff_Gyr), log10(logT - 0.793), log10(pow(logT+ne-0.855, 2.03)),
             G0);
   }
+#endif
 
   return G0;
 }
