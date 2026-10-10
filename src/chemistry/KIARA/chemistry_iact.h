@@ -506,11 +506,15 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   *w_frac_amb = w_amb / sum_w_amb;
   dm = mi * (delta_growth - delta_shear) * (*w_frac);
 
-  /* If stream is growing, don't mix */
-  if (dm > 0.f) dm = 0.f;
+  /* Both regimes exchange mass between the stream and the ambient gas: when
+   * shear dominates (dm < 0) stream gas is mixed into the ambient medium, and
+   * when the mixing layer cools fast enough for the stream to grow (dm > 0)
+   * ambient gas is entrained onto it. Either way the exchange (of |dm|, see
+   * firehose_evolve_particle_sym) shares momentum, so the stream decelerates
+   * towards the ambient velocity and eventually recouples. */
 
 #ifdef FIREHOSE_DEBUG_CHECKS
-  if (dm < 0.f && i_stream && pj->cooling_data.subgrid_temp > 0.f) {
+  if (dm != 0.f && i_stream && pj->cooling_data.subgrid_temp > 0.f) {
     message(
         "FIREHOSE: z=%g %lld %lld m=%g nHamb=%g rhoamb/rhoi=%g rhoamb/rhoj=%g"
         " Tamb=%g Tj/Tamb=%g cstr/camb=%g M=%g r=%g grow=%g shear=%g tshear=%g"
