@@ -201,7 +201,9 @@ struct chemistry_part_data {
   /*! Firehose ambient gas (mass-weighted) velocity, internal units */
   float v_ambient[3];
 
-  /*! Weighting factor for ambient thermal energy sum */
+  /*! Summed kernel weight of neighbours in the other phase: ambient
+   * neighbours for a stream particle (normalizes the ambient sums), stream
+   * neighbours for an ambient particle (shares its per-step mixing cap) */
   float w_ambient;
 
   /*! Firehose radius of outflowing stream */

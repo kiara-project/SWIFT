@@ -82,6 +82,12 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
     chi->rho_ambient += mj * wi;
     chi->w_ambient += wi;
     for (int k = 0; k < 3; k++) chi->v_ambient[k] += mj * pj->v[k] * wi;
+
+    /* The ambient particle sums the kernel weight of its stream neighbours,
+     * to share its per-step mixing limit among them */
+    float wj;
+    kernel_eval(r / hj, &wj);
+    pj->chemistry_data.w_ambient += wj;
   }
 
   if (!decoupled_i && decoupled_j) {
@@ -105,6 +111,11 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
     chj->rho_ambient += mi * wj;
     chj->w_ambient += wj;
     for (int k = 0; k < 3; k++) chj->v_ambient[k] += mi * pi->v[k] * wj;
+
+    /* Stream-neighbour weight of the ambient particle */
+    float wi;
+    kernel_eval(r / hi, &wi);
+    pi->chemistry_data.w_ambient += wi;
   }
 }
 
@@ -132,10 +143,19 @@ firehose_compute_ambient_nonsym(const float r2, const float dx[3],
   const int decoupled_i = pi->decoupled;
   const int decoupled_j = pj->decoupled;
 
-  /* A wind particle cannot be in the ambient medium */
-  if (!decoupled_i || decoupled_j) return;
+  /* Exactly one of the pair must be in the stream */
+  if ((decoupled_i != 0) == (decoupled_j != 0)) return;
 
   struct chemistry_part_data *chi = &pi->chemistry_data;
+
+  /* An ambient particle only sums the kernel weight of its stream
+   * neighbours, to share its per-step mixing limit among them */
+  if (!decoupled_i) {
+    float wi;
+    kernel_eval(sqrtf(r2) / hi, &wi);
+    chi->w_ambient += wi;
+    return;
+  }
 
   /* Do accumulation of ambient quantities */
   const float eint_j = hydro_get_drifted_comoving_internal_energy(pj);
@@ -319,6 +339,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
  * @param v2 velocity difference squared between i and j.
  * @param w_frac (return) the stream's kernel weight of this neighbour as a
  * fraction of the summed weight over all its ambient neighbours.
+ * @param w_frac_amb (return) the ambient particle's kernel weight of the
+ * stream as a fraction of its summed weight over all stream neighbours.
  * @param cosmo The #cosmology.
  * @param with_cosmology Are we running with cosmology?
  *
@@ -330,7 +352,7 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
                                const double time_base,
                                const integertime_t ti_current,
                                const struct chemistry_global_data *cd,
-                               float *v2, float *w_frac,
+                               float *v2, float *w_frac, float *w_frac_amb,
                                const struct cosmology *cosmo,
                                const int with_cosmology) {
 
@@ -396,6 +418,8 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   float mi;
   float wi;
   float sum_wi;
+  float w_amb;
+  float sum_w_amb;
   float chi;
   float c_stream;
   float c_amb;
@@ -410,6 +434,10 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
 
     /* Normalization of the ambient medium */
     sum_wi = pi->chemistry_data.w_ambient;
+
+    /* Ambient particle's weight of the stream, and its normalization */
+    kernel_eval(r / hj, &w_amb);
+    sum_w_amb = pj->chemistry_data.w_ambient;
 
     /* Compute thermal energy ratio for stream and ambient */
     const float eint_i = hydro_get_drifted_comoving_internal_energy(pi);
@@ -427,6 +455,10 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
     /* Normalization of the ambient medium */
     sum_wi = pj->chemistry_data.w_ambient;
 
+    /* Ambient particle's weight of the stream, and its normalization */
+    kernel_eval(r / hi, &w_amb);
+    sum_w_amb = pi->chemistry_data.w_ambient;
+
     /* Compute thermal energy ratio for stream and ambient */
     const float eint_j = hydro_get_drifted_comoving_internal_energy(pj);
     chi = pj->chemistry_data.u_ambient / eint_j;
@@ -438,6 +470,10 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
 
   /* This should never happen. */
   if (dt <= 0.) return 0.f;
+
+  /* Both particles must have seen each other in the density loop */
+  if (sum_wi <= 0.f || sum_w_amb <= 0.f || wi <= 0.f || w_amb <= 0.f)
+    return 0.f;
 
   double dm = 0.;
   double t_cool_mix = 1.e10 * dt;
@@ -467,6 +503,7 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   if (t_shear < t_cool_mix) delta_shear = (1. - exp(-dt / t_shear));
 
   *w_frac = wi / sum_wi;
+  *w_frac_amb = w_amb / sum_w_amb;
   dm = mi * (delta_growth - delta_shear) * (*w_frac);
 
   /* If stream is growing, don't mix */
@@ -542,18 +579,23 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   /* Compute the amount of mass mixed between stream particle and ambient gas */
   float v2 = 0.f;
   float w_frac = 0.f;
-  const float dm =
-      firehose_compute_mass_exchange(r2, dx, hi, hj, pi, pj, time_base,
-                                     ti_current, cd, &v2, &w_frac, cosmo,
-                                     with_cosmology);
+  float w_frac_amb = 0.f;
+  const float dm = firehose_compute_mass_exchange(
+      r2, dx, hi, hj, pi, pj, time_base, ti_current, cd, &v2, &w_frac,
+      &w_frac_amb, cosmo, with_cosmology);
   float delta_m = fabs(dm);
   if (delta_m <= 0.f) return;
 
   /* Limit mass exchange to some fraction of particles' mass per step.
-   * For the stream, share the limit among its ambient neighbours by kernel
-   * weight (the weights sum to 1), so its total mixing over the step is at
-   * most max_fmix of its mass. The same delta_m is used for both particles,
-   * so the exchange stays conservative. */
+   * Each particle shares its limit among its neighbours of the other phase
+   * by kernel weight (the weights sum to 1), so its total mixing over the
+   * step is at most max_fmix of its mass, whether it is the stream or the
+   * ambient gas. The new velocity and composition of each particle are
+   * then convex combinations with at most a fraction max_fmix from the
+   * other phase, which bounds the change independently of the frame (the
+   * kinetic energy lost in the pair frame goes into heat). The
+   * same delta_m is used for both particles, so the exchange stays
+   * conservative. */
   const float mi = hydro_get_mass(pi);
   const float mj = hydro_get_mass(pj);
   const float m_stream = i_stream ? mi : mj;
@@ -561,7 +603,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 
   const float max_fmix_this_step = cd->firehose_max_fmix_per_step;
   delta_m = min(delta_m, max_fmix_this_step * m_stream * w_frac);
-  delta_m = min(delta_m, max_fmix_this_step * m_ambient);
+  delta_m = min(delta_m, max_fmix_this_step * m_ambient * w_frac_amb);
 
   /* Track amount of gas mixed in stream particle */
   if (i_stream) chi->exchanged_mass += delta_m;
