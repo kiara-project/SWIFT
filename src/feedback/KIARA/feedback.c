@@ -230,7 +230,8 @@ void feedback_dust_production_condensation(
  *        the ejected mass, metals, and unprocessed materials.
  *
  * @param sp The #spart to consider.
- * @param age The stellar age in code units.
+ * @param age The stellar age at the end of the enrichment step, in code units
+ * (the ejecta are those of the stars that die over [age - dt, age]).
  * @param fb_props The feedback properties.
  * @param dt The current timestep.
  * @param ejecta_energy The total ejected energy in code units.

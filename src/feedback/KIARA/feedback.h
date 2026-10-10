@@ -493,8 +493,12 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     ejecta_metal_mass[elem] = 0.;
   }
 
+  /* Age at the end of the enrichment step: the ejecta are those of the
+   * stars that die over [age - dt, age] */
+  const double star_age_end_step = star_age_beg_step + dt;
+
   feedback_get_ejecta_from_star_particle(
-      sp, star_age_beg_step, feedback_props, dt, &N_SNe, &ejecta_energy,
+      sp, star_age_end_step, feedback_props, dt, &N_SNe, &ejecta_energy,
       &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
 
   ejecta_mass *= 0.5f;  // fudge factor to get stellar mass loss rate correct.  unclear why?
@@ -567,10 +571,14 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     const float h_phys = kernel_gamma * sp->h * cosmo->a;
     const float v_phys = v_internal * cosmo->a_inv;
 
-    /* p0 is momentum per unit mass in km/s from early feedback sources */
+    /* p0 is momentum per unit mass in km/s from early feedback sources.
+     * The momentum is deposited over this step, [age_beg, age_end], up to
+     * t_fb. */
     const float p0 = h_phys * eps_term * M_PI * tfb_inv;
-    const float t_prev = fmax(star_age_beg_step - dt, 0.f);
-    const float term1 = pow(star_age_beg_step * tfb_inv, alpha_power);
+    const float t_prev = fmax(star_age_beg_step, 0.f);
+    const float t_end = fmin(star_age_end_step,
+                             feedback_props->early_stellar_feedback_tfb);
+    const float term1 = pow(t_end * tfb_inv, alpha_power);
     const float term2 = pow(t_prev * tfb_inv, alpha_power);
     const double delta_p = alpha * p0 * sp->mass * (term1 - term2);
     sp->feedback_data.physical_energy_reservoir += 0.5 * delta_p * v_phys;
