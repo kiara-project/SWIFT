@@ -191,6 +191,9 @@ struct chemistry_part_data {
   /*! Firehose ambient gas density */
   float rho_ambient;
 
+  /*! Firehose ambient gas (mass-weighted) velocity, internal units */
+  float v_ambient[3];
+
   /*! Weighting factor for ambient thermal energy sum */
   float w_ambient;
 

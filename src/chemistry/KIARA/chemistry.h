@@ -56,6 +56,7 @@ firehose_init_ambient_quantities(struct part *restrict p,
   cpd->w_ambient = 0.f;
   cpd->rho_ambient = 0.f;
   cpd->u_ambient = 0.f;
+  for (int k = 0; k < 3; k++) cpd->v_ambient[k] = 0.f;
 }
 
 __attribute__((always_inline)) INLINE static void logger_windprops_printprops(
@@ -131,10 +132,13 @@ firehose_end_ambient_quantities(struct part *restrict p,
     p->chemistry_data.rho_ambient *= h_inv_dim;
 
     if (p->chemistry_data.rho_ambient > 0.f) {
-      p->chemistry_data.u_ambient *= h_inv_dim / p->chemistry_data.rho_ambient;
+      const float norm = h_inv_dim / p->chemistry_data.rho_ambient;
+      p->chemistry_data.u_ambient *= norm;
+      for (int k = 0; k < 3; k++) p->chemistry_data.v_ambient[k] *= norm;
     } else {
       p->chemistry_data.rho_ambient = hydro_get_comoving_density(p);
       p->chemistry_data.u_ambient = u_floor;
+      for (int k = 0; k < 3; k++) p->chemistry_data.v_ambient[k] = p->v[k];
     }
 
 #ifdef FIREHOSE_DEBUG_CHECKS
@@ -147,6 +151,7 @@ firehose_end_ambient_quantities(struct part *restrict p,
     /* Set them to reasonable values for non-wind, just in case */
     p->chemistry_data.rho_ambient = hydro_get_comoving_density(p);
     p->chemistry_data.u_ambient = hydro_get_drifted_comoving_internal_energy(p);
+    for (int k = 0; k < 3; k++) p->chemistry_data.v_ambient[k] = p->v[k];
   }
 
   /* Limit ambient density to the user settings */
@@ -902,30 +907,32 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
         if (firehose_add_heat_to_ISM) {
 
-          /* 0.8125 is mu for a fully neutral gas with XH=0.75;
+          /* 0.8125 is 1/mu for a fully neutral gas with XH=0.75;
            * approximate but good enough */
           const double T_conv =
               cd->temp_to_u_factor / cosmo->a_factor_internal_energy;
           const double u_cold = 0.8125 * p->cooling_data.subgrid_temp * T_conv;
 
-          const double delta_u = u - u_cold;
-          double f_evap = 0.;
+          /* The particle's u is the mass-weighted mix of the two phases,
+           * u = f_c u_cold + (1 - f_c) u_warm, so recover u_warm from it.
+           * Turning a mass fraction df of cold gas into warm gas costs
+           * df (u_warm - u_cold) per unit particle mass. */
+          const double f_c = p->cooling_data.subgrid_fcold;
+          const double u_warm =
+              (f_c < 1.) ? (u - f_c * u_cold) / (1. - f_c) : u;
+          const double delta_u = u_warm - u_cold;
 
+          /* Fraction of the particle mass evaporated, at most all the cold
+           * gas. The heat stays in the particle (u_new = u + du), which is
+           * exactly the mixture energy after the evaporation, plus any
+           * heat left over once all the cold gas is gone. */
+          double f_evap = f_c;
           if (delta_u > FIREHOSE_EPSILON_TOLERANCE * u) {
-            f_evap = ch->du / delta_u;
-            f_evap = min(f_evap, 1.0);
-          } else {
-            f_evap = 1.0;
+            f_evap = min(ch->du / delta_u, f_c);
           }
 
-          /* Clip values in case of overflow */
           if (f_evap > 0.) {
-
-            p->cooling_data.subgrid_fcold *= 1. - f_evap;
-
-            /* Make sure any extra heat goes into the particle */
-            const double u_remaining = ch->du - f_evap * delta_u;
-            u_new = u + max(u_remaining, 0.);
+            p->cooling_data.subgrid_fcold -= f_evap;
 
             if (p->cooling_data.subgrid_fcold <= 0.f) {
               p->cooling_data.subgrid_temp = 0.f;
@@ -944,12 +951,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
         ch->du = 0.;
       }
 
-      /* Check dust change */
+      /* Check dust change (a dust-free particle can still receive dust) */
       float dust_eps = 0.f;
-
-      /* Check dust change */
       if (co->dust_mass > 0.f) {
         dust_eps = fabs(ch->dm_dust) / co->dust_mass;
+      } else if (ch->dm_dust > 0.f) {
+        dust_eps = 1.f;
       }
 
       float new_dust_mass = co->dust_mass;
@@ -958,12 +965,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
       ch->metal_mass_fraction_total = 0.f;
       for (int elem = 0; elem < chemistry_element_count; ++elem) {
         const float old_mass_Z = ch->metal_mass_fraction[elem] * m;
-        if (old_mass_Z > 0.f) {
-          const float Z_eps = fabs(ch->dm_Z[elem]) / old_mass_Z;
-
-          if (Z_eps >= FIREHOSE_EPSILON_TOLERANCE) {
-            ch->metal_mass_fraction[elem] = (old_mass_Z + ch->dm_Z[elem]) / m;
-          }
+        /* An element-free particle can still receive that element */
+        const float Z_eps = (old_mass_Z > 0.f)
+                                ? fabs(ch->dm_Z[elem]) / old_mass_Z
+                                : ((ch->dm_Z[elem] > 0.f) ? 1.f : 0.f);
+        if (Z_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+          ch->metal_mass_fraction[elem] = (old_mass_Z + ch->dm_Z[elem]) / m;
         }
 
         /* Recompute Z */
@@ -1012,9 +1019,16 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
         const float stream_growth_factor = 1.f + ch->dm / hydro_get_mass(p);
         ch->radius_stream *= sqrtf(stream_growth_factor);
 
+        /* Mach number of the stream relative to the ambient gas (physical) */
+        float v_rel2 = 0.f;
+        for (int k = 0; k < 3; k++) {
+          const float dv_k = p->v[k] - ch->v_ambient[k];
+          v_rel2 += dv_k * dv_k;
+        }
+        const float v_rel_phys = sqrtf(v_rel2) * cosmo->a_inv;
         const double c_s =
             sqrt(ch->u_ambient * hydro_gamma * hydro_gamma_minus_one);
-        const float Mach = dv_phys / (cosmo->a_factor_sound_speed * c_s);
+        const float Mach = v_rel_phys / (cosmo->a_factor_sound_speed * c_s);
         ch->radius_stream =
             firehose_recoupling_criterion(p, Mach, ch->radius_stream, cd);
       }

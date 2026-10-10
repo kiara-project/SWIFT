@@ -78,6 +78,7 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
     chi->u_ambient += mj * eint_j * wi;
     chi->rho_ambient += mj * wi;
     chi->w_ambient += wi;
+    for (int k = 0; k < 3; k++) chi->v_ambient[k] += mj * pj->v[k] * wi;
   }
 
   if (!decoupled_i && decoupled_j) {
@@ -100,6 +101,7 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
     chj->u_ambient += mi * eint_i * wj;
     chj->rho_ambient += mi * wj;
     chj->w_ambient += wj;
+    for (int k = 0; k < 3; k++) chj->v_ambient[k] += mi * pi->v[k] * wj;
   }
 }
 
@@ -157,6 +159,7 @@ firehose_compute_ambient_nonsym(const float r2, const float dx[3],
   chi->u_ambient += mj * eint_j * wi;
   chi->rho_ambient += mj * wi;
   chi->w_ambient += wi;
+  for (int k = 0; k < 3; k++) chi->v_ambient[k] += mj * pj->v[k] * wi;
 }
 
 /**
@@ -571,9 +574,11 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   const float pi_dust_mass = pi->cooling_data.dust_mass;
   const float pj_dust_mass = pj->cooling_data.dust_mass;
 
+  /* Each particle keeps (m - delta_m)/m of its own dust and receives the
+   * dust carried by the delta_m of gas from the other particle */
   const float dust_wt_ii = pii_weight * pi_dust_mass;
-  const float dust_wt_ij = pij_weight * pi_dust_mass;
-  const float dust_wt_ji = pji_weight * pj_dust_mass;
+  const float dust_wt_ij = pji_weight * pj_dust_mass; /* j -> i */
+  const float dust_wt_ji = pij_weight * pi_dust_mass; /* i -> j */
   const float dust_wt_jj = pjj_weight * pj_dust_mass;
 
   const float new_pi_dust_mass = dust_wt_ii + dust_wt_ij;
@@ -644,8 +649,11 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     new_v2 += dv_i * dv_i;
   }
 
-  /* 4) Split excess energy between stream and ambient particle */
-  float delta_KE = 0.5f * delta_m * (v2 - new_v2);
+  /* 4) Split excess energy between stream and ambient particle.
+   * The kinetic energy dissipated by the momentum-conserving exchange is
+   * 0.5 * mu * (dv^2 - dv'^2), with mu the reduced mass of the pair. */
+  const float mu_pair = mi * mj / (mi + mj);
+  float delta_KE = 0.5f * mu_pair * (v2 - new_v2);
   const float min_KE = min(mi * new_pi_u, mj * new_pj_u);
 
   /* Limit to minimum of the two particles */
@@ -661,8 +669,8 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   chi->du += new_pi_u - old_pi_u;
   chj->du += new_pj_u - old_pj_u;
 
-  /* Impose maximal viscosity */
-  hydro_diffusive_feedback_reset(pj);
+  /* Impose maximal viscosity on the ambient particle */
+  hydro_diffusive_feedback_reset(i_stream ? pj : pi);
 
 #ifdef FIREHOSE_DEBUG_CHECKS
   message(
