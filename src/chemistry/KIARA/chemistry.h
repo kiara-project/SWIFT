@@ -756,8 +756,11 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
   const float h_inv = 1.f / p->h;
   const float h_inv_dim = pow_dimension(h_inv); /* 1/h^d */
-  /* Missing factors in iact. */
-  const float factor = h_inv_dim * h_inv;
+  /* Missing factors in iact. The kernel term (1/r) dW/dr was computed with
+   * comoving h and r, while D and rho are physical: convert it to physical
+   * with a^-(d+2) (= a^-5 in 3D). */
+  const float factor =
+      h_inv_dim * h_inv * cosmo->a3_inv * cosmo->a2_inv;
 
   if (cd->use_firehose_wind_model && ch->dm > 0.f) {
     struct cooling_part_data *co = &p->cooling_data;
