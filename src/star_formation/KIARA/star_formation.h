@@ -518,8 +518,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
    * threshold density for star formation rhocrit.  sigma comes from WN07 model.
    */
   const double rho_0 = starform->lognormal.rho0;
-  /* Mass-averaged density for cold phase */
-  const double sigma = sqrt(log(2. * rho_V / rho_0));
+  /* Width of the lognormal with mean density rho_V, as in WN07 */
+  const double sigma = sqrt(2. * log(rho_V / rho_0));
   const double z_num =
       log(starform->lognormal.rhocrit / rho_0) - (sigma * sigma);
   const double z_den = sqrt(2.) * sigma;
@@ -531,12 +531,11 @@ INLINE static void star_formation_compute_SFR_lognormal(
   /* Store dense gas fraction */
   p->sf_data.dense_gas_fraction = f_c;
 
-  const double rho_phys = hydro_get_physical_density(p, cosmo);
-
   /* Calculate the SFR per gas mass, using lognormal mass fraction above
-   * rhocrit as efficiency
+   * rhocrit as efficiency, with the free-fall time at the same (subgrid)
+   * density as the lognormal
    */
-  const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_phys);
+  const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_V);
 
   const double mass = H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
 
