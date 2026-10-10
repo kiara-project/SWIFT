@@ -461,7 +461,9 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
         pi->chemistry_data.rho_ambient / pj->rho,
         pi->chemistry_data.u_ambient * cosmo->a_factor_internal_energy /
             cd->temp_to_u_factor,
-        eint_j / pi->chemistry_data.u_ambient, c_stream / c_amb, Mach,
+        hydro_get_drifted_comoving_internal_energy(pj) /
+            pi->chemistry_data.u_ambient,
+        c_stream / c_amb, Mach,
         radius_stream * cd->length_to_kpc * cosmo->a, delta_growth, delta_shear,
         t_shear, pi->cooling_data.mixing_layer_cool_time, dm / pi->mass);
   }
