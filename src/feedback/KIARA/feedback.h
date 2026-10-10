@@ -694,14 +694,15 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     }
     galaxy_stellar_mass_Msun *= feedback_props->mass_to_solar_mass;
 
-    /* stream size = 2 * comoving effective size of disk galaxies
-     * (Ward+2024 CEERS) */
-    const float redge_obs = 2.f * 7.1f * pow(cosmo->a, 0.63f) *
-                            pow(galaxy_stellar_mass_Msun / 5.e10, 0.16f);
+    /* stream size = 2 * effective size of disk galaxies (Ward+2024 CEERS),
+     * physical kpc */
+    const float redge_obs_kpc = 2.f * 7.1f * pow(cosmo->a, 0.63f) *
+                                pow(galaxy_stellar_mass_Msun / 5.e10, 0.16f);
 
-    /* Convert to internal units */
-    sp->feedback_data.firehose_radius_stream =
-        cosmo->a_inv * redge_obs / feedback_props->length_to_kpc;
+    /* Convert to internal comoving units */
+    const float redge_obs =
+        cosmo->a_inv * redge_obs_kpc / feedback_props->length_to_kpc;
+    sp->feedback_data.firehose_radius_stream = redge_obs;
 
     if (sp->galaxy_data.stellar_mass > 0.f &&
         sp->galaxy_data.specific_sfr > 0.f && eta > 0.f &&
