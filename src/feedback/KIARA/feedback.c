@@ -1325,8 +1325,10 @@ void feedback_prepare_interpolation_tables(
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
                                           sniilm[j2], snii[k][l][j2],
                                           lm_lo);
-          if (snii2_hi < 0.) snii2_hi = 0.;
-          if (snii2_lo < 0.) snii2_lo = 0.;
+          /* No clipping here: the AGB yields (<= 9 Msun) are net yields,
+           * negative for species that are destroyed (e.g. H, and C and O
+           * by hot-bottom burning). They are added to the unprocessed
+           * ejecta, which carry the star's own composition. */
           fb_props->tables.SN2E[SN2E_idx(k, l, i)] =
               fb_props->tables.SN2E[SN2E_idx(k, l, (i - 1))] +
               (snii2_hi + snii2_lo) / 2. *
