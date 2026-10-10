@@ -706,6 +706,10 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
   if (!cd->use_firehose_wind_model) return 0.f;
 
   float rs = r_stream;
+
+  /* Recouple once the wind has slowed to subsonic relative to the ambient
+   * gas, with a similar internal energy. This applies to all decoupled
+   * particles (also BH-driven winds, which are not firehose streams). */
   const double u = hydro_get_drifted_comoving_internal_energy(p);
   const double u_max = max(u, p->chemistry_data.u_ambient);
   const double u_diff = fabs(u - p->chemistry_data.u_ambient) / u_max;
@@ -713,11 +717,13 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
       u_diff < cd->firehose_recoupling_u_factor)
     rs = -1.f;
 
-  const float exchanged_mass_frac =
-      p->chemistry_data.exchanged_mass / hydro_get_mass(p);
-
-  if (exchanged_mass_frac > cd->firehose_recoupling_fmix) rs = -1.f;
-  if (r_stream == 0.f) rs = -1.f;
+  /* A firehose stream (r_stream > 0) also recouples once it has mixed
+   * enough mass */
+  if (r_stream > 0.f) {
+    const float exchanged_mass_frac =
+        p->chemistry_data.exchanged_mass / hydro_get_mass(p);
+    if (exchanged_mass_frac > cd->firehose_recoupling_fmix) rs = -1.f;
+  }
 
   return rs;
 }
@@ -937,20 +943,29 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     if (p->decoupled) {
       const float stream_growth_factor = 1.f + ch->dm / hydro_get_mass(p);
       ch->radius_stream *= sqrtf(stream_growth_factor);
-
-      /* Mach number of the stream relative to the ambient gas (physical) */
-      float v_rel2 = 0.f;
-      for (int k = 0; k < 3; k++) {
-        const float dv_k = p->v[k] - ch->v_ambient[k];
-        v_rel2 += dv_k * dv_k;
-      }
-      const float v_rel_phys = sqrtf(v_rel2) * cosmo->a_inv;
-      const double c_s =
-          sqrt(ch->u_ambient * hydro_gamma * hydro_gamma_minus_one);
-      const float Mach = v_rel_phys / (cosmo->a_factor_sound_speed * c_s);
-      ch->radius_stream =
-          firehose_recoupling_criterion(p, Mach, ch->radius_stream, cd);
     }
+  }
+
+  /* Check whether the stream should recouple: it has slowed to subsonic
+   * relative to its surroundings with a similar energy, or has mixed enough
+   * mass. Do this every step, not only when mass was exchanged: a slow
+   * stream inside dense, rapidly cooling gas grows rather than mixes, and
+   * would otherwise stay decoupled (pressureless) and collapse. Only with
+   * ambient neighbours, otherwise v_ambient is the particle's own velocity. */
+  if (cd->use_firehose_wind_model && p->decoupled && ch->w_ambient > 0.f) {
+
+    /* Mach number of the stream relative to the ambient gas (physical) */
+    float v_rel2 = 0.f;
+    for (int k = 0; k < 3; k++) {
+      const float dv_k = p->v[k] - ch->v_ambient[k];
+      v_rel2 += dv_k * dv_k;
+    }
+    const float v_rel_phys = sqrtf(v_rel2) * cosmo->a_inv;
+    const double c_s =
+        sqrt(ch->u_ambient * hydro_gamma * hydro_gamma_minus_one);
+    const float Mach = v_rel_phys / (cosmo->a_factor_sound_speed * c_s);
+    ch->radius_stream =
+        firehose_recoupling_criterion(p, Mach, ch->radius_stream, cd);
   }
 
   /* Are we a decoupled wind? Skip diffusion. */
