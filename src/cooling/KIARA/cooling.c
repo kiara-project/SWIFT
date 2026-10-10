@@ -880,6 +880,28 @@ gr_float cooling_grackle_driver(
   grackle_field_data data;
   // cooling_grackle_malloc_fields(&data, 1, cooling->chemistry.use_dust_evol);
 
+  /* Make an initial guess of H2 fractions, to help grackle converge 
+  const float H2_frac = xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac;
+  if (p->cooling_data.subgrid_temp > 0.f && H2_frac > 0.f && H2_frac < 1.f && p->chemistry_data.metal_mass_fraction_total > 1.e-6) {
+    //float H2_frac_KMT = cooling_KMT_H2_fraction(p, cosmo, cooling);
+    //if (H2_frac_KMT < 0.f) H2_frac_KMT = 0.f;
+    //if (H2_frac_KMT > 1.f) H2_frac_KMT = 1.f;
+    const float H_frac = H2_frac + xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
+    float P_over_k_cgs = hydro_get_physical_pressure(p, cosmo) * units_cgs_conversion_factor(us, UNIT_CONV_PRESSURE) / 1.38e-16;
+    float Rmol = pow(p->chemistry_data.metal_mass_fraction_total * P_over_k_cgs / (0.0134 * 4.3e4), 0.92);
+    float H2_frac_BR = Rmol / (1.f + Rmol) * H_frac;
+    if (p->id % 10 == 0) message("z=%g T=%g nH=%g P/k=%g Rmol=%g H2old=%g H2BR=%g H=%g", cosmo->z, p->cooling_data.subgrid_temp, p->cooling_data.subgrid_dens * cooling->units.density_units * 0.75 / 1.673e-24, P_over_k_cgs, Rmol, H2_frac, H2_frac_BR, H_frac);
+    const float H2_guess = H2_frac_BR;
+    const float H2_factor = H2_guess / H2_frac;
+    assert(H2_factor > 0.f);
+    assert(non_H2_factor > 0.f);
+    xp->cooling_data.H2I_frac *= H2_factor;
+    xp->cooling_data.H2II_frac *= H2_factor;
+    xp->cooling_data.HI_frac *= non_H2_factor;
+    xp->cooling_data.HII_frac *= non_H2_factor;
+    xp->cooling_data.HM_frac *= non_H2_factor;
+  }*/
+
   /* Renomalize H,He species to account for any changes due to chemistry, stellar evol, etc */
   cooling_normalize_primordial_species(p, xp);
 
@@ -1687,6 +1709,13 @@ void cooling_init_units(const struct unit_system *us,
   const double vel_to_km_s =  units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY) * 1.e-5;
   cooling->potential_to_kms2 = vel_to_km_s * vel_to_km_s;
   cooling->ff_const = sqrt(3. * M_PI / (32. * phys_const->const_newton_G));
+
+  /* Get the surface density unit Msun / pc^2 in internal units */
+  const double Msun_per_pc2 =
+      phys_const->const_solar_mass /
+      (phys_const->const_parsec * phys_const->const_parsec);
+
+  cooling->surface_rho_to_Msun_per_parsec2 = 1. / Msun_per_pc2;
 
   /* G0 for MW=1.6 (Parravano etal 2003).  */
   /* Scaled to SFR density in solar neighborhood =0.002 Mo/Gyr/pc^3

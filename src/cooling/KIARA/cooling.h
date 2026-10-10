@@ -391,6 +391,54 @@ __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
   return temperature;
 }
 
+__attribute__((always_inline)) INLINE static float
+cooling_KMT_H2_fraction(const struct part *restrict p,
+			const struct cosmology *cosmo,
+                        const struct cooling_function_data *cooling) {
+
+  /* No H2 outside of ISM */
+  if (p->cooling_data.subgrid_temp == 0.) return 0.f;
+
+  float H2_fraction = 1.f;
+  double gas_sigma = 0.f;
+  float gas_Z = 0.f;
+  float chi = 0.f;
+  float s = 0.f;
+  float clumping_factor = 30.f;
+  float gas_gradrho_mag = 0.f;
+
+  gas_Z = p->chemistry_data.metal_mass_fraction_total;
+  gas_Z /= 0.0134;
+  if (gas_Z < 0.01f) {
+    gas_Z = 0.01f;
+  }
+
+  gas_gradrho_mag = sqrtf(p->rho_gradient[0] * p->rho_gradient[0] +
+                          p->rho_gradient[1] * p->rho_gradient[1] +
+                          p->rho_gradient[2] * p->rho_gradient[2]);
+
+  if (gas_gradrho_mag > 0) {
+    const float subgrid_dens_comoving = p->cooling_data.subgrid_dens * 
+        cosmo->a * cosmo->a * cosmo->a;
+    gas_sigma = (subgrid_dens_comoving * p->rho) / gas_gradrho_mag;
+
+    /* surface density must be in Msun/pc^2 */
+    gas_sigma *=
+        cooling->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
+
+    /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
+    chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
+          (30.f / clumping_factor);
+    s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
+        (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
+  }
+  if (s > 0.f) {
+    H2_fraction = 1.f - 0.75f * (s / (1.f + 0.25f * s));
+  }
+
+  return H2_fraction;
+}
+
 /**
  * @brief Computes H and H2 self-shielding for G0 calculation.
  * Based on Schauer et al. 2015 eqs 8,9.

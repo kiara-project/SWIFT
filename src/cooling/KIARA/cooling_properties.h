@@ -59,6 +59,9 @@ struct cooling_function_data {
   /*! Convert potential to (km/s)^2 */
   double potential_to_kms2;
 
+  /*! Converts to Msun/pc^2 */
+  double surface_rho_to_Msun_per_parsec2;
+
   /*! Constant needed for computing free-fall time */
   double ff_const;
 
