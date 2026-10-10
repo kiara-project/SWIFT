@@ -352,8 +352,7 @@ INLINE static double cooling_compute_subgrid_density(
     const double rho, const double n_H, const double temp,
     const double subgrid_temp, const struct cooling_function_data *cooling) {
 
-  const double ism_frac = cooling_compute_cold_ISM_fraction(
-      n_H * cooling->subgrid_threshold_n_H_inv, cooling);
+  const double ism_frac = cooling_compute_cold_ISM_fraction(n_H, cooling);
   double subgrid_dens =
       (1.f - ism_frac) * rho * temp / (ism_frac * subgrid_temp);
 

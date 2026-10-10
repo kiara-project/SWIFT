@@ -186,6 +186,7 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
   cooling_grackle_init_part(cooling, p, xp);
 
   p->cooling_data.subgrid_fcold = 0.f;
+  p->cooling_data.G0 = 0.f;
 
   /* Initialize dust properties */
 #if COOLING_GRACKLE_MODE >= 2
@@ -404,7 +405,7 @@ void cooling_copy_to_grackle2(
     data->Mg_gas_metalDensity = &species_densities[30];
     data->Si_gas_metalDensity = &species_densities[31];
     data->S_gas_metalDensity = &species_densities[32];
-    data->Ca_gas_metalDensity = &species_densities[32];
+    data->Ca_gas_metalDensity = &species_densities[33];
     data->Fe_gas_metalDensity = &species_densities[34];
     /* Load dust metallicities */
     data->He_dust_metalDensity = &species_densities[36];
@@ -657,24 +658,22 @@ void cooling_copy_to_grackle(
     const struct xpart *xp, const double dt, const double T_warm,
     gr_float species_densities[N_SPECIES], gr_float *iact_rates, int mode) {
 
+  /* Grid description for a single particle. Grackle only reads these, so
+   * they are shared read-only (no per-call allocation). grid_end[0] = -1
+   * signals crackle to turn off the UVB (used for cooling times). */
+  static int grid_dimension[GRACKLE_RANK] = {GRACKLE_NPART, 1, 1};
+  static int grid_start[GRACKLE_RANK] = {0, 0, 0};
+  static int grid_end[GRACKLE_RANK] = {GRACKLE_NPART - 1, 0, 0};
+  static int grid_end_no_uvb[GRACKLE_RANK] = {-1, 0, 0};
+
   int i;
   /* set values */
   /* grid */
   data->grid_dx = 0.f;
   data->grid_rank = GRACKLE_RANK;
-
-  data->grid_dimension = malloc(GRACKLE_RANK * sizeof(int));
-  data->grid_start = malloc(GRACKLE_RANK * sizeof(int));
-  data->grid_end = malloc(GRACKLE_RANK * sizeof(int));
-  for (i = 0; i < 3; i++) {
-    /* The active dimension not including ghost zones */
-    data->grid_dimension[i] = 1;
-    data->grid_start[i] = 0;
-    data->grid_end[i] = 0;
-  }
-
-  data->grid_dimension[0] = GRACKLE_NPART;
-  data->grid_end[0] = GRACKLE_NPART - 1;
+  data->grid_dimension = grid_dimension;
+  data->grid_start = grid_start;
+  data->grid_end = grid_end;
 
   /* get particle density, internal energy in
      physical coordinates (still code units) */
@@ -685,7 +684,7 @@ void cooling_copy_to_grackle(
     species_densities[13] = hydro_get_physical_internal_energy(p, xp, cosmo);
     species_densities[14] = cooling->T_CMB_0 * (1.f + cosmo->z);
     species_densities[15] = 0.f;
-    data->grid_end[0] = -1;  // this signals to crackle to turn off UVB
+    data->grid_end = grid_end_no_uvb;  // signals crackle to turn off UVB
   }
   /* non-subgrid case, here we set the floor temperature
    * by the EoS (if applicable).  Note the cold fraction has a small
@@ -784,14 +783,12 @@ void cooling_copy_from_grackle(
 /**
  * @brief free memory associated with grackle driver
  *
+ * Nothing to do: the grid arrays set in cooling_copy_to_grackle are static.
+ * Kept so that callers (e.g. KIARA RT) need not change.
+ *
  * @param data The grackle_field_data structure from grackle.
  */
-void cooling_grackle_free_data(grackle_field_data *data) {
-
-  free(data->grid_dimension);
-  free(data->grid_start);
-  free(data->grid_end);
-}
+void cooling_grackle_free_data(grackle_field_data *data) {}
 
 /**
  * @brief Renomalize individual H and He species to account for
@@ -830,9 +827,17 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
   xp->cooling_data.HeII_frac *= He_ratio;
   xp->cooling_data.HeIII_frac *= He_ratio;
 
-  /* Recompute electron number density relative to total density */
-  xp->cooling_data.e_frac = xp->cooling_data.HII_frac + xp->cooling_data.HeII_frac +
-         2.f * xp->cooling_data.HeIII_frac;
+  /* Recompute electron density (grackle convention: n_e * m_H / rho) */
+  xp->cooling_data.e_frac = xp->cooling_data.HII_frac +
+                            0.25f * xp->cooling_data.HeII_frac +
+                            0.5f * xp->cooling_data.HeIII_frac;
+#if COOLING_GRACKLE_MODE >= 2
+  xp->cooling_data.e_frac +=
+      0.5f * xp->cooling_data.H2II_frac - xp->cooling_data.HM_frac;
+#endif
+#if COOLING_GRACKLE_MODE >= 3
+  xp->cooling_data.e_frac += 0.5f * xp->cooling_data.DII_frac;
+#endif
 }
 
 /**
@@ -864,8 +869,7 @@ gr_float cooling_grackle_driver(
   code_units units = cooling->units;
 
   /* initialize data to send to grackle */
-  gr_float *species_densities;
-  species_densities = (gr_float *)calloc(N_SPECIES, sizeof(gr_float));
+  gr_float species_densities[N_SPECIES] = {0};
   grackle_field_data data;
   // cooling_grackle_malloc_fields(&data, 1, cooling->chemistry.use_dust_evol);
 
@@ -931,7 +935,6 @@ gr_float cooling_grackle_driver(
       break;
   }
   cooling_grackle_free_data(&data);
-  free(species_densities);
 
   return return_value;
 }
@@ -1061,29 +1064,28 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
           rho_cgs / 1.673e-24, /* units of mp */
           tsp / dt);
 #endif
-      /* factor by which dust mass changed */
-      const float dust_mass_new = p->cooling_data.dust_mass;
-      const float dust_mass_ratio = dust_mass_new / dust_mass_old;
+      /* Dust mass returned to the gas phase */
+      const float dust_mass_lost = dust_mass_old - p->cooling_data.dust_mass;
       p->chemistry_data.metal_mass_fraction_total = 0.f;
 
-      for (int elem = 0; elem < chemistry_element_count;
-           ++elem) {
-	if (elem == chemistry_element_H || elem == chemistry_element_He) continue;
+      for (int elem = 0; elem < chemistry_element_count; ++elem) {
+        if (elem == chemistry_element_H || elem == chemistry_element_He)
+          continue;
 
-        const float Z_dust_elem_old = p->cooling_data.dust_mass_fraction[elem];
-        const float Z_dust_elem_new = Z_dust_elem_old * dust_mass_ratio;
+        /* dust_mass_fraction is the fraction of the dust mass in each
+         * element; sputtering does not change the grain composition, so
+         * it is left unchanged and each element loses the same fraction. */
         const float Z_elem_old = p->chemistry_data.metal_mass_fraction[elem];
         const float elem_mass_old = Z_elem_old * hydro_get_mass(p);
 
         /* This is the positive amount of metal mass to add since we
          * are losing dust mass when sputtering. */
         const float delta_metal_mass_elem =
-            (Z_dust_elem_old * dust_mass_old - Z_dust_elem_new * dust_mass_new);
+            p->cooling_data.dust_mass_fraction[elem] * dust_mass_lost;
         const float elem_mass_new = elem_mass_old + delta_metal_mass_elem;
         const float Z_elem_new = elem_mass_new / hydro_get_mass(p);
 
         p->chemistry_data.metal_mass_fraction[elem] = Z_elem_new;
-        p->cooling_data.dust_mass_fraction[elem] *= dust_mass_ratio;
 
         /* Sum up to get the new Z value */
         p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
@@ -1185,7 +1187,9 @@ void cooling_init_chemistry(
   const float total_Z = chemistry_get_total_metal_mass_fraction_for_cooling(p);
   const float self_Z =
       (1.f - init_dust_to_gas) * cooling->self_enrichment_metallicity;
-  if (p->cooling_data.subgrid_temp > 0.f && total_Z < self_Z) {
+  /* Small margin so round-off in the enriched total doesn't re-trigger this
+   * every step (which would reset any dust grown since) */
+  if (p->cooling_data.subgrid_temp > 0.f && total_Z < 0.99f * self_Z) {
     float Z_sun = 0.f;
     for (int i = 1; i < 10; i++) {
       Z_sun += cooling->chemistry.SolarAbundances[i];
@@ -1194,7 +1198,6 @@ void cooling_init_chemistry(
     /* Distribute the self-enrichment metallicity among elements
        assuming solar abundance ratios*/
     p->chemistry_data.metal_mass_fraction_total = 0.f;
-    p->cooling_data.dust_mass = 0.f;
     /* Offset index for the SolarAbundaces array (starts at He -> Fe) */
     int j = 1;
     for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
@@ -1208,17 +1211,19 @@ void cooling_init_chemistry(
       p->chemistry_data.metal_mass_fraction_total +=
           p->chemistry_data.metal_mass_fraction[i];
 
-      /* fraction of dust mass in each element */
+      /* fraction of dust mass in each element (sums to 1) */
       p->cooling_data.dust_mass_fraction[i] =
-          init_dust_to_gas * cooling->chemistry.SolarAbundances[j];
-      p->cooling_data.dust_mass_fraction[i] /= Z_sun;
-
-      /* Sum up all of the dust mass */
-      p->cooling_data.dust_mass += p->cooling_data.dust_mass_fraction[i] *
-                                   p->chemistry_data.metal_mass_fraction[i] *
-                                   p->mass;
+          cooling->chemistry.SolarAbundances[j] / Z_sun;
       j++;
     }
+
+    /* No H or He in dust; element 0 holds the sum over elements */
+    p->cooling_data.dust_mass_fraction[chemistry_element_H] = 1.f;
+    p->cooling_data.dust_mass_fraction[chemistry_element_He] = 0.f;
+
+    /* Dust holds the remaining init_dust_to_gas of the self-enriched metals */
+    p->cooling_data.dust_mass =
+        init_dust_to_gas * cooling->self_enrichment_metallicity * p->mass;
 
     p->chemistry_data.metal_mass_fraction[chemistry_element_He] =
         cooling->chemistry.SolarAbundances[0];
@@ -1467,6 +1472,7 @@ void cooling_set_particle_subgrid_properties(
     p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
     p->cooling_data.subgrid_temp = 0.;
     p->cooling_data.subgrid_fcold = 0.f;
+    p->cooling_data.G0 = 0.f;
 
     return;
   }
@@ -1518,6 +1524,9 @@ void cooling_set_particle_subgrid_properties(
 
     /* No more cold gas! */
     p->cooling_data.subgrid_fcold = 0.f;
+
+    /* No ISRF outside the subgrid ISM */
+    p->cooling_data.G0 = 0.f;
   }
 }
 
@@ -1870,7 +1879,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
     chemistry->SolarAbundances[3] = 5.79e-3;
     chemistry->SolarAbundances[4] = 1.26e-3;
     chemistry->SolarAbundances[5] = 7.14e-4;
-    chemistry->SolarAbundances[6] = 6.71e-3;
+    chemistry->SolarAbundances[6] = 6.71e-4;
     chemistry->SolarAbundances[7] = 3.12e-4;
     chemistry->SolarAbundances[8] = 0.65e-4;
     chemistry->SolarAbundances[9] = 1.31e-3;

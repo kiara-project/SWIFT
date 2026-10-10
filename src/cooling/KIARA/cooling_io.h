@@ -119,16 +119,6 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
   *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p, xp);
 }
 
-INLINE static void convert_part_G0(const struct engine *e, const struct part *p,
-                                   const struct xpart *xp, float *ret) {
-
-  const float mstar = p->galaxy_data.stellar_mass;
-  const float ssfr = p->galaxy_data.specific_sfr;
-  const float rho = p->cooling_data.subgrid_dens;
-  const float dt = get_timestep(p->time_bin, e->time_base);
-  *ret = cooling_compute_G0(p, xp, rho, 1.e4, e->cooling_func, mstar, ssfr, dt);
-}
-
 /**
  * @brief Specifies which particle fields to write to a dataset
  *
@@ -163,7 +153,7 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
 
   list[num] = io_make_output_field_convert_part(
       "HeIMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
-      convert_part_HeII_mass, "HeI masses.");
+      convert_part_HeI_mass, "HeI masses.");
   num++;
 
   list[num] = io_make_output_field_convert_part(
@@ -177,9 +167,9 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
   list[num] = io_make_output_field_convert_part(
-      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, -3.f,
-      parts, xparts, convert_part_e_density, "Electron number densities"
-      "in units of the hydrogen density.");
+      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      parts, xparts, convert_part_e_density, "Electron number densities "
+      "times the proton mass, in units of the gas mass density.");
   num++;
 
   list[num] = io_make_output_field_convert_part(
@@ -190,15 +180,14 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
 #if COOLING_GRACKLE_MODE >= 2
   list[num] = io_make_output_field(
       "SubgridTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, parts,
-      cooling_data.subgrid_temp, "Temperatures of the cold phase"
-      				 "of the subgrid ISM gas particles.");
+      cooling_data.subgrid_temp, "Temperatures of the cold phase "
+                                 "of the subgrid ISM gas particles.");
   num++;
 
-  list[num] =
-      io_make_output_field("SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY,
-                           -3.f, parts, cooling_data.subgrid_dens,
-                           "Mass densities in physical units of the "
-			   "subgrid ISM gas particles.");
+  list[num] = io_make_physical_output_field(
+      "SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f, parts,
+      cooling_data.subgrid_dens, /*can convert to comoving=*/1,
+      "Mass densities in physical units of the subgrid ISM gas particles.");
   num++;
 
   list[num] = io_make_output_field(
@@ -228,13 +217,15 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   list[num] = io_make_output_field(
       "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
       cooling_data.mixing_layer_cool_time,
-      "Cooling times for the gas particle. If it's currently a firehose wind"
+      "Cooling times for the gas particle. If it's currently a firehose wind "
       "particle (decoupling_delay_time>0), this is the mixing layer cooling time.");
   num++;
 
-  list[num] = io_make_output_field_convert_part(
-    "InterstellarRadiation", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
-    convert_part_G0, "The interstellar radiation field strength in Habing units. ");
+  list[num] = io_make_output_field(
+      "InterstellarRadiation", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      cooling_data.G0,
+      "The interstellar radiation field strength in Habing units, as "
+      "passed to Grackle in the last cooling step.");
   num++;
 
 #endif
