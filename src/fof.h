@@ -64,6 +64,15 @@ struct fof_props {
   /*! The minimum halo mass for black hole seeding. */
   double seed_halo_mass;
 
+#ifdef WITH_FOF_GALAXIES
+  /*! Galaxy (ISM) gas is colder than this temperature (K) */
+  double cold_gas_T_threshold;
+
+  /*! Galaxy (ISM) gas has a physical H number density above this (internal
+   * units) */
+  double cold_gas_n_H_threshold;
+#endif
+
   /*! Minimal number of particles in a group */
   size_t min_group_size;
 

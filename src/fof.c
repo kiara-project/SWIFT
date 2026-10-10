@@ -185,6 +185,16 @@ void fof_init(struct fof_props *props, struct swift_params *params,
     props->seed_halo_mass *= phys_const->const_solar_mass;
   }
 
+#ifdef WITH_FOF_GALAXIES
+  /* Thresholds defining the galaxy (ISM) gas */
+  props->cold_gas_T_threshold = parser_get_opt_param_double(
+      params, "FOF:cold_gas_temperature_threshold", 1.e5);
+  props->cold_gas_n_H_threshold =
+      parser_get_opt_param_double(params, "FOF:cold_gas_n_H_threshold_cgs",
+                                  0.13) /
+      units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+#endif
+
   /* Read what particle types we want to run FOF on */
   parser_get_param_int_array(params, "FOF:linking_types", swift_type_count,
                              props->fof_linking_types);
@@ -2510,6 +2520,66 @@ void fof_find_foreign_links_mapper(void *map_data, int num_elements,
 #endif
 }
 
+#ifdef WITH_FOF_GALAXIES
+/**
+ * @brief Is this gas particle part of its galaxy's (ISM) gas?
+ *
+ * Galaxy gas is cold and dense (it need not be star-forming); decoupled
+ * winds are outflows, not ISM.
+ *
+ * @param props The properties of the FOF scheme.
+ * @param e The #engine.
+ * @param p The gas #part.
+ * @param xp The #xpart.
+ */
+static int fof_gas_is_galaxy_gas(const struct fof_props *props,
+                                 const struct engine *e, const struct part *p,
+                                 const struct xpart *xp) {
+
+  if (p->decoupled) return 0;
+
+  const struct cosmology *cosmo = e->cosmology;
+  const double X_H = chemistry_get_metal_mass_fraction_for_star_formation(
+      p)[chemistry_element_H];
+  const double n_H = hydro_get_physical_density(p, cosmo) * X_H /
+                     e->physical_constants->const_proton_mass;
+  if (n_H < props->cold_gas_n_H_threshold) return 0;
+
+  const double u = hydro_get_physical_internal_energy(p, xp, cosmo);
+  const double T = cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
+  return T < props->cold_gas_T_threshold;
+}
+
+/**
+ * @brief Set the host-galaxy properties carried by a particle.
+ *
+ * @param s The #space.
+ * @param gp The #gpart of the particle.
+ * @param stellar_mass The galaxy stellar mass.
+ * @param gas_mass The galaxy (ISM) gas mass.
+ * @param sfr The galaxy star formation rate.
+ */
+static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
+                                const float stellar_mass, const float gas_mass,
+                                const float sfr) {
+
+  struct fof_galaxy_data *gd = NULL;
+  if (gp->type == swift_type_gas) {
+    gd = &s->parts[-gp->id_or_neg_offset].galaxy_data;
+  } else if (gp->type == swift_type_stars) {
+    gd = &s->sparts[-gp->id_or_neg_offset].galaxy_data;
+  } else if (gp->type == swift_type_black_hole) {
+    gd = &s->bparts[-gp->id_or_neg_offset].galaxy_data;
+  } else {
+    return;
+  }
+
+  gd->stellar_mass = stellar_mass;
+  gd->gas_mass = gas_mass;
+  gd->specific_sfr = (stellar_mass > 0.f) ? sfr / stellar_mass : 0.f;
+}
+#endif
+
 /**
  * @brief Compute the group properties for all groups.
  *
@@ -2632,20 +2702,27 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
       const size_t gas_index = -gparts[i].id_or_neg_offset;
       const float rho_com = hydro_get_comoving_density(&parts[gas_index]);
       const float sfr = star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
-#ifdef WITH_FOF_GALAXIES
-      /* In Kiara, include only SF gas in the galaxy */
-      if (sfr > 0.f) {
-#endif
 #ifdef SWIFT_DEBUG_CHECKS
-        if (rho_com == 0.f) {
-          error("Found a particle with 0-density! id=%lld", parts[gas_index].id);
-        }
+      if (rho_com == 0.f) {
+        error("Found a particle with 0-density! id=%lld", parts[gas_index].id);
+      }
 #endif
+#ifdef WITH_FOF_GALAXIES
+      /* In Kiara, the galaxy SFR (and the densest gas, for BH seeding) come
+       * from the star-forming gas, and the galaxy gas mass from its cold,
+       * dense ISM gas, which need not be forming stars */
+      if (sfr > 0.f) {
         max_part_density[index] = fmaxf(rho_com, max_part_density[index]);
         star_formation_rate[index] += sfr;
-        gas_mass[index] += gparts[i].mass;
-#ifdef WITH_FOF_GALAXIES
       }
+      if (fof_gas_is_galaxy_gas(props, s->e, &parts[gas_index],
+                                &xparts[gas_index])) {
+        gas_mass[index] += gparts[i].mass;
+      }
+#else
+      max_part_density[index] = fmaxf(rho_com, max_part_density[index]);
+      star_formation_rate[index] += sfr;
+      gas_mass[index] += gparts[i].mass;
 #endif
     }
 
@@ -2792,7 +2869,13 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
   for (size_t i = 0; i < nr_gparts; i++) {
 
     /* Ignore particles not in groups */
-    if (gparts[i].fof_data.group_id == group_id_default) continue;
+    if (gparts[i].fof_data.group_id == group_id_default) {
+#ifdef WITH_FOF_GALAXIES
+      /* Not in a galaxy: clear any host-galaxy data from earlier calls */
+      fof_set_galaxy_data(s, &gparts[i], 0.f, 0.f, 0.f);
+#endif
+      continue;
+    }
 
     /* Entry into the global list of group properties */
     const size_t index = gparts[i].fof_data.group_id - 1;
@@ -2832,29 +2915,10 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     }
 
 #ifdef WITH_FOF_GALAXIES
-    /* Get a handle on the gpart. */
-    const struct gpart *restrict gp = &gparts[i];
-
-    /* Load FoF data into particles of various types */
-    if (gp->type == swift_type_gas) {
-      struct part *restrict p = &(s->parts[-gp->id_or_neg_offset]);
-      p->galaxy_data.stellar_mass = stellar_mass[index];
-      p->galaxy_data.gas_mass = gas_mass[index];
-      if (stellar_mass[index] > 0.f) p->galaxy_data.specific_sfr =
-          star_formation_rate[index] / stellar_mass[index];
-    } else if (gp->type == swift_type_stars) {
-      struct spart *restrict sp = &(s->sparts[-gp->id_or_neg_offset]);
-      sp->galaxy_data.stellar_mass = stellar_mass[index];
-      sp->galaxy_data.gas_mass = gas_mass[index];
-      if (stellar_mass[index] > 0.f) sp->galaxy_data.specific_sfr =
-          star_formation_rate[index] / stellar_mass[index];
-    } else if (gp->type == swift_type_black_hole) {
-      struct bpart *restrict bp = &(s->bparts[-gp->id_or_neg_offset]);
-      bp->galaxy_data.stellar_mass = stellar_mass[index];
-      bp->galaxy_data.gas_mass = gas_mass[index];
-      if (stellar_mass[index] > 0.f) bp->galaxy_data.specific_sfr =
-          star_formation_rate[index] / stellar_mass[index];
-    }
+    /* Load the host-galaxy data into particles of various types (the sSFR
+     * is zero in a galaxy without stars) */
+    fof_set_galaxy_data(s, &gparts[i], stellar_mass[index], gas_mass[index],
+                        star_formation_rate[index]);
 #endif
   }
 
