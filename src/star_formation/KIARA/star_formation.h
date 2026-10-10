@@ -347,8 +347,9 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
               (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
         }
       }
+      /* KMT: f_H2 = 1 - (3/4) s / (1 + s/4) for s < 2, and 0 above */
       if (s > 0.f) {
-        H2_fraction = 1.f - 0.75f * (s / (1.f + 0.25f * s));
+        H2_fraction = (s < 2.f) ? 1.f - 0.75f * (s / (1.f + 0.25f * s)) : 0.f;
       }
    }
 
