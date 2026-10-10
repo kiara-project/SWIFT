@@ -866,10 +866,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
     pj->h_min = fmin(pj->h_min, h_ij);
 
     /* New timestep estimate */
+    /* A decoupled (wind) neighbour exerts no force, so it does not limit a
+     * coupled particle's time-step */
     const hydro_real_t dt_min_i = h_ij / v_sig_visc;
     const hydro_real_t dt_min_j = h_ij / v_sig_visc;
-    pi->dt_min = fmin(pi->dt_min, dt_min_i);
-    pj->dt_min = fmin(pj->dt_min, dt_min_j);
+    if (!(pj->decoupled && !pi->decoupled))
+      pi->dt_min = fmin(pi->dt_min, dt_min_i);
+    if (!(pi->decoupled && !pj->decoupled))
+      pj->dt_min = fmin(pj->dt_min, dt_min_j);
 
 #ifdef MAGMA2_DEBUG_CHECKS
     pi->debug.N_force_high_order_grad++;
@@ -929,10 +933,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
     pj->h_min = fmin(pj->h_min, h_ij);
 
     /* New timestep estimate */
+    /* A decoupled (wind) neighbour exerts no force, so it does not limit a
+     * coupled particle's time-step */
     const hydro_real_t dt_min_i = h_ij / new_v_sig_visc;
     const hydro_real_t dt_min_j = h_ij / new_v_sig_visc;
-    pi->dt_min = fmin(pi->dt_min, dt_min_i);
-    pj->dt_min = fmin(pj->dt_min, dt_min_j);
+    if (!(pj->decoupled && !pi->decoupled))
+      pi->dt_min = fmin(pi->dt_min, dt_min_i);
+    if (!(pi->decoupled && !pj->decoupled))
+      pj->dt_min = fmin(pj->dt_min, dt_min_j);
 
     const hydro_real_t kernel_gradient = 0.5 * (wi_dr + wj_dr) * r_inv;
 
@@ -1362,7 +1370,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     pi->h_min = fmin(pi->h_min, h_ij);
 
     const hydro_real_t dt_min_i = h_ij / v_sig_visc;
-    pi->dt_min = fmin(pi->dt_min, dt_min_i);
+    if (!(pj->decoupled && !pi->decoupled))
+      pi->dt_min = fmin(pi->dt_min, dt_min_i);
 
 #ifdef MAGMA2_DEBUG_CHECKS
     pi->debug.N_force_high_order_grad++;
@@ -1421,7 +1430,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
     /* New time-step estimate */
     const hydro_real_t dt_min_i = h_ij / new_v_sig_visc;
-    pi->dt_min = fmin(pi->dt_min, dt_min_i);
+    if (!(pj->decoupled && !pi->decoupled))
+      pi->dt_min = fmin(pi->dt_min, dt_min_i);
 
     /* Variable smoothing length term */
     const hydro_real_t kernel_gradient = 0.5 * (wi_dr + wj_dr) * r_inv;
