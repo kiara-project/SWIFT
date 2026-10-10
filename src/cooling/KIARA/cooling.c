@@ -27,6 +27,7 @@
 #include <float.h>
 #include <hdf5.h>
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 #include <time.h>
 
@@ -644,6 +645,26 @@ void cooling_copy_from_grackle3(grackle_field_data *data, const struct part *p,
 #endif
 
 /**
+ * @brief Check that a value is finite (not NaN or inf) from its bits.
+ *
+ * fpclassify()/isfinite() are folded to "always finite" under -ffast-math
+ * (-ffinite-math-only), so test the exponent bits directly instead.
+ *
+ * @param x The value to check.
+ */
+static INLINE int cooling_value_is_finite(const gr_float x) {
+#ifdef GRACKLE_FLOAT_4
+  uint32_t bits;
+  memcpy(&bits, &x, sizeof(bits));
+  return ((bits >> 23) & 0xff) != 0xff;
+#else
+  uint64_t bits;
+  memcpy(&bits, &x, sizeof(bits));
+  return ((bits >> 52) & 0x7ff) != 0x7ff;
+#endif
+}
+
+/**
  * @brief copy a #xpart to the grackle data
  *
  * Warning this function creates some variable, therefore the grackle call
@@ -757,8 +778,7 @@ void cooling_copy_to_grackle(
   data->metal_density = &species_densities[19];
 
   for (i = 0; i < N_SPECIES; i++) {
-    if (fpclassify(species_densities[i]) == FP_NAN ||
-        fpclassify(species_densities[i]) == FP_INFINITE) {
+    if (!cooling_value_is_finite(species_densities[i])) {
       error(
           "Passing a non-finite value to grackle! "
           "i=%d / %d, species_densities[i]=%g\n",
