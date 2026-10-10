@@ -585,7 +585,8 @@ void feedback_get_ejecta_from_star_particle(
   *ejecta_mass = max(0., sp->mass_init * SNII_E);
 
   /* For some reason at the first step this might happen */
-  if (isnan(SNII_U) || isnan(SNII_E)) {
+  if (!feedback_double_is_finite(SNII_U) ||
+      !feedback_double_is_finite(SNII_E)) {
     warning("SNII_U or SNII_E is NaN, j1=%d l1=%d z=%g mturn=%g %g age=%g", j1,
             l1, z, tm1, tm2, age);
     *ejecta_unprocessed = *ejecta_mass = 0.;

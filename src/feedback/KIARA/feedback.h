@@ -32,6 +32,8 @@
 #include "timestep_sync_part.h"
 #include "units.h"
 
+#include <stdint.h>
+#include <string.h>
 #include <strings.h>
 
 double feedback_get_lum_from_star_particle(
@@ -51,6 +53,21 @@ double feedback_get_turnover_mass(const struct feedback_props *fb_props,
                                   const double t, const double z);
 void feedback_prepare_interpolation_tables(
     const struct feedback_props *fb_props);
+
+/**
+ * @brief Check that a double is finite (not NaN or inf) from its bits.
+ *
+ * isnan()/isfinite() are folded to constants under -ffast-math
+ * (-ffinite-math-only), so test the exponent bits directly instead.
+ *
+ * @param x The value to check.
+ */
+__attribute__((always_inline)) INLINE static int feedback_double_is_finite(
+    const double x) {
+  uint64_t bits;
+  memcpy(&bits, &x, sizeof(bits));
+  return ((bits >> 52) & 0x7ff) != 0x7ff;
+}
 
 /**
  * @brief Recouple wind particles.
@@ -325,8 +342,10 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_spart(
     struct spart *sp, const struct feedback_props *feedback_props) {
 
   feedback_init_spart(sp);
+#if COOLING_GRACKLE_MODE >= 2
   sp->feedback_data.SNe_ThisTimeStep = 0.;
   sp->feedback_data.SNe_Total = 0.;
+#endif
   sp->feedback_data.firehose_radius_stream = 0.f;
   sp->feedback_data.mass_to_launch = 0.f;
   sp->feedback_data.total_mass_kicked = 0.f;
@@ -503,7 +522,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
   ejecta_mass *= 0.5f;  // fudge factor to get stellar mass loss rate correct.  unclear why?
 
-  if (isnan(ejecta_mass)) {
+  if (!feedback_double_is_finite(ejecta_mass)) {
     for (elem = 0; elem < chem5_element_count; elem++) {
       message("ejecta_metal_mass[%d]=%g", elem, ejecta_metal_mass[elem]);
     }
@@ -788,6 +807,29 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     feedback_dust_production_condensation(sp, star_age_beg_step, feedback_props);
   }
 #endif
+
+  /* Limit the ejecta so that no gas neighbour can grow by more than
+   * max_mass_increase_factor. Neighbour j receives a fraction
+   * m_j w_j / kernel_wt_sum, with w_j <= W(0), so this holds for all of them
+   * if ejecta <= (factor - 1) kernel_wt_sum / W(0). Whatever is not ejected
+   * stays in the star, so mass is conserved (the per-particle limiter in
+   * the enrichment loop is then only a backstop, e.g. for gas enriched by
+   * several stars in one step). */
+  const double max_ejecta_mass = (feedback_props->max_mass_increase_factor -
+                                  1.) *
+                                 sp->feedback_data.kernel_wt_sum / kernel_root;
+  if (ejecta_mass > max_ejecta_mass) {
+    const double ejecta_scale =
+        (ejecta_mass > 0.) ? max_ejecta_mass / ejecta_mass : 0.;
+    ejecta_mass *= ejecta_scale;
+    sp->feedback_data.total_metal_mass *= ejecta_scale;
+    for (elem = 0; elem < chemistry_element_count; elem++) {
+      sp->feedback_data.metal_mass[elem] *= ejecta_scale;
+#if COOLING_GRACKLE_MODE >= 2
+      sp->feedback_data.delta_dust_mass[elem] *= ejecta_scale;
+#endif
+    }
+  }
 
   /* Compute the total mass to distribute */
   sp->feedback_data.mass = ejecta_mass;
