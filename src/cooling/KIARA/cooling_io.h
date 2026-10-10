@@ -115,8 +115,7 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
                                   const struct xpart *xp, float *ret) {
 
   const float u = hydro_get_physical_internal_energy(p, xp, e->cosmology);
-  const float ne = xp->cooling_data.e_frac;
-  *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p, xp);
+  *ret = cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
 }
 
 INLINE static void convert_part_cooling_time(const struct engine *e,

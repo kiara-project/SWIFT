@@ -306,6 +306,61 @@ INLINE static double cooling_convert_u_to_temp(
 }
 
 /**
+ * @brief Return 1/mu for the warm phase of the subgrid ISM.
+ *
+ * The stored species describe only the cold phase (that is what grackle
+ * evolves), so the warm phase on the EoS is assumed to be neutral atomic
+ * gas of the particle's composition: 1/mu = X_H + Y/4 (metals neglected).
+ *
+ * @param p #part data.
+ */
+INLINE static float cooling_get_warm_ISM_inverse_mu(const struct part *p) {
+
+  const float *const Z = chemistry_get_metal_mass_fraction_for_cooling(p);
+  return Z[chemistry_element_H] + 0.25f * Z[chemistry_element_He];
+}
+
+/**
+ * @brief Return the specific thermal energy (physical) of the warm subgrid
+ * ISM phase for a given temperature (neutral atomic gas).
+ *
+ * @param temperature Warm-phase temperature in K
+ * @param cooling #cooling_function_data struct.
+ * @param p #part data.
+ */
+INLINE static double cooling_convert_warm_ISM_temp_to_u(
+    const double temperature, const struct cooling_function_data *cooling,
+    const struct part *p) {
+
+  return temperature * cooling->temp_to_u_factor *
+         cooling_get_warm_ISM_inverse_mu(p);
+}
+
+/**
+ * @brief Return the temperature of the overall particle for a given physical
+ * specific energy.
+ *
+ * Outside the subgrid ISM this uses the particle's own species. In subgrid
+ * mode u = f_cold u_cold + (1 - f_cold) u_warm is dominated by the warm phase
+ * (T_cold << T_warm), so the warm-phase mu is used rather than the cold-phase
+ * species.
+ *
+ * @param u Physical specific energy
+ * @param cooling #cooling_function_data struct.
+ * @param p #part data.
+ * @param xp #xpart data.
+ */
+INLINE static double cooling_convert_u_to_particle_temp(
+    const double u, const struct cooling_function_data *cooling,
+    const struct part *p, const struct xpart *xp) {
+
+  const float mu_inv = (p->cooling_data.subgrid_temp > 0.f)
+                           ? cooling_get_warm_ISM_inverse_mu(p)
+                           : cooling_get_inverse_mu(xp);
+  return u / (cooling->temp_to_u_factor * mu_inv);
+}
+
+/**
  * @brief Compute the cold ISM fraction at a given factor above subgrid
  * threshold density
  *

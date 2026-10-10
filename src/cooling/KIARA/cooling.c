@@ -1337,8 +1337,7 @@ void cooling_do_grackle_cooling(
   /* Compute the entropy floor */
   // const double T_warm = entropy_floor_temperature(p, cosmo, floor_props);
   const double T_warm = warm_ISM_temperature(p, cooling, phys_const, cosmo);
-  const double u_warm =
-      cooling_convert_temp_to_u(T_warm, xp->cooling_data.e_frac, cooling, p, xp);
+  const double u_warm = cooling_convert_warm_ISM_temp_to_u(T_warm, cooling, p);
 
   /* Compute the ISRF */
   p->cooling_data.G0 =
@@ -1532,7 +1531,7 @@ void cooling_set_particle_subgrid_properties(
   /* Get temperature of overall particle */
   const double u = hydro_get_physical_internal_energy(p, xp, cosmo);
   const float temperature =
-      cooling_convert_u_to_temp(u, xp->cooling_data.e_frac, cooling, p, xp);
+      cooling_convert_u_to_particle_temp(u, cooling, p, xp);
 
   /* Get density */
   const double rho = hydro_get_physical_density(p, cosmo);
@@ -1540,8 +1539,7 @@ void cooling_set_particle_subgrid_properties(
   /* Subgrid model is on if particle is in the Jeans EOS regime */
   const double T_warm = warm_ISM_temperature(p, cooling, phys_const, cosmo);
   // entropy_floor_gas_temperature( rho, rho_com, cosmo, floor_props);
-  const double u_warm =
-      cooling_convert_temp_to_u(T_warm, xp->cooling_data.e_frac, cooling, p, xp);
+  const double u_warm = cooling_convert_warm_ISM_temp_to_u(T_warm, cooling, p);
 
   /* Check if it is in subgrid mode: Must be in Jeans EoS regime
    * and have nonzero cold gas */
