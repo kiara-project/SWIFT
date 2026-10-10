@@ -1559,12 +1559,16 @@ void cooling_set_particle_subgrid_properties(
           min(p->cooling_data.subgrid_temp, temperature);
     }
 
-    /* Compute subgrid density assuming pressure equilibrium */
+    /* Compute subgrid density assuming pressure equilibrium. The cold-phase
+     * energy uses the cold-phase species (reset to neutral above on entry),
+     * so the pressure balance accounts for both phases' mu. */
     const float X_H =
         chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
     const double n_H = rho * X_H / phys_const->const_proton_mass;
-    p->cooling_data.subgrid_dens = cooling_compute_subgrid_density(
-        rho, n_H, temperature, p->cooling_data.subgrid_temp, cooling);
+    const double u_subgrid = cooling_convert_temp_to_u(
+        p->cooling_data.subgrid_temp, xp->cooling_data.e_frac, cooling, p, xp);
+    p->cooling_data.subgrid_dens =
+        cooling_compute_subgrid_density(rho, n_H, u, u_subgrid, cooling);
   } else {
     /* NO: subgrid density is the actual particle's physical density */
     p->cooling_data.subgrid_dens = rho;
