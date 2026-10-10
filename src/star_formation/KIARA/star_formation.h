@@ -743,6 +743,25 @@ INLINE static void star_formation_copy_properties(
   /* Store the chemistry struct in the star particle */
   sp->chemistry_data = p->chemistry_data;
 
+#if COOLING_GRACKLE_MODE >= 2
+  /* The gas metal fractions are gas-phase only (X + Y + Z + D = 1): the star
+   * forms from all of the gas, so add the metals locked in dust back in */
+  if (p->cooling_data.dust_mass > 0.f) {
+    const float D = p->cooling_data.dust_mass / hydro_get_mass(p);
+    float Z_total = 0.f;
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      if (elem != chemistry_element_H) {
+        sp->chemistry_data.metal_mass_fraction[elem] +=
+            D * p->cooling_data.dust_mass_fraction[elem];
+      }
+      if (elem != chemistry_element_H && elem != chemistry_element_He) {
+        Z_total += sp->chemistry_data.metal_mass_fraction[elem];
+      }
+    }
+    sp->chemistry_data.metal_mass_fraction_total = Z_total;
+  }
+#endif
+
   /* Store the tracers data */
   sp->tracers_data = xp->tracers_data;
 
