@@ -1805,7 +1805,7 @@ void feedback_props_init(struct feedback_props *fp,
   fp->cold_wind_internal_energy *=
       fp->temp_to_u_factor /
       units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
-  fp->hot_wind_internal_energy =
+  fp->hot_wind_internal_energy *=
       fp->temp_to_u_factor /
       units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
