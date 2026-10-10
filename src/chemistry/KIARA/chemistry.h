@@ -358,8 +358,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
 
       /* Turn off diffusion in underdense IGM */
       if (rho_phys < cosmo->mean_density_Omega_b) {
-        //message("Setting D to ~0: id=%lld rhobar=%g rho=%g h=%g", p->id, cosmo->mean_density_Omega_b * cd->rho_to_n_cgs, rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc);
-        cpd->diffusion_coefficient = 1.e-10;
+        /* Exactly 0 (rather than a tiny value) so these particles skip the
+         * diffusion pair calculations entirely */
+        cpd->diffusion_coefficient = 0.f;
       }
     }
   } /* end Smagorinsky diffusion */
@@ -826,8 +827,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
         const float B = 2.f * v_dot_dv / dv2;
         const float C = (v2 / dv2) * (1.f - target_KE_factor);
         const float discriminant = B * B - 4.f * C;
+#ifdef FIREHOSE_DEBUG_CHECKS
         /* For logging */
         const double u_drift = hydro_get_drifted_comoving_internal_energy(p);
+#endif
 
         if (discriminant >= 0.) {
           const float alpha1 = (-B - sqrtf(discriminant)) / 2.f;
@@ -844,6 +847,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
           ch->dv[1] *= alpha;
           ch->dv[2] *= alpha;
 
+#ifdef FIREHOSE_DEBUG_CHECKS
           message(
               "FIREHOSE_KE_LIMIT p=%lld alpha=%.4g KE_ratio=%.4g v=%.4g "
               "dv=%g m=%g dm=%g u=%g du=%g "
@@ -851,18 +855,21 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
               "v[0]=%g v[1]=%g v[2]=%g",
               p->id, alpha, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du,
               ch->dv[0], ch->dv[1], ch->dv[2], p->v[0], p->v[1], p->v[2]);
+#endif
         } else {
           ch->dv[0] = 0.f;
           ch->dv[1] = 0.f;
           ch->dv[2] = 0.f;
 
+#ifdef FIREHOSE_DEBUG_CHECKS
           message(
               "FIREHOSE_KE_LIMIT p=%lld alpha=INVALID KE_ratio=%.4g v=%.4g "
               "dv=%g m=%g dm=%g u=%g du=%g "
               "dv[0]=%g dv[1]=%g dv[2]=%g "
               "v[0]=%g v[1]=%g v[2]=%g",
-              p->id, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du, 
+              p->id, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du,
               ch->dv[0], ch->dv[1], ch->dv[2], p->v[0], p->v[1], p->v[2]);
+#endif
         }
 
         /* Recompute the new updated limited values to set v_sig */

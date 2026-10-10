@@ -51,7 +51,10 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
    * are in the stream. */
   const int decoupled_i = pi->decoupled;
   const int decoupled_j = pj->decoupled;
-  if (decoupled_i && decoupled_j) return;
+
+  /* Exactly one of the pair must be in the stream. Neither is the common
+   * case, so return before doing any work. */
+  if ((decoupled_i != 0) == (decoupled_j != 0)) return;
 
   const float r = sqrtf(r2);
   const float eint_i = hydro_get_drifted_comoving_internal_energy(pi);
