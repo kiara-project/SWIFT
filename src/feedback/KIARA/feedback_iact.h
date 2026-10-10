@@ -33,14 +33,19 @@
 /**
  * @brief Set direction of stellar feedback kick
  *
+ * Random numbers are seeded with the gas particle's ID, so that each particle
+ * kicked by a star in a given step gets its own direction (or sign).
+ *
  * @param si Star particle.
  * @param pj Gas particle being kicked.
+ * @param dx Comoving vector separating the particles (si - pj), with the
+ * periodic wrapping already applied.
  * @param ti_current Current integer time value (for random numbers).
- * @param dir_flag Flag to choose direction: 0=rendom, 1=L_gas, 2=L_BH.
+ * @param dir_flag Flag to choose direction: 0=random, 1=v x a, 2=outwards.
  * @param dir Direction of kick (returned).
  */
 __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
-    const struct spart *si, const struct part *pj,
+    const struct spart *si, const struct part *pj, const float dx[3],
     const integertime_t ti_current, const int dir_flag, float *dir) {
 
   float kick_dir = 1.f;
@@ -50,9 +55,9 @@ __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
     /* Isotropic */
     case 0: {
       const double random_for_theta = random_unit_interval(
-          si->id, ti_current, random_number_isotropic_SNII_feedback_ray_theta);
+          pj->id, ti_current, random_number_isotropic_SNII_feedback_ray_theta);
       const double random_for_phi = random_unit_interval(
-          si->id, ti_current, random_number_isotropic_SNII_feedback_ray_phi);
+          pj->id, ti_current, random_number_isotropic_SNII_feedback_ray_phi);
 
       const float theta = acosf(2.f * random_for_theta - 1.f);
       const float phi = 2.f * M_PI * random_for_phi;
@@ -72,16 +77,16 @@ __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
       dir[2] = pj->gpart->a_grav[0] * pj->gpart->v_full[1] -
                pj->gpart->a_grav[1] * pj->gpart->v_full[0];
 
-      random_number = random_unit_interval(si->id, ti_current,
-                                           random_number_stellar_feedback_1);
+      random_number = random_unit_interval(
+          pj->id, ti_current, random_number_isotropic_SNII_feedback_ray_theta);
       kick_dir = (random_number > 0.5) ? 1.f : -1.f;
       break;
     }
     /* Outwards from star */
     case 2:
-      dir[0] = pj->x[0] - si->x[0];
-      dir[1] = pj->x[1] - si->x[1];
-      dir[2] = pj->x[2] - si->x[2];
+      dir[0] = -dx[0];
+      dir[1] = -dx[1];
+      dir[2] = -dx[2];
       break;
 
     default:
@@ -307,6 +312,7 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
  * @brief Kick and sometimes heat gas particle near a star,
  * if star has enough mass and energy for an ejection event.
  *
+ * @param dx Comoving vector separating the particles (si - pj).
  * @param si First (star) particle (not updated).
  * @param pj Second (gas) particle.
  * @param xpj Extra particle data
@@ -316,9 +322,9 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
  * generator
  */
 __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
-    const struct spart *si, struct part *pj, struct xpart *xpj,
-    const struct cosmology *cosmo, const struct feedback_props *fb_props,
-    const integertime_t ti_current) {
+    const float dx[3], const struct spart *si, struct part *pj,
+    struct xpart *xpj, const struct cosmology *cosmo,
+    const struct feedback_props *fb_props, const integertime_t ti_current) {
 
   if (pj->feedback_data.kick_id == si->id) {
 
@@ -341,7 +347,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     float dir[3] = {0.f, 0.f, 0.f};
     const int dir_flag = fb_props->kick_direction_flag;
     const float dirsign =
-        feedback_set_kick_direction(si, pj, ti_current, dir_flag, dir);
+        feedback_set_kick_direction(si, pj, dx, ti_current, dir_flag, dir);
 
     float norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
 
@@ -354,12 +360,15 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
           "= (%g, %g, %g); vw=%g. Randomizing direction.",
           cosmo->z, si->id, pj->id, dir[0], dir[1], dir[2],
           fabs(wind_velocity * cosmo->a_inv));
-      dir[0] = random_unit_interval(pj->id, ti_current,
-                                    random_number_stellar_feedback_1);
-      dir[1] = random_unit_interval(pj->id, ti_current,
-                                    random_number_stellar_feedback_2);
-      dir[2] = random_unit_interval(pj->id, ti_current,
-                                    random_number_stellar_feedback_3);
+      dir[0] = 2. * random_unit_interval(pj->id, ti_current,
+                                         random_number_stellar_feedback_1) -
+               1.;
+      dir[1] = 2. * random_unit_interval(pj->id, ti_current,
+                                         random_number_stellar_feedback_2) -
+               1.;
+      dir[2] = 2. * random_unit_interval(pj->id, ti_current,
+                                         random_number_stellar_feedback_3) -
+               1.;
       norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
     }
 
@@ -832,7 +841,7 @@ runner_iact_nonsym_feedback_apply(
       r2, dx, hi, hj, si, pj, xpj, cosmo, hydro_props, fb_props, ti_current);
 
   /* Do kinetic wind feedback */
-  feedback_kick_gas_around_star(si, pj, xpj, cosmo, fb_props, ti_current);
+  feedback_kick_gas_around_star(dx, si, pj, xpj, cosmo, fb_props, ti_current);
 
 #if COOLING_GRACKLE_MODE >= 2
   /* NOT USED: Compute G0 contribution from star to the gas particle in Habing
