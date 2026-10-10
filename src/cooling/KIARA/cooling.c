@@ -729,9 +729,8 @@ void cooling_copy_to_grackle(
   }
   /* subgrid ISM case, use subgrid ISM values and set floor by T_CMB */
   else {
-    /* Physical sub-grid density*/
-    species_densities[12] =
-        cooling_get_subgrid_density(p, xp) * p->cooling_data.subgrid_fcold;
+    /* Physical sub-grid (cold-cloud) density */
+    species_densities[12] = cooling_get_subgrid_density(p, xp);
     /* Physical internal energy */
     species_densities[13] = cooling_convert_temp_to_u(
         T_subgrid, xp->cooling_data.e_frac, cooling, p, xp);
@@ -1591,16 +1590,13 @@ void cooling_set_particle_subgrid_properties(
           min(p->cooling_data.subgrid_temp, temperature);
     }
 
-    /* Compute subgrid density assuming pressure equilibrium. The cold-phase
-     * energy uses the cold-phase species (reset to neutral above on entry),
-     * so the pressure balance accounts for both phases' mu. */
-    const float X_H =
-        chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
-    const double n_H = rho * X_H / phys_const->const_proton_mass;
+    /* Compute the cold-cloud density assuming pressure equilibrium. The
+     * cold-phase energy uses the cold-phase species (reset to neutral above
+     * on entry), so the pressure balance accounts for both phases' mu. */
     const double u_subgrid = cooling_convert_temp_to_u(
         p->cooling_data.subgrid_temp, xp->cooling_data.e_frac, cooling, p, xp);
     p->cooling_data.subgrid_dens =
-        cooling_compute_subgrid_density(rho, n_H, u, u_subgrid, cooling);
+        cooling_compute_subgrid_density(rho, u, u_subgrid, cooling);
   } else {
     /* NO: subgrid density is the actual particle's physical density */
     p->cooling_data.subgrid_dens = rho;

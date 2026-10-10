@@ -388,26 +388,27 @@ INLINE static double cooling_compute_cold_ISM_fraction(
  * @brief Compute the subgrid density based on pressure equilibrium in a 2-phase
  * ISM model
  *
- * We set the subgrid density based on pressure equilibrium with overall
- * particle. The pressure is set by 1-cold_ISM_frac of the mass in the warm
- * phase. Both phases are ideal gases with the same gamma, so P = (gamma-1)
- * rho u and balancing pressures in terms of u accounts for the different
- * mean molecular weights of the two phases:
- *   rho_cold = (1 - f_c) rho u / (f_c u_cold).
+ * This is the density of the cold clouds. Both phases are ideal gases with
+ * the same gamma, so P = (gamma-1) rho u and pressure equilibrium is
+ * rho_c u_c = rho_w u_w (which accounts for the different mean molecular
+ * weights of the two phases). The particle's u is the mass-weighted mix,
+ * u = f u_c + (1 - f) u_w, and the phases fill its volume,
+ * 1/rho = f/rho_c + (1 - f)/rho_w. Together these give exactly
+ *   rho_c = rho u / u_c,
+ * independently of the cold mass fraction f.
  *
  * @param rho SPH (non-subgrid) physical particle density.
- * @param n_H SPH (non-subgrid) physical particle H number density.
- * @param u SPH (non-subgrid) physical particle specific internal energy.
+ * @param u SPH (non-subgrid) physical particle specific internal energy (the
+ * two-phase mix).
  * @param u_subgrid Specific internal energy of the cold phase at the subgrid
  * temperature (from the cold-phase species).
  * @param cooling #cooling_function_data struct.
  */
 INLINE static double cooling_compute_subgrid_density(
-    const double rho, const double n_H, const double u, const double u_subgrid,
+    const double rho, const double u, const double u_subgrid,
     const struct cooling_function_data *cooling) {
 
-  const double ism_frac = cooling_compute_cold_ISM_fraction(n_H, cooling);
-  double subgrid_dens = (1.f - ism_frac) * rho * u / (ism_frac * u_subgrid);
+  double subgrid_dens = rho * u / u_subgrid;
 
   /* Cap at max value which should be something vaguely like GMC densities */
   subgrid_dens = fmin(subgrid_dens, cooling->max_subgrid_density);
