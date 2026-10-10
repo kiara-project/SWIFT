@@ -261,8 +261,6 @@ __attribute__((always_inline)) INLINE static int stars_dm_loop_is_active(
 __attribute__((always_inline)) INLINE static void feedback_init_spart(
     struct spart *sp) {
 
-  /* Default to not suppression the mass loading in the winds */
-  sp->feedback_data.eta_suppression_factor = 1.f;
   sp->feedback_data.kernel_wt_sum = 0.f;
   sp->feedback_data.wind_wt_sum = 0.f;
   sp->feedback_data.ngb_mass = 0.f;
@@ -352,7 +350,6 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_spart(
   sp->feedback_data.wind_velocity = 0.f;
   sp->feedback_data.physical_energy_reservoir = 0.;
   sp->feedback_data.N_launched = 0;
-  sp->feedback_data.eta_suppression_factor = 1.f;
 }
 
 /**
@@ -615,7 +612,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
    * Compute the mass loading and energy reservoirs for the stellar feedback.
    * Mass loading will be limited by the physical energy available from chem5
    * directly at each step. Later, when computing the probability to kick
-   * a particle, the mass_to_launch will be limited by eta_suppression_factor.
+   * a particle, the mass_to_launch will be limited by
+   * max_frac_of_kernel_to_launch.
    */
   /* Boost wind speed and/or mass loading based on metallicity, which
    * governs photon energy output. Done before setting the total wind mass,

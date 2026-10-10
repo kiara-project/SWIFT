@@ -227,9 +227,6 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
   /* Total mass to launch for this star particle */
   float mass_to_launch = si->feedback_data.mass_to_launch;
 
-  /* Suppress based on the input parameter file */
-  mass_to_launch *= si->feedback_data.eta_suppression_factor;
-
   /* Estimated number of particles to kick out of the kernel */
   const float mass_frac_to_launch = mass_to_launch / ngb_mass;
 

@@ -245,12 +245,6 @@ struct feedback_props {
   /*! The minimum galaxy stellar mass in internal units */
   float minimum_galaxy_stellar_mass;
 
-  /*! The number of star particles when a galaxy is considered resolved */
-  int galaxy_particle_resolution_count;
-
-  /*! Floor for the eta suppression factor */
-  float eta_suppression_factor_floor;
-
   /*! Direction to launch wind: 0=random, 1=v x a, 2=outwards */
   float kick_direction_flag;
 

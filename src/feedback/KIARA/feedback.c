@@ -1741,12 +1741,6 @@ void feedback_props_init(struct feedback_props *fp,
       params, "KIARAFeedback:minimum_galaxy_stellar_mass_Msun");
   fp->minimum_galaxy_stellar_mass *= fp->solar_mass_to_mass;
 
-  fp->galaxy_particle_resolution_count = parser_get_opt_param_int(
-      params, "KIARAFeedback:galaxy_particle_resolution_count", 0);
-
-  fp->eta_suppression_factor_floor = parser_get_opt_param_float(
-      params, "KIARAFeedback:eta_suppression_factor_floor", 0.2f);
-
   fp->kick_direction_flag = parser_get_opt_param_double(
       params, "KIARAFeedback:kick_direction_flag", 1);
 
