@@ -1114,6 +1114,25 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
   }
 
   if (cd->use_firehose_wind_model) {
+    /* Decoupled winds have no hydro time-step: limit them to a Courant step
+     * on their speed relative to the ambient gas (plus their own sound
+     * speed), so that they do not cross many smoothing lengths, and so skip
+     * the recoupling checks and firehose mixing, in a single step. */
+    if (p->decoupled == 1) {
+      const struct chemistry_part_data *ch = &p->chemistry_data;
+      float dv2 = 0.f;
+      for (int k = 0; k < 3; k++) {
+        const float dv_k = p->v[k] - ch->v_ambient[k];
+        dv2 += dv_k * dv_k;
+      }
+      const float h = kernel_gamma * cosmo->a * p->h;
+      const float v_sig =
+          sqrtf(dv2) * cosmo->a_inv + hydro_get_physical_soundspeed(p, cosmo);
+      if (v_sig > 0.f) {
+        dt_chem = min(dt_chem, 2.f * hydro_props->CFL_condition * h / v_sig);
+      }
+    }
+
     /* About-to-recouple winds need the hydro time-step. */
     if (p->decoupled == 2) {
       const float CFL_condition = hydro_props->CFL_condition;
