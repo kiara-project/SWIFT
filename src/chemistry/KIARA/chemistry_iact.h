@@ -24,6 +24,8 @@
  * @brief Smooth metal interaction functions following the KIARA model.
  */
 
+#include "cosmology.h"
+#include "timeline.h"
 #include "timestep_sync_part.h"
 
 #include <assert.h>
@@ -306,19 +308,22 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
  * @param pi Wind particle.
  * @param pj Ambient particle.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current Current integer time for seeding random number generator
+ * @param ti_current Current integer time.
  * @param cd #chemistry_global_data containing chemistry information.
  * @param v2 velocity difference squared between i and j.
+ * @param cosmo The #cosmology.
+ * @param with_cosmology Are we running with cosmology?
  *
  */
 __attribute__((always_inline)) INLINE static float
 firehose_compute_mass_exchange(const float r2, const float dx[3],
                                const float hi, const float hj,
                                const struct part *pi, const struct part *pj,
-                               const float time_base,
+                               const double time_base,
                                const integertime_t ti_current,
                                const struct chemistry_global_data *cd,
-                               float *v2, const struct cosmology *cosmo) {
+                               float *v2, const struct cosmology *cosmo,
+                               const int with_cosmology) {
 
   const int i_stream = pi->decoupled;
   const int j_stream = pj->decoupled;
@@ -328,11 +333,24 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   if (i_stream && j_stream) return 0.f;
   if (!i_stream && !j_stream) return 0.f;
 
-  const double dt_i = get_timestep(pi->time_bin, time_base);
-  const double dt_j = get_timestep(pj->time_bin, time_base);
-
   /* Must be a timestep for both */
-  if (dt_i <= 0. || dt_j <= 0.) return 0.f;
+  if (pi->time_bin <= 0 || pj->time_bin <= 0) return 0.f;
+
+  /* The exchange is only done when both particles are active (symmetric
+   * force-loop interaction), i.e. once per step of whichever has the longer
+   * time-step, so integrate over that step. Use the physical time over the
+   * step that just ended, as in chemistry_end_force (with cosmology the
+   * integer time-line is in ln(a), not time). */
+  const timebin_t bin_max = max(pi->time_bin, pj->time_bin);
+  double dt;
+  if (with_cosmology) {
+    const integertime_t ti_step = get_integer_timestep(bin_max);
+    const integertime_t ti_begin =
+        get_integer_time_begin(ti_current - 1, bin_max);
+    dt = cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+  } else {
+    dt = get_timestep(bin_max, time_base);
+  }
 
   /* For stream particle, make sure the stream radius > 0 */
   if (i_stream && pi->chemistry_data.radius_stream <= 0.f) return 0.f;
@@ -374,10 +392,8 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   float c_amb;
   float radius_stream;
   float mixing_layer_time;
-  double dt = 0.;
 
   if (i_stream) {
-    dt = dt_i;
     mi = hydro_get_mass(pi);
     const float h_inv = 1. / hi;
     const float ui = r * h_inv;
@@ -393,10 +409,7 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
     c_amb = sqrtf(pi->chemistry_data.u_ambient * gamma_gamma_minus_1);
     radius_stream = pi->chemistry_data.radius_stream;
     mixing_layer_time = mixing_layer_time_i;
-  }
-
-  if (j_stream) { /* j must be the stream here */
-    dt = dt_j;
+  } else { /* j must be the stream here */
     mi = hydro_get_mass(pj);
     const float h_inv = 1. / hj;
     const float ui = r * h_inv;
@@ -415,7 +428,7 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   }
 
   /* This should never happen. */
-  if (dt == 0.) return 0.f;
+  if (dt <= 0.) return 0.f;
 
   double dm = 0.;
   double t_cool_mix = 1.e10 * dt;
@@ -485,16 +498,17 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
  * @param pi Wind particle.
  * @param pj Ambient particle.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current Current integer time for seeding random number generator.
+ * @param ti_current Current integer time.
  * @param cd #chemistry_global_data containing chemistry information.
+ * @param cosmo The #cosmology.
+ * @param with_cosmology Are we running with cosmology?
  *
  */
 __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part *pi, struct part *pj, 
-    const float time_base, const integertime_t ti_current,
-    const struct chemistry_global_data *cd,
-    const struct cosmology *cosmo) {
+    struct part *pi, struct part *pj, const double time_base,
+    const integertime_t ti_current, const struct chemistry_global_data *cd,
+    const struct cosmology *cosmo, const int with_cosmology) {
 
   /* Both particles must be within each others smoothing lengths */
   const float Hi = kernel_gamma * hi;
@@ -517,9 +531,10 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 
   /* Compute the amount of mass mixed between stream particle and ambient gas */
   float v2 = 0.f;
-  const float dm = firehose_compute_mass_exchange(r2, dx, hi, hj, pi, pj, 
-                                                  time_base, ti_current,
-                                                  cd, &v2, cosmo);
+  const float dm =
+      firehose_compute_mass_exchange(r2, dx, hi, hj, pi, pj, time_base,
+                                     ti_current, cd, &v2, cosmo,
+                                     with_cosmology);
   float delta_m = fabs(dm);
   if (delta_m <= 0.f) return;
 
@@ -679,7 +694,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, struct part *restrict pj, const float a,
-    const float H, const float time_base, const integertime_t t_current,
+    const float H, const double time_base, const integertime_t t_current,
     const struct cosmology *cosmo, const int with_cosmology,
     const struct chemistry_global_data *cd) {
 
@@ -687,7 +702,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     if (cd->use_firehose_wind_model) {
       /* If in wind mode, do firehose wind diffusion */
       firehose_evolve_particle_sym(r2, dx, hi, hj, pi, pj, time_base,
-                                   t_current, cd, cosmo);
+                                   t_current, cd, cosmo, with_cosmology);
     }
 
     return;
@@ -784,7 +799,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, const struct part *restrict pj, const float a,
-    const float H, const float time_base, const integertime_t t_current,
+    const float H, const double time_base, const integertime_t t_current,
     const struct cosmology *cosmo, const int with_cosmology,
     const struct chemistry_global_data *cd) {
 
