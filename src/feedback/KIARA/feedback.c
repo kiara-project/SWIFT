@@ -1259,6 +1259,15 @@ void feedback_prepare_interpolation_tables(
       if (sniilm[j] < fb_props->tables.SNLM[i]) break;
     }
 
+    /* Evaluate the yield fractions within the tabulated masses (0.05-40
+     * Msun): above the most massive tabulated star, keep its fractional
+     * yields rather than extrapolating in log m, which drives the ejected
+     * fraction to zero while the unprocessed fraction keeps growing. */
+    const double lm_hi =
+        fmin(fmax(fb_props->tables.SNLM[i], sniilm[NMSN - 1]), sniilm[0]);
+    const double lm_lo =
+        fmin(fmax(fb_props->tables.SNLM[i - 1], sniilm[NMSN - 1]), sniilm[0]);
+
     /* For this mass, loop over metallicity values */
     for (l = 0; l < NZSN; l++) {
       if (l == 0) {
@@ -1283,14 +1292,17 @@ void feedback_prepare_interpolation_tables(
       }
 
       /* This is where we integrate up the IMF */
-      if (m[i] > m_l) { /* H/He change from stars that go SN */
+      /* Unprocessed and total ejected mass. Stars above M_u2 collapse
+       * directly to black holes and eject nothing, as for the metals below,
+       * so that ejected = unprocessed + sum of the element yields. */
+      if (m[i] > m_l && m[i] < fb_props->M_u2) {
         for (k = 1; k < 3; k++) {
           snii2_hi =
               LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1], sniilm[j2],
-                                   snii[k][l][j2], fb_props->tables.SNLM[i]);
+                                   snii[k][l][j2], lm_hi);
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
                                           sniilm[j2], snii[k][l][j2],
-                                          fb_props->tables.SNLM[i - 1]);
+                                          lm_lo);
           if (snii2_hi < 0.) snii2_hi = 0.;
           if (snii2_lo < 0.) snii2_lo = 0.;
           fb_props->tables.SN2E[SN2E_idx(k, l, i)] =
@@ -1311,10 +1323,10 @@ void feedback_prepare_interpolation_tables(
         for (k = 3; k < chem5_NXSN; k++) {
           snii2_hi =
               LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1], sniilm[j2],
-                                   snii[k][l][j2], fb_props->tables.SNLM[i]);
+                                   snii[k][l][j2], lm_hi);
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
                                           sniilm[j2], snii[k][l][j2],
-                                          fb_props->tables.SNLM[i - 1]);
+                                          lm_lo);
           if (snii2_hi < 0.) snii2_hi = 0.;
           if (snii2_lo < 0.) snii2_lo = 0.;
           fb_props->tables.SN2E[SN2E_idx(k, l, i)] =
@@ -1340,10 +1352,10 @@ void feedback_prepare_interpolation_tables(
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
         snii2_hi =
             LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
-                                 snii[0][l][j2], fb_props->tables.SNLM[i]);
+                                 snii[0][l][j2], lm_hi);
         snii2_lo =
             LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
-                                 snii[0][l][j2], fb_props->tables.SNLM[i - 1]);
+                                 snii[0][l][j2], lm_lo);
         if (snii2_hi < 0.) snii2_hi = 0.;
         if (snii2_lo < 0.) snii2_lo = 0.;
         fb_props->tables.SN2R[SN2R_idx(l, i)] =
