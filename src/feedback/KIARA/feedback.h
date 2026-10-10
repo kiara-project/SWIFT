@@ -105,11 +105,12 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
       dt_part = get_timestep(p->time_bin, e->time_base);
     }
 
-    /* Decrement cooling shutoff time */
+    /* Decrement cooling shutoff time. Its expiry only turns cooling back
+     * on: a particle that is also decoupled (e.g. a BH wind) stays
+     * decoupled until its own recoupling criteria below are met. */
     if (p->feedback_data.cooling_shutoff_delay_time > 0.f) {
       p->feedback_data.cooling_shutoff_delay_time -= dt_part;
       if (p->feedback_data.cooling_shutoff_delay_time < 0.f) {
-        feedback_recouple_set_flags(p, cosmo);
         p->feedback_data.cooling_shutoff_delay_time = 0.f;
       }
     }
