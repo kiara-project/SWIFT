@@ -77,7 +77,9 @@ struct chemistry_global_data {
   /*! The minimum time step size in internal units for diffusion */
   float time_step_min;
 
-  /*! A limiter for how much Z/Z_init can be transferred (~0.25) */
+  /*! No longer used: diffusion is kept stable by the time-step and a cap on
+   * D, which conserve metal mass (a fractional limiter did not). Still read
+   * so existing parameter files work. */
   float max_fractional_Z_transfer;
 
   /*! The metal diffusion coefficient (Smag ~0.23) */
@@ -175,6 +177,11 @@ struct chemistry_part_data {
 
   /*! Variation of the metal mass by element */
   float dZ_dt[chemistry_element_count];
+
+#if COOLING_GRACKLE_MODE >= 2
+  /*! Variation of the dust mass (per unit gas mass) by element */
+  float dZ_dust_dt[chemistry_element_count];
+#endif
 
   /*! Velocity shear tensor in internal and physical units. */
   float shear_tensor[3][3];

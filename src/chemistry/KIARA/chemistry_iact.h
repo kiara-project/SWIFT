@@ -693,6 +693,54 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 }
 
 /**
+ * @brief Pair coefficient for metal diffusion, following Eq. 2.14 of
+ * Monaghan, Huppert, & Worster (2006):
+ *
+ *   dZ_i/dt = sum_j m_j * coef_ij * (Z_i - Z_j),
+ *   coef_ij = 4 D_i D_j / (D_i + D_j) / (rho_i rho_j) * <(1/r) dW/dr>,
+ *
+ * where <(1/r) dW/dr> is the average over the kernels of i and j, so coef_ij
+ * is symmetric and metal mass is conserved pairwise. Returned with the
+ * kernel term in comoving units (h and r comoving); the conversion to
+ * physical units is applied in chemistry_end_force.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param cosmo The #cosmology.
+ */
+__attribute__((always_inline)) INLINE static float
+runner_iact_diffusion_pair_coefficient(const float r2, const float hi,
+                                       const float hj,
+                                       const struct part *restrict pi,
+                                       const struct part *restrict pj,
+                                       const struct cosmology *cosmo) {
+
+  const float Di = pi->chemistry_data.diffusion_coefficient;
+  const float Dj = pj->chemistry_data.diffusion_coefficient;
+  const float rhoi = hydro_get_physical_density(pi, cosmo);
+  const float rhoj = hydro_get_physical_density(pj, cosmo);
+
+  const float r = sqrtf(r2);
+  const float r_inv = r > 0.f ? 1.f / r : 0.f;
+
+  /* Kernel term (1/r) dW/dr for each particle, including the h factors */
+  const float hi_inv = 1.f / hi;
+  const float hj_inv = 1.f / hj;
+  float wi, dwi_dx, wj, dwj_dx;
+  kernel_deval(r * hi_inv, &wi, &dwi_dx);
+  kernel_deval(r * hj_inv, &wj, &dwj_dx);
+  const float dWi_r = dwi_dx * pow_dimension_plus_one(hi_inv) * r_inv;
+  const float dWj_r = dwj_dx * pow_dimension_plus_one(hj_inv) * r_inv;
+  const float dW_r = 0.5f * (dWi_r + dWj_r);
+
+  const float D_ij = 4.f * Di * Dj / (Di + Dj);
+  return D_ij * dW_r / (rhoi * rhoj);
+}
+
+/**
  * @brief do metal diffusion computation in the <FORCE LOOP>
  * (symmetric version)
  *
@@ -733,55 +781,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
   /* No need to diffuse if both particles are not diffusing. */
   if (chj->diffusion_coefficient > 0.f && chi->diffusion_coefficient > 0.f) {
 
-    /* Get mass */
     const float mj = hydro_get_mass(pj);
     const float mi = hydro_get_mass(pi);
-    const float rhoj = hydro_get_physical_density(pj, cosmo);
-    const float rhoi = hydro_get_physical_density(pi, cosmo);
 
-    float wi, wj, dwi_dx, dwj_dx;
+    /* Pair flux factor (harmonic mean of D, symmetrised kernel term) */
+    const float coef = runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj,
+                                                              cosmo);
+    const float coef_i = coef * mj;
+    const float coef_j = coef * mi;
 
-    /* Get r */
-    const float r = sqrtf(r2);
-
-    /* part j */
-    /* Get the kernel for hj */
-    const float hj_inv = 1.0f / hj;
-
-    /* Compute the kernel function for pj */
-    const float xj = r * hj_inv;
-    kernel_deval(xj, &wj, &dwj_dx);
-
-    /* part i */
-    /* Get the kernel for hi */
-    const float hi_inv = 1.0f / hi;
-
-    /* Compute the kernel function for pi */
-    const float xi = r * hi_inv;
-    kernel_deval(xi, &wi, &dwi_dx);
-
-    /* Get 1/r */
-    const float r_inv = r > 0.f ? 1.f / r : 0.f;
-
-    const float wi_dr = dwi_dx * r_inv;
-    const float wj_dr = dwj_dx * r_inv;
-
-    const float mj_dw_r = mj * wi_dr;
-    const float mi_dw_r = mi * wj_dr;
-
-    const float rhoij_inv = 1.f / (rhoi * rhoj);
-
-    /**
-     * Compute the diffusion following Eq. 2.14
-     * from Monaghan, Huppert, & Worster (2006).
-     */
-    float coef = 4.f * chi->diffusion_coefficient * chj->diffusion_coefficient;
-    coef /= chi->diffusion_coefficient + chj->diffusion_coefficient;
-
-    const float coef_i = coef * mj_dw_r * rhoij_inv;
-    const float coef_j = coef * mi_dw_r * rhoij_inv;
-
-    /* Compute the time derivative of metals due to diffusion */
+    /* Compute the time derivative of metals due to diffusion. The pair term
+     * is symmetric, so mi dZi/dt = -mj dZj/dt and metal mass is conserved. */
     const float dZ_ij_tot =
         chi->metal_mass_fraction_total - chj->metal_mass_fraction_total;
     chi->dZ_dt_total += coef_i * dZ_ij_tot;
@@ -793,6 +803,22 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
       chi->dZ_dt[elem] += coef_i * dZ_ij;
       chj->dZ_dt[elem] -= coef_j * dZ_ij;
     }
+
+#if COOLING_GRACKLE_MODE >= 2
+    /* Diffuse dust as a passive scalar per element (dust mass in the element
+     * per unit gas mass), with the same coefficient as the metals */
+    const float Di = pi->cooling_data.dust_mass / mi;
+    const float Dj = pj->cooling_data.dust_mass / mj;
+    if (Di > 0.f || Dj > 0.f) {
+      for (int elem = chemistry_element_C; elem < chemistry_element_count;
+           elem++) {
+        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[elem] -
+                             Dj * pj->cooling_data.dust_mass_fraction[elem];
+        chi->dZ_dust_dt[elem] += coef_i * dZd_ij;
+        chj->dZ_dust_dt[elem] -= coef_j * dZd_ij;
+      }
+    }
+#endif
   }
 }
 
@@ -828,42 +854,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
   struct chemistry_part_data *chi = &pi->chemistry_data;
   const struct chemistry_part_data *chj = &pj->chemistry_data;
 
-  if (chj->diffusion_coefficient > 0 && chi->diffusion_coefficient > 0) {
+  if (chj->diffusion_coefficient > 0.f && chi->diffusion_coefficient > 0.f) {
 
-    /* Get mass */
     const float mj = hydro_get_mass(pj);
-    const float rhoj = hydro_get_physical_density(pj, cosmo);
-    const float rhoi = hydro_get_physical_density(pi, cosmo);
 
-    float wi, dwi_dx;
-
-    /* Get r */
-    const float r = sqrtf(r2);
-
-    /* part i */
-    /* Get the kernel for hi */
-    const float hi_inv = 1.0f / hi;
-
-    /* Compute the kernel function for pi */
-    const float xi = r * hi_inv;
-    kernel_deval(xi, &wi, &dwi_dx);
-
-    /* Get 1/r */
-    const float r_inv = 1.f / sqrtf(r2);
-    const float wi_dr = dwi_dx * r_inv;
-
-    const float mj_dw_r = mj * wi_dr;
-
-    const float rhoij_inv = 1.f / (rhoi * rhoj);
-
-    /**
-     * Compute the diffusion following Eq. 2.14
-     * from Monaghan, Huppert, & Worster (2006).
-     */
-    float coef = 4.f * chi->diffusion_coefficient * chj->diffusion_coefficient;
-    coef /= chi->diffusion_coefficient + chj->diffusion_coefficient;
-
-    const float coef_i = coef * mj_dw_r * rhoij_inv;
+    /* Same pair term as the symmetric case, so the flux matches */
+    const float coef = runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj,
+                                                              cosmo);
+    const float coef_i = coef * mj;
 
     /* Compute the time derivative */
     const float dZ_ij_tot =
@@ -875,6 +873,19 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
           chi->metal_mass_fraction[elem] - chj->metal_mass_fraction[elem];
       chi->dZ_dt[elem] += coef_i * dZ_ij;
     }
+
+#if COOLING_GRACKLE_MODE >= 2
+    const float Di = pi->cooling_data.dust_mass / hydro_get_mass(pi);
+    const float Dj = pj->cooling_data.dust_mass / mj;
+    if (Di > 0.f || Dj > 0.f) {
+      for (int elem = chemistry_element_C; elem < chemistry_element_count;
+           elem++) {
+        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[elem] -
+                             Dj * pj->cooling_data.dust_mass_fraction[elem];
+        chi->dZ_dust_dt[elem] += coef_i * dZd_ij;
+      }
+    }
+#endif
   }
 }
 
