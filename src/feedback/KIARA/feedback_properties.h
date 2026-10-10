@@ -165,6 +165,10 @@ struct feedback_props {
   /*! Conversion factor from temperature to internal energy */
   double temp_to_u_factor;
 
+  /*! Conversion factor from temperature (K) to internal energy for mu = 1
+   * (multiply by 1/mu) */
+  double temp_to_u_factor_mu1;
+
   /*! Conversion factor from km/s to cm/s */
   double kms_to_cms;
 

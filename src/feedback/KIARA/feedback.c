@@ -1526,6 +1526,9 @@ void feedback_props_init(struct feedback_props *fp,
   const double m_p = phys_const->const_proton_mass;
   const double mu = hydro_props->mu_ionised;
   fp->temp_to_u_factor = k_B / (mu * hydro_gamma_minus_one * m_p);
+  fp->temp_to_u_factor_mu1 =
+      k_B / (hydro_gamma_minus_one * m_p *
+             units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE));
 
   /* Calculate conversion factor from rho to n_H
    * Note this assumes primoridal abundance */

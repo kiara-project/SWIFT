@@ -656,40 +656,36 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       if (pj->cooling_data.subgrid_temp > 0.f &&
           pj->cooling_data.subgrid_fcold > 0.f) {
 
-        /* 0.8125 is mu for a fully neutral gas with XH=0.75;
+        /* 0.8125 is 1/mu for a fully neutral gas with XH=0.75;
          * approximate but good enough */
-        const double u_cold_phys =
-            0.8125 * pj->cooling_data.subgrid_temp * fb_props->temp_to_u_factor;
+        const double u_cold_phys = 0.8125 * pj->cooling_data.subgrid_temp *
+                                   fb_props->temp_to_u_factor_mu1;
 
-        const double delta_u_ISM_phys = current_u_phys - u_cold_phys;
-        double f_evap = 0.;
-
+        /* The particle's u is the mass-weighted mix of the two phases,
+         * u = f_c u_cold + (1 - f_c) u_warm, so recover u_warm from it.
+         * Turning a mass fraction df of cold gas into warm gas costs
+         * df (u_warm - u_cold) per unit particle mass. */
+        const double f_c = pj->cooling_data.subgrid_fcold;
+        const double u_warm_phys =
+            (f_c < 1.) ? (current_u_phys - f_c * u_cold_phys) / (1. - f_c)
+                       : current_u_phys;
+        const double delta_u_ISM_phys = u_warm_phys - u_cold_phys;
         const double du_phys = new_u_phys - current_u_phys;
 
-        /* Use extra heat to move off of the ISM */
-        if (du_phys > 0. && delta_u_ISM_phys >= 0.) {
+        /* Use the extra heat to evaporate cold gas, at most all of it. The
+         * heat stays in the particle (new_u_phys), which is the mixture
+         * energy after the evaporation. */
+        if (du_phys > 0.) {
           const double u_phys_tol =
               fb_props->SNIa_add_heat_to_ISM_tolerance * current_u_phys;
 
+          double f_evap = f_c;
           if (delta_u_ISM_phys > u_phys_tol) {
-            f_evap = du_phys / delta_u_ISM_phys;
-            f_evap = min(f_evap, 1.0);
-          } else {
-            f_evap = 1.0;
+            f_evap = min(du_phys / delta_u_ISM_phys, f_c);
           }
 
-          /* Clip values in case of overflow */
           if (f_evap > 0.) {
-            pj->cooling_data.subgrid_fcold *= 1. - f_evap;
-
-            const double u_remaining_phys = du_phys - f_evap * delta_u_ISM_phys;
-            new_u_phys = current_u_phys + max(u_remaining_phys, 0.);
-
-            /* Limit internal energy increase here as well */
-            if (new_u_phys > max_new_u_phys) {
-              new_u_phys = max_new_u_phys;
-              pj->feedback_data.heating_limiter_count++;
-            }
+            pj->cooling_data.subgrid_fcold -= f_evap;
 
             if (pj->cooling_data.subgrid_fcold <= 0.f) {
               pj->cooling_data.subgrid_temp = 0.f;
