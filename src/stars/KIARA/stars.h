@@ -69,16 +69,21 @@ __attribute__((always_inline)) INLINE static float stars_compute_timestep(
 
   if (star_age > stars_properties->age_threshold_unlimited) return FLT_MAX;
 
+  /* The time-step scales with the star's age, floored by min_time_step (so
+   * it does not vanish at birth), and is then capped by the maximal step for
+   * young or old stars, which takes precedence over the floor */
   float dt_star = FLT_MAX;
   if (star_age < stars_properties->age_threshold) {
-    dt_star = min(star_age * stars_properties->time_step_factor_young,
-                  stars_properties->max_time_step_young);
+    dt_star = fminf(fmaxf(star_age * stars_properties->time_step_factor_young,
+                          stars_properties->min_time_step),
+                    stars_properties->max_time_step_young);
   } else {
-    dt_star = min(star_age * stars_properties->time_step_factor_old,
-                  stars_properties->max_time_step_old);
+    dt_star = fminf(fmaxf(star_age * stars_properties->time_step_factor_old,
+                          stars_properties->min_time_step),
+                    stars_properties->max_time_step_old);
   }
 
-  return max(stars_properties->min_time_step, dt_star);
+  return dt_star;
 }
 
 /**
@@ -306,12 +311,7 @@ INLINE static void stars_get_luminosities(
   const float Z =
       chemistry_get_star_total_metal_mass_fraction_for_luminosity(sp);
   const float mass = sp->mass_init;
-  float age;
-  if (with_cosmology)
-    age = cosmology_get_delta_time_from_scale_factors(
-        cosmo, sp->birth_scale_factor, cosmo->a);
-  else
-    age = time - sp->birth_time;
+  const float age = stars_compute_age(sp, cosmo, time, with_cosmology);
 
   /* Convert to the units of the tables */
   const float mass_Msun = mass / phys_const->const_solar_mass;
