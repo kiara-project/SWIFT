@@ -600,10 +600,8 @@ void feedback_get_ejecta_from_star_particle(
         *ejecta_energy = SWn * fb_props->E_sw * pow(z / fb_props->Z_mf, 0.8);
       }
 
-      /* Needed for dust model within Grackle; for now treat PopIII SNe
-       * same as PopI/II
-       */
-      *N_SNe = SWn;
+      /* Only stars above M_u2 die here; they collapse directly to black
+       * holes, so they are not counted as SNe */
     }
   } else {
     if (tm2 > fb_props->M_l2 || fb_first == 1) {
@@ -615,10 +613,10 @@ void feedback_get_ejecta_from_star_particle(
         *ejecta_energy = SWn * fb_props->E_sw;
         *ejecta_energy += sp->mass_init * SNII_ENE;
       }
-      /* Needed for dust model within Grackle; for now
-       * treat PopIII SNe same as PopI/II
-       */
-      *N_SNe = SNn + SWn;
+      /* Number of SNII (stars of M_l2-M_u2; SW_R counts all stars above
+       * M_l2, which would count these twice). Used for the wind energy and
+       * the dust model within Grackle. */
+      *N_SNe = SNn;
     }
 
     for (k = 0; k < chem5_element_count; k++) {
