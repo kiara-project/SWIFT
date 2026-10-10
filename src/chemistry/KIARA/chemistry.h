@@ -83,8 +83,8 @@ __attribute__((always_inline)) INLINE static void logger_windprops_printprops(
       hydro_get_drifted_comoving_internal_energy(pi) * u_convert,
       pi->rho * rho_convert, pi->chemistry_data.radius_stream * length_convert,
       pi->chemistry_data.metal_mass_fraction_total,
-      pi->chemistry_data.decoupling_delay_time * cd->time_to_Myr,
-      pi->chemistry_data.number_of_times_decoupled,
+      pi->feedback_data.decoupling_delay_time * cd->time_to_Myr,
+      pi->feedback_data.number_of_times_decoupled,
       pi->chemistry_data.rho_ambient * cd->rho_to_n_cgs * cosmo->a3_inv,
       pi->chemistry_data.u_ambient * cosmo->a_factor_internal_energy /
           cd->temp_to_u_factor,

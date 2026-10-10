@@ -183,10 +183,9 @@ INLINE static int chemistry_write_bparticles(const struct bpart *bparts,
       "Masses of the BH particles in a given element");
   num++;
 
-  list[num] = io_make_output_field("MetalMasses", FLOAT,
-                                   chemistry_element_count, UNIT_CONV_MASS, 0.f,
-                                   bparts, chemistry_data.metal_mass_total,
-                                   "Masses of the BH particles in a metals");
+  list[num] = io_make_output_field("MetalMasses", FLOAT, 1, UNIT_CONV_MASS,
+                                   0.f, bparts, chemistry_data.metal_mass_total,
+                                   "Masses of the BH particles in metals");
   num++;
 
   return num;
