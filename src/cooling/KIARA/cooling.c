@@ -1140,11 +1140,12 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
         p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
       }
 
-      /* Make sure that X + Y + Z = 1 */
+      /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
       const float Y_He =
           p->chemistry_data.metal_mass_fraction[chemistry_element_He];
       p->chemistry_data.metal_mass_fraction[chemistry_element_H] =
-          1.f - Y_He - p->chemistry_data.metal_mass_fraction_total;
+          1.f - Y_He - p->chemistry_data.metal_mass_fraction_total -
+          p->cooling_data.dust_mass / hydro_get_mass(p);
 
       /* Make sure H fraction does not go out of bounds */
       if (p->chemistry_data.metal_mass_fraction[chemistry_element_H] > 1.f ||
@@ -1278,10 +1279,11 @@ void cooling_init_chemistry(
     p->chemistry_data.metal_mass_fraction[chemistry_element_He] =
         cooling->chemistry.SolarAbundances[0];
     /* Since He is fixed at SolarAbundances[0], make sure the hydrogen
-       fraction makes sense, i.e. X_H + Y_He + Z = 1. */
+       fraction makes sense, i.e. X_H + Y_He + Z + D = 1. */
     p->chemistry_data.metal_mass_fraction[chemistry_element_H] =
         1.f - p->chemistry_data.metal_mass_fraction[chemistry_element_He] -
-        p->chemistry_data.metal_mass_fraction_total;
+        p->chemistry_data.metal_mass_fraction_total -
+        p->cooling_data.dust_mass / p->mass;
 
     if (p->chemistry_data.metal_mass_fraction[chemistry_element_H] > 1.f ||
         p->chemistry_data.metal_mass_fraction[chemistry_element_H] < 0.f) {

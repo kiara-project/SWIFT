@@ -989,10 +989,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
         co->dust_mass = 0.f;
       }
 
-      /* Make sure that X + Y + Z = 1 */
+      /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
       const float Y_He = ch->metal_mass_fraction[chemistry_element_He];
       ch->metal_mass_fraction[chemistry_element_H] =
-          1.f - Y_He - ch->metal_mass_fraction_total;
+          1.f - Y_He - ch->metal_mass_fraction_total - co->dust_mass / m;
 
       /* Make sure H fraction does not go out of bounds */
       if (ch->metal_mass_fraction[chemistry_element_H] > 1.f ||
@@ -1133,10 +1133,13 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     }
   }
 
-  /* Make sure that X + Y + Z = 1 */
+  /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
   const float Y_He = ch->metal_mass_fraction[chemistry_element_He];
-  ch->metal_mass_fraction[chemistry_element_H] =
-      1.f - Y_He - ch->metal_mass_fraction_total;
+  float X_H = 1.f - Y_He - ch->metal_mass_fraction_total;
+#if COOLING_GRACKLE_MODE >= 2
+  X_H -= p->cooling_data.dust_mass / hydro_get_mass(p);
+#endif
+  ch->metal_mass_fraction[chemistry_element_H] = X_H;
 
   /* Make sure H fraction does not go out of bounds */
   if (ch->metal_mass_fraction[chemistry_element_H] > 1.f ||

@@ -720,26 +720,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     }
   }
 
-  /* Make sure that X + Y + Z = 1 */
-  const float Y_He =
-      pj->chemistry_data.metal_mass_fraction[chemistry_element_He];
-  const float Z = pj->chemistry_data.metal_mass_fraction_total;
-  const float X_H = 1.f - Y_He - Z;
-
-  if (X_H < 0.f || X_H > 1.f) {
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      warning("\telem[%d] is %g", elem,
-              pj->chemistry_data.metal_mass_fraction[elem]);
-    }
-
-    error(
-        "Hydrogen fraction exeeds unity or is negative for"
-        " particle id=%lld due to stellar feedback.",
-        pj->id);
-  }
-
-  pj->chemistry_data.metal_mass_fraction[chemistry_element_H] = X_H;
-
   /* Compute kernel-smoothed contribution to number of SNe going off
    * this timestep */
   pj->feedback_data.SNe_ThisTimeStep +=
@@ -797,6 +777,28 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       pj->cooling_data.dust_mass_fraction[elem] = 0.f;
     }
   }
+
+  /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only). Done after the
+   * dust ejecta above so that the updated dust mass is used. */
+  const float Y_He =
+      pj->chemistry_data.metal_mass_fraction[chemistry_element_He];
+  const float Z = pj->chemistry_data.metal_mass_fraction_total;
+  const float D = pj->cooling_data.dust_mass * new_mass_inv;
+  const float X_H = 1.f - Y_He - Z - D;
+
+  if (X_H < 0.f || X_H > 1.f) {
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      warning("\telem[%d] is %g", elem,
+              pj->chemistry_data.metal_mass_fraction[elem]);
+    }
+
+    error(
+        "Hydrogen fraction exeeds unity or is negative for"
+        " particle id=%lld due to stellar feedback (dust fraction %g).",
+        pj->id, D);
+  }
+
+  pj->chemistry_data.metal_mass_fraction[chemistry_element_H] = X_H;
 }
 
 /**
