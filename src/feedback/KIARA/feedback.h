@@ -589,38 +589,43 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
    * directly at each step. Later, when computing the probability to kick
    * a particle, the mass_to_launch will be limited by eta_suppression_factor.
    */
+  /* Boost wind speed and/or mass loading based on metallicity, which
+   * governs photon energy output. Done before setting the total wind mass,
+   * so that the eta boost applies to it. */
+  float Z_fac = 1.f;
+  const int vwind_boost_flag = feedback_props->metal_dependent_vwind;
+  if (vwind_boost_flag != kiara_metal_boosting_off) {
+    Z_fac = 2.61634f;
+    const float Z_met = sp->chemistry_data.metal_mass_fraction_total;
+    if (Z_met > 1.e-9f) {
+      Z_fac =
+          powf(10.f, -0.0029f * powf(log10f(Z_met) + 9.f, 2.5f) + 0.417694f);
+    }
+
+    Z_fac = max(Z_fac, 1.f);
+  }
+
+  /* The wind energy scales as eta * v^2, so the energy available is boosted
+   * by Z_fac for each of the two that is boosted */
+  float energy_Z_fac = Z_fac;
+  switch (vwind_boost_flag) {
+    case kiara_metal_boosting_vwind:
+      v_internal *= sqrtf(Z_fac);
+      break;
+    case kiara_metal_boosting_eta:
+      eta *= Z_fac;
+      break;
+    case kiara_metal_boosting_both:
+      v_internal *= sqrtf(Z_fac);
+      eta *= Z_fac;
+      energy_Z_fac = Z_fac * Z_fac;
+      break;
+  }
+
   const float wind_mass = eta * sp->mass_init;
   const float total_mass_kicked = sp->feedback_data.total_mass_kicked;
 
   if (total_mass_kicked < wind_mass) {
-
-    /* Boost wind speed based on metallicity which governs
-     * photon energy output */
-    float Z_fac = 1.f;
-    const int vwind_boost_flag = feedback_props->metal_dependent_vwind;
-    if (vwind_boost_flag != kiara_metal_boosting_off) {
-      Z_fac = 2.61634f;
-      const float Z_met = sp->chemistry_data.metal_mass_fraction_total;
-      if (Z_met > 1.e-9f) {
-        Z_fac =
-            powf(10.f, -0.0029f * powf(log10f(Z_met) + 9.f, 2.5f) + 0.417694f);
-      }
-
-      Z_fac = max(Z_fac, 1.f);
-    }
-
-    switch (vwind_boost_flag) {
-      case kiara_metal_boosting_vwind:
-        v_internal *= sqrtf(Z_fac);
-        break;
-      case kiara_metal_boosting_eta:
-        eta *= Z_fac;
-        break;
-      case kiara_metal_boosting_both:
-        v_internal *= sqrtf(Z_fac);
-        eta *= Z_fac;
-        break;
-    }
 
     /* ------ SNII Energy and Wind Launch Setup ------ */
 
@@ -628,7 +633,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     const double E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
 
     /* Apply energy multiplier and metallicity scaling */
-    const float energy_boost = feedback_props->SNII_energy_multiplier * Z_fac;
+    const float energy_boost =
+        feedback_props->SNII_energy_multiplier * energy_Z_fac;
 
     /* Add to physical energy reservoir */
     sp->feedback_data.physical_energy_reservoir += E_SNII_phys * energy_boost;
@@ -656,15 +662,13 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
 #ifdef KIARA_DEBUG_CHECKS
     message(
-        "ETA: z=%g id=%lld age=%g Eres=%g dE=%g NSNe=%g NSNtot=%g eta=%g "
-        "max=%g tot=%g mlaunch=%g Ntot=%d",
+        "ETA: z=%g id=%lld age=%g Eres=%g dE=%g NSNe=%g eta=%g "
+        "eta_max_step=%g eta_kicked=%g mlaunch=%g Ntot=%d",
         cosmo->z, sp->id, star_age_beg_step * feedback_props->time_to_Myr,
         sp->feedback_data.physical_energy_reservoir *
             feedback_props->energy_to_cgs,
-        1.e51 * N_SNe * scaling, N_SNe,
-        sp->mass_init * feedback_props->mass_to_solar_mass / 80.f,
-        /* 1 SNII for ~80 Mo for Kroupa/Chabrier IMF */
-        mass_to_launch / sp->mass_init, eta_max_this_timestep, eta,
+        E_SNII_phys * energy_boost * feedback_props->energy_to_cgs, N_SNe, eta,
+        wind_mass_max / sp->mass_init, total_mass_kicked / sp->mass_init,
         sp->feedback_data.mass_to_launch, sp->feedback_data.N_launched);
 #endif
 
