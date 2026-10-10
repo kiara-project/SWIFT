@@ -104,6 +104,10 @@ struct cooling_function_data {
   /*! track dust growth and destruction (only available in KIARA) */
   int use_grackle_dust_evol;
 
+  /*! Maximal (physical) density of the gas in the firehose mixing layer, for
+   * its cooling time (internal units) */
+  double firehose_rho_max;
+
   /*! Timescale (internal units) over which the SN rate deposited on gas
    * particles by stellar feedback decays (0: used for one cooling step) */
   double SNe_smoothing_time;

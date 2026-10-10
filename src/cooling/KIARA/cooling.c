@@ -1198,8 +1198,14 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
   const float u = hydro_get_comoving_internal_energy(p, xp);
 
   /* It's a firehose particles, so compute the cooling rate
-   * in the mixing layer */
-  const float rhocool = 0.5f * (p->chemistry_data.rho_ambient + p->rho);
+   * in the mixing layer. The ambient density is already capped at the
+   * firehose maximum; cap the stream's own (SPH) density too, which inside
+   * the ISM reflects the dense gas around it, otherwise the cap has no
+   * effect there and streams could never escape the ISM. Comoving. */
+  const float rho_max =
+      cooling->firehose_rho_max * cosmo->a * cosmo->a * cosmo->a;
+  const float rhocool = 0.5f * (min(p->chemistry_data.rho_ambient, rho_max) +
+                                min(p->rho, rho_max));
   const float ucool = 0.5f * (p->chemistry_data.u_ambient + u);
 
   /* +ive if heating -ive if cooling*/
@@ -2005,6 +2011,17 @@ void cooling_init_backend(struct swift_params *parameter_file,
 
   /* read parameters */
   cooling_read_parameters(parameter_file, cooling, phys_const, us);
+
+  /* Maximal density of the firehose mixing layer: the same cap as the
+   * ambient density in the chemistry (KIARAChemistry:firehose_nh_ambient_max_cgs,
+   * a physical H number density), converted to a physical mass density */
+  cooling->firehose_rho_max =
+      parser_get_opt_param_double(parameter_file,
+                                  "KIARAChemistry:firehose_nh_ambient_max_cgs",
+                                  0.1) *
+      phys_const->const_proton_mass /
+      (hydro_props->hydrogen_mass_fraction *
+       units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY));
 
   /* Set up the units system. */
   cooling_init_units(us, phys_const, cooling);
