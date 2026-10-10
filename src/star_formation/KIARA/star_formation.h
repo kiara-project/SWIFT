@@ -789,17 +789,21 @@ INLINE static void star_formation_copy_properties(
   if (1) {
 
     const float max_displacement = 0.1;
+    /* Use streams other than random_number_star_formation: a converted
+     * star keeps the gas ID, so that stream would give the same number as
+     * the draw that formed the star (r < prob, i.e. delta_x ~ -1). These
+     * enrichment streams are not used by the KIARA model. */
     const double delta_x =
         2.f * random_unit_interval(sp->id, e->ti_current,
-                                   (enum random_number_type)0) -
+                                   random_number_enrichment_1) -
         1.f;
     const double delta_y =
         2.f * random_unit_interval(sp->id, e->ti_current,
-                                   (enum random_number_type)1) -
+                                   random_number_enrichment_2) -
         1.f;
     const double delta_z =
         2.f * random_unit_interval(sp->id, e->ti_current,
-                                   (enum random_number_type)2) -
+                                   random_number_enrichment_3) -
         1.f;
 
     /* Update the displacement */
