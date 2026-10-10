@@ -696,49 +696,18 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
         sp->feedback_data.mass_to_launch, sp->feedback_data.N_launched);
 #endif
 
-    /* Set stream radius for firehose particles kicked by this star */
-
-    /* This is the physical initial density */
-    const double stream_init_density = 0.1; /* n_H units CGS */
-    const double rho_volumefilling_phys =
-        stream_init_density / feedback_props->rho_to_n_cgs;
-    float galaxy_stellar_mass_Msun = M_star;
-    const float min_gal_mass = feedback_props->minimum_galaxy_stellar_mass;
-    if (galaxy_stellar_mass_Msun < min_gal_mass) {
-      galaxy_stellar_mass_Msun = min_gal_mass;
-    }
-    galaxy_stellar_mass_Msun *= feedback_props->mass_to_solar_mass;
-
-    /* stream size = 2 * effective size of disk galaxies (Ward+2024 CEERS),
-     * physical kpc */
-    const float redge_obs_kpc = 2.f * 7.1f * pow(cosmo->a, 0.63f) *
-                                pow(galaxy_stellar_mass_Msun / 5.e10, 0.16f);
-
-    /* Convert to internal comoving units */
-    const float redge_obs =
-        cosmo->a_inv * redge_obs_kpc / feedback_props->length_to_kpc;
-    sp->feedback_data.firehose_radius_stream = redge_obs;
-
-    if (sp->galaxy_data.stellar_mass > 0.f &&
-        sp->galaxy_data.specific_sfr > 0.f && eta > 0.f &&
-        sp->feedback_data.wind_velocity != 0.f) {
-
-      const float v_phys = fabs(sp->feedback_data.wind_velocity) * cosmo->a_inv;
-      const float m_dot_wind_sfr =
-          eta * sp->galaxy_data.specific_sfr * sp->galaxy_data.stellar_mass;
-      const float specific_m_dot_wind_vel =
-          M_PI * rho_volumefilling_phys * v_phys;
-
-      /* Put into comoving units */
-      const float redge_est =
-          sqrtf(m_dot_wind_sfr / specific_m_dot_wind_vel) * cosmo->a_inv;
-
-      sp->feedback_data.firehose_radius_stream = fmin(redge_est, redge_obs);
-    }
-
-    /* Stream cannot be smaller than the smoothing length */
-    sp->feedback_data.firehose_radius_stream =
-        fmax(sp->feedback_data.firehose_radius_stream, kernel_gamma * sp->h);
+    /* Set stream radius for firehose particles kicked by this star, from
+     * the galaxy's wind mass outflow rate eta * SFR */
+    const double m_dot_wind =
+        (sp->galaxy_data.specific_sfr > 0.f && eta > 0.f)
+            ? eta * sp->galaxy_data.specific_sfr * sp->galaxy_data.stellar_mass
+            : 0.;
+    sp->feedback_data.firehose_radius_stream = firehose_initial_stream_radius(
+        sp->galaxy_data.stellar_mass,
+        feedback_props->minimum_galaxy_stellar_mass,
+        feedback_props->mass_to_solar_mass, feedback_props->length_to_kpc,
+        feedback_props->rho_to_n_cgs, m_dot_wind,
+        fabsf(sp->feedback_data.wind_velocity) * cosmo->a_inv, sp->h, cosmo);
   }
 
   /* Check that ejecta or metal masses are not <0 */

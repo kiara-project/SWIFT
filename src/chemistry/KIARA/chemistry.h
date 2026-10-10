@@ -729,6 +729,61 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
 }
 
 /**
+ * @brief Initial radius of a firehose stream launched by a galaxy's winds.
+ *
+ * The stream is the smaller of the radius at which the wind mass flux
+ * mdot = pi R^2 rho v fills a volume at n_H = 0.1 cm^-3, and twice the
+ * observed effective radius of disk galaxies of that stellar mass (Ward+2024
+ * CEERS); it is never smaller than the launching particle's kernel. Used for
+ * both stellar- and BH-driven winds.
+ *
+ * @param galaxy_stellar_mass Host galaxy stellar mass (internal units).
+ * @param minimum_galaxy_stellar_mass Floor on the galaxy stellar mass.
+ * @param mass_to_solar_mass Internal mass to Msun.
+ * @param length_to_kpc Internal length to kpc.
+ * @param rho_to_n_cgs Internal density to n_H in cm^-3.
+ * @param m_dot_wind Wind mass outflow rate (internal units), <= 0 if unknown.
+ * @param v_wind_phys Physical wind speed (internal units).
+ * @param h_launch Comoving smoothing length of the launching particle.
+ * @param cosmo The #cosmology.
+ * @return The comoving stream radius.
+ */
+__attribute__((always_inline)) INLINE static float
+firehose_initial_stream_radius(const float galaxy_stellar_mass,
+                               const float minimum_galaxy_stellar_mass,
+                               const double mass_to_solar_mass,
+                               const double length_to_kpc,
+                               const double rho_to_n_cgs,
+                               const double m_dot_wind, const float v_wind_phys,
+                               const float h_launch,
+                               const struct cosmology *cosmo) {
+
+  /* Twice the effective radius of disk galaxies, physical kpc, converted to
+   * internal comoving units */
+  const float galaxy_stellar_mass_Msun =
+      fmaxf(galaxy_stellar_mass, minimum_galaxy_stellar_mass) *
+      mass_to_solar_mass;
+  const float redge_obs_kpc = 2.f * 7.1f * powf(cosmo->a, 0.63f) *
+                              powf(galaxy_stellar_mass_Msun / 5.e10f, 0.16f);
+  const float redge_obs = cosmo->a_inv * redge_obs_kpc / length_to_kpc;
+
+  float r_stream = redge_obs;
+
+  /* Radius for the wind mass flux to fill a volume-filling density */
+  if (galaxy_stellar_mass > 0.f && m_dot_wind > 0. && v_wind_phys > 0.f) {
+    const double stream_init_density = 0.1; /* n_H, cgs */
+    const double rho_volumefilling_phys = stream_init_density / rho_to_n_cgs;
+    const float redge_est =
+        sqrt(m_dot_wind / (M_PI * rho_volumefilling_phys * v_wind_phys)) *
+        cosmo->a_inv;
+    r_stream = fminf(redge_est, redge_obs);
+  }
+
+  /* Stream cannot be smaller than the smoothing length */
+  return fmaxf(r_stream, kernel_gamma * h_launch);
+}
+
+/**
  * @brief Finishes the gradient calculation.
  *
  * Nothing to do here.

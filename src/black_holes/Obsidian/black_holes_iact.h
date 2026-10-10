@@ -1256,6 +1256,23 @@ runner_iact_nonsym_bh_gas_feedback(
       pj->feedback_data.decoupling_delay_time = dt + f_decouple * t_H;
       pj->decoupled = 1;
 
+      /* Give the wind a firehose stream radius, as for stellar winds, from
+       * the BH's wind mass outflow rate (accretion rate times the jet or
+       * wind mass loading), so that it mixes with and is entrained by the
+       * ambient gas, and recouples */
+      double m_dot_wind = 0.;
+      if (jet_flag) {
+        m_dot_wind = bi->jet_mass_loading * bi->accretion_rate;
+      } else if (bi->f_accretion > 0.f) {
+        m_dot_wind =
+            bi->accretion_rate * (1.f - bi->f_accretion) / bi->f_accretion;
+      }
+      pj->chemistry_data.radius_stream = firehose_initial_stream_radius(
+          bi->galaxy_data.stellar_mass, bh_props->minimum_galaxy_stellar_mass,
+          bh_props->mass_to_solar_mass, bh_props->length_to_parsec * 1.e-3,
+          bh_props->rho_to_n_cgs, m_dot_wind, v_kick, bi->h, cosmo);
+      pj->chemistry_data.exchanged_mass = 0.f;
+
       /* Count number of decouplings, also reset decoupling for jets */
       if (jet_flag) {
         if (bh_props->jet_decouple_time_factor > 0.f) {

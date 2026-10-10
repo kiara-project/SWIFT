@@ -615,6 +615,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->tdyn_sigma =
       parser_get_opt_param_float(params, "ObsidianAGN:tdyn_sigma", 0.f);
 
+  /* Floor on the galaxy stellar mass (also used for the firehose stream
+   * radius of BH-driven winds); compulsory below if needed for suppression */
+  bp->minimum_galaxy_stellar_mass = parser_get_opt_param_float(
+      params, "KIARAFeedback:minimum_galaxy_stellar_mass_Msun", 0.f);
+  bp->minimum_galaxy_stellar_mass /= bp->mass_to_solar_mass;
+
   if (bp->suppress_growth == 4 || bp->suppress_growth == 5) {
     bp->FIRE_eta_normalization =
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_normalization");
