@@ -560,6 +560,10 @@ INLINE static void star_formation_compute_SFR(
     const struct phys_const *phys_const, const struct hydro_props *hydro_props,
     const struct cosmology *cosmo, const double dt_star) {
 
+  /* A non-positive SFR stores (minus) the scale-factor when the particle
+   * was last star-forming; keep that record below if no SFR results. */
+  const float SFR_old = p->sf_data.SFR;
+
   /* Abort early if time-step size is 0 */
   if (dt_star == 0.) {
     p->sf_data.SFR = 0.f;
@@ -589,6 +593,13 @@ INLINE static void star_formation_compute_SFR(
     default:
       error("Invalid SF model in star formation!!!");
       break;
+  }
+
+  /* Eligible gas can still get no SFR (e.g. below rho_0 or without H2):
+   * treat it as not star-forming rather than erasing the record of when
+   * it last was (KIARA runs are cosmological, so this is a scale-factor) */
+  if (!(p->sf_data.SFR > 0.f)) {
+    p->sf_data.SFR = (SFR_old > 0.f) ? -cosmo->a : min(SFR_old, 0.f);
   }
 }
 
