@@ -105,58 +105,64 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
                               pi->v[2] - pj->v[2]};
   const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
 
-  pi->density.div_v -= faci * dvdr;
-  pj->density.div_v -= facj * dvdr;
-
   /* For slope limiter */
   pi->gradients.kernel_size = fmax(r, pi->gradients.kernel_size);
   pj->gradients.kernel_size = fmax(r, pj->gradients.kernel_size);
 
-  /* Now we need to compute the derivative terms */
+  /* A coupled particle ignores decoupled (wind) neighbours in its velocity
+   * and internal energy gradients (and their normalisations and limiter
+   * bounds), as it does in the force loop; they still count towards its
+   * density and kernel geometry. */
+  const int grad_i = !(pj->decoupled && !pi->decoupled);
+  const int grad_j = !(pi->decoupled && !pj->decoupled);
+
   /* Equations 19 & 20 in Rosswog 2020. Compute the internal energy auxiliary
    * vector and norm for the gradient */
   const hydro_real_t du = pi->u - pj->u;
 
-  /* For slope limiter */
-  pi->gradients.du_min = fmin(-du, pi->gradients.du_min);
-  pi->gradients.du_max = fmax(-du, pi->gradients.du_max);
-
-  pj->gradients.du_min = fmin(du, pj->gradients.du_min);
-  pj->gradients.du_max = fmax(du, pj->gradients.du_max);
-
-  pi->gradients.u_aux[0] += du * dx[0] * faci;
-  pi->gradients.u_aux[1] += du * dx[1] * faci;
-  pi->gradients.u_aux[2] += du * dx[2] * faci;
-
-  pj->gradients.u_aux[0] += du * dx[0] * facj;
-  pj->gradients.u_aux[1] += du * dx[1] * facj;
-  pj->gradients.u_aux[2] += du * dx[2] * facj;
-
-  pi->gradients.u_aux_norm[0] += dx[0] * dx[0] * faci;
-  pi->gradients.u_aux_norm[1] += dx[1] * dx[1] * faci;
-  pi->gradients.u_aux_norm[2] += dx[2] * dx[2] * faci;
-
-  pj->gradients.u_aux_norm[0] += dx[0] * dx[0] * facj;
-  pj->gradients.u_aux_norm[1] += dx[1] * dx[1] * facj;
-  pj->gradients.u_aux_norm[2] += dx[2] * dx[2] * facj;
-
-  /* Equations 19 & 20 in Rosswog 2020. Signs are all positive because
-   * dv * dx always results in a positive sign. */
-  for (int i = 0; i < 3; i++) {
+  if (grad_i) {
+    pi->density.div_v -= faci * dvdr;
 
     /* For slope limiter */
-    pi->gradients.dv_min[i] = fmin(-dv[i], pi->gradients.dv_min[i]);
-    pi->gradients.dv_max[i] = fmax(-dv[i], pi->gradients.dv_max[i]);
+    pi->gradients.du_min = fmin(-du, pi->gradients.du_min);
+    pi->gradients.du_max = fmax(-du, pi->gradients.du_max);
 
-    pj->gradients.dv_min[i] = fmin(dv[i], pj->gradients.dv_min[i]);
-    pj->gradients.dv_max[i] = fmax(dv[i], pj->gradients.dv_max[i]);
+    for (int i = 0; i < 3; i++) {
+      pi->gradients.u_aux[i] += du * dx[i] * faci;
+      pi->gradients.u_aux_norm[i] += dx[i] * dx[i] * faci;
 
-    for (int k = 0; k < 3; k++) {
-      pi->gradients.velocity_tensor_aux[i][k] += dv[i] * dx[k] * faci;
-      pj->gradients.velocity_tensor_aux[i][k] += dv[i] * dx[k] * facj;
+      /* For slope limiter */
+      pi->gradients.dv_min[i] = fmin(-dv[i], pi->gradients.dv_min[i]);
+      pi->gradients.dv_max[i] = fmax(-dv[i], pi->gradients.dv_max[i]);
 
-      pi->gradients.velocity_tensor_aux_norm[i][k] += dx[i] * dx[k] * faci;
-      pj->gradients.velocity_tensor_aux_norm[i][k] += dx[i] * dx[k] * facj;
+      /* Equations 19 & 20 in Rosswog 2020. Signs are all positive because
+       * dv * dx always results in a positive sign. */
+      for (int k = 0; k < 3; k++) {
+        pi->gradients.velocity_tensor_aux[i][k] += dv[i] * dx[k] * faci;
+        pi->gradients.velocity_tensor_aux_norm[i][k] += dx[i] * dx[k] * faci;
+      }
+    }
+  }
+
+  if (grad_j) {
+    pj->density.div_v -= facj * dvdr;
+
+    /* For slope limiter */
+    pj->gradients.du_min = fmin(du, pj->gradients.du_min);
+    pj->gradients.du_max = fmax(du, pj->gradients.du_max);
+
+    for (int i = 0; i < 3; i++) {
+      pj->gradients.u_aux[i] += du * dx[i] * facj;
+      pj->gradients.u_aux_norm[i] += dx[i] * dx[i] * facj;
+
+      /* For slope limiter */
+      pj->gradients.dv_min[i] = fmin(dv[i], pj->gradients.dv_min[i]);
+      pj->gradients.dv_max[i] = fmax(dv[i], pj->gradients.dv_max[i]);
+
+      for (int k = 0; k < 3; k++) {
+        pj->gradients.velocity_tensor_aux[i][k] += dv[i] * dx[k] * facj;
+        pj->gradients.velocity_tensor_aux_norm[i][k] += dx[i] * dx[k] * facj;
+      }
     }
   }
 
@@ -218,42 +224,42 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   const hydro_real_t r_inv = r ? 1.0 / r : 0.0;
   const hydro_real_t faci = mj * wi_dx * r_inv;
 
-  /* Compute dv dot r */
-  const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
-                              pi->v[2] - pj->v[2]};
-  const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
-  pi->density.div_v -= faci * dvdr;
-
   /* For slope limiter */
   pi->gradients.kernel_size = fmax(r, pi->gradients.kernel_size);
 
-  /* Equations 19 & 20 in Rosswog 2020. Compute the internal energy auxiliary
-   * vector and norm for the gradient */
-  const hydro_real_t du = pi->u - pj->u;
+  /* A coupled particle ignores decoupled (wind) neighbours in its velocity
+   * and internal energy gradients (and their normalisations and limiter
+   * bounds); they still count towards its density and kernel geometry. */
+  if (!(pj->decoupled && !pi->decoupled)) {
 
-  /* For slope limiter */
-  pi->gradients.du_min = fmin(-du, pi->gradients.du_min);
-  pi->gradients.du_max = fmax(-du, pi->gradients.du_max);
+    /* Compute dv dot r */
+    const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
+                                pi->v[2] - pj->v[2]};
+    const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
+    pi->density.div_v -= faci * dvdr;
 
-  pi->gradients.u_aux[0] += du * dx[0] * faci;
-  pi->gradients.u_aux[1] += du * dx[1] * faci;
-  pi->gradients.u_aux[2] += du * dx[2] * faci;
-
-  pi->gradients.u_aux_norm[0] += dx[0] * dx[0] * faci;
-  pi->gradients.u_aux_norm[1] += dx[1] * dx[1] * faci;
-  pi->gradients.u_aux_norm[2] += dx[2] * dx[2] * faci;
-
-  /* Equations 19 & 20 in Rosswog 2020. Signs are all positive because
-   * dv * dx always results in a positive sign. */
-  for (int i = 0; i < 3; i++) {
+    /* Equations 19 & 20 in Rosswog 2020. Compute the internal energy
+     * auxiliary vector and norm for the gradient */
+    const hydro_real_t du = pi->u - pj->u;
 
     /* For slope limiter */
-    pi->gradients.dv_min[i] = fmin(-dv[i], pi->gradients.dv_min[i]);
-    pi->gradients.dv_max[i] = fmax(-dv[i], pi->gradients.dv_max[i]);
+    pi->gradients.du_min = fmin(-du, pi->gradients.du_min);
+    pi->gradients.du_max = fmax(-du, pi->gradients.du_max);
 
-    for (int k = 0; k < 3; k++) {
-      pi->gradients.velocity_tensor_aux[i][k] += dv[i] * dx[k] * faci;
-      pi->gradients.velocity_tensor_aux_norm[i][k] += dx[i] * dx[k] * faci;
+    for (int i = 0; i < 3; i++) {
+      pi->gradients.u_aux[i] += du * dx[i] * faci;
+      pi->gradients.u_aux_norm[i] += dx[i] * dx[i] * faci;
+
+      /* For slope limiter */
+      pi->gradients.dv_min[i] = fmin(-dv[i], pi->gradients.dv_min[i]);
+      pi->gradients.dv_max[i] = fmax(-dv[i], pi->gradients.dv_max[i]);
+
+      /* Equations 19 & 20 in Rosswog 2020. Signs are all positive because
+       * dv * dx always results in a positive sign. */
+      for (int k = 0; k < 3; k++) {
+        pi->gradients.velocity_tensor_aux[i][k] += dv[i] * dx[k] * faci;
+        pi->gradients.velocity_tensor_aux_norm[i][k] += dx[i] * dx[k] * faci;
+      }
     }
   }
 
@@ -315,41 +321,31 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
 
   /* Compute all of the first-order gradients, and second-order gradients */
 
+  /* A coupled particle ignores decoupled (wind) neighbours in its velocity
+   * and internal energy gradients and their correction matrix, consistently
+   * with the density loop */
+  const int grad_i = !(pj->decoupled && !pi->decoupled);
+  const int grad_j = !(pi->decoupled && !pj->decoupled);
+
   /* Rosswog 2020 Equation 18 gradients. In the paper he uses (vj - vi) and
    * (rj - ri), however this is symmetric so no sign problems. */
 
-  /* Internal energy gradient */
+  /* Internal energy and velocity differences */
   const hydro_real_t du = pi->u - pj->u;
-
-  pi->gradients.u[0] += du * dx[0] * faci;
-  pi->gradients.u[1] += du * dx[1] * faci;
-  pi->gradients.u[2] += du * dx[2] * faci;
-
-  pj->gradients.u[0] += du * dx[0] * facj;
-  pj->gradients.u[1] += du * dx[1] * facj;
-  pj->gradients.u[2] += du * dx[2] * facj;
-
-  /* Velocity gradients */
   const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
                               pi->v[2] - pj->v[2]};
 
   for (int k = 0; k < 3; k++) {
     const hydro_real_t du_k = pi->gradients.u_aux[k] - pj->gradients.u_aux[k];
 
-    for (int i = 0; i < 3; i++) {
-      pi->gradients.u_hessian[k][i] += du_k * dx[i] * faci;
-      pj->gradients.u_hessian[k][i] += du_k * dx[i] * facj;
+    if (grad_i) pi->gradients.u[k] += du * dx[k] * faci;
+    if (grad_j) pj->gradients.u[k] += du * dx[k] * facj;
 
-      /* dx is signed as (pi - pj), but it is symmetric so we add */
-      pi->gradients.correction_matrix[k][i] += dx[k] * dx[i] * faci;
-      pj->gradients.correction_matrix[k][i] += dx[k] * dx[i] * facj;
+    for (int i = 0; i < 3; i++) {
 
       /* Indices in Rosswog 2020 are i for dv and k for dx. In this loop,
        * they are swapped just because correction_matrix is computed with
        * the paper indices. */
-      pi->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * faci;
-      pj->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * facj;
-
       const hydro_real_t dv_grad_ki = pi->gradients.velocity_tensor_aux[k][i] -
                                       pj->gradients.velocity_tensor_aux[k][i];
 
@@ -362,9 +358,26 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
        * Index i: gradient direction
        * Index j: second derivative gradient direction
        */
-      for (int j = 0; j < 3; j++) {
-        pi->gradients.velocity_hessian[k][i][j] += dv_grad_ki * dx[j] * faci;
-        pj->gradients.velocity_hessian[k][i][j] += dv_grad_ki * dx[j] * facj;
+      if (grad_i) {
+        pi->gradients.u_hessian[k][i] += du_k * dx[i] * faci;
+
+        /* dx is signed as (pi - pj), but it is symmetric so we add */
+        pi->gradients.correction_matrix[k][i] += dx[k] * dx[i] * faci;
+        pi->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * faci;
+
+        for (int j = 0; j < 3; j++) {
+          pi->gradients.velocity_hessian[k][i][j] += dv_grad_ki * dx[j] * faci;
+        }
+      }
+
+      if (grad_j) {
+        pj->gradients.u_hessian[k][i] += du_k * dx[i] * facj;
+        pj->gradients.correction_matrix[k][i] += dx[k] * dx[i] * facj;
+        pj->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * facj;
+
+        for (int j = 0; j < 3; j++) {
+          pj->gradients.velocity_hessian[k][i][j] += dv_grad_ki * dx[j] * facj;
+        }
       }
     }
   }
@@ -423,50 +436,54 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
   kernel_deval(xi, &wi, &wi_dx);
   const hydro_real_t faci = mj * rhoj_inv * wi;
 
-  /* Compute all of the first-order gradients, and second-order gradients */
+  /* Compute all of the first-order gradients, and second-order gradients.
+   * A coupled particle ignores decoupled (wind) neighbours in its velocity
+   * and internal energy gradients and their correction matrix, consistently
+   * with the density loop. */
+  if (!(pj->decoupled && !pi->decoupled)) {
+    /* Rosswog 2020 Equation 18 gradients. In the paper he uses (vj - vi) and
+     * (rj - ri), however this is symmetric so no sign problems. */
 
-  /* Rosswog 2020 Equation 18 gradients. In the paper he uses (vj - vi) and
-   * (rj - ri), however this is symmetric so no sign problems. */
+    /* Internal energy gradient */
+    const hydro_real_t du = pi->u - pj->u;
 
-  /* Internal energy gradient */
-  const hydro_real_t du = pi->u - pj->u;
+    pi->gradients.u[0] += du * dx[0] * faci;
+    pi->gradients.u[1] += du * dx[1] * faci;
+    pi->gradients.u[2] += du * dx[2] * faci;
 
-  pi->gradients.u[0] += du * dx[0] * faci;
-  pi->gradients.u[1] += du * dx[1] * faci;
-  pi->gradients.u[2] += du * dx[2] * faci;
+    /* Velocity gradients */
+    const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
+                                pi->v[2] - pj->v[2]};
 
-  /* Velocity gradients */
-  const hydro_real_t dv[3] = {pi->v[0] - pj->v[0], pi->v[1] - pj->v[1],
-                              pi->v[2] - pj->v[2]};
+    for (int k = 0; k < 3; k++) {
+      const hydro_real_t du_k = pi->gradients.u_aux[k] - pj->gradients.u_aux[k];
 
-  for (int k = 0; k < 3; k++) {
-    const hydro_real_t du_k = pi->gradients.u_aux[k] - pj->gradients.u_aux[k];
+      for (int i = 0; i < 3; i++) {
+        pi->gradients.u_hessian[k][i] += du_k * dx[i] * faci;
 
-    for (int i = 0; i < 3; i++) {
-      pi->gradients.u_hessian[k][i] += du_k * dx[i] * faci;
+        /* dx is signed as (pi - pj), but it is symmetric so we add */
+        pi->gradients.correction_matrix[k][i] += dx[k] * dx[i] * faci;
 
-      /* dx is signed as (pi - pj), but it is symmetric so we add */
-      pi->gradients.correction_matrix[k][i] += dx[k] * dx[i] * faci;
+        /* Indices in Rosswog 2020 are i for dv and k for dx. In this loop,
+         * they are swapped just because correction_matrix is computed with
+         * the paper indices. */
+        pi->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * faci;
 
-      /* Indices in Rosswog 2020 are i for dv and k for dx. In this loop,
-       * they are swapped just because correction_matrix is computed with
-       * the paper indices. */
-      pi->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * faci;
+        const hydro_real_t dv_grad_ki = pi->gradients.velocity_tensor_aux[k][i] -
+                                        pj->gradients.velocity_tensor_aux[k][i];
 
-      const hydro_real_t dv_grad_ki = pi->gradients.velocity_tensor_aux[k][i] -
-                                      pj->gradients.velocity_tensor_aux[k][i];
-
-      /* Equation 19 indices:
-       * Index i: velocity direction
-       * Index k: gradient direction
-       *
-       * Our indices:
-       * Index k: velocity direction
-       * Index i: gradient direction
-       * Index j: second derivative gradient direction
-       */
-      for (int j = 0; j < 3; j++) {
-        pi->gradients.velocity_hessian[k][i][j] += dv_grad_ki * dx[j] * faci;
+        /* Equation 19 indices:
+         * Index i: velocity direction
+         * Index k: gradient direction
+         *
+         * Our indices:
+         * Index k: velocity direction
+         * Index i: gradient direction
+         * Index j: second derivative gradient direction
+         */
+        for (int j = 0; j < 3; j++) {
+          pi->gradients.velocity_hessian[k][i][j] += dv_grad_ki * dx[j] * faci;
+        }
       }
     }
   }
