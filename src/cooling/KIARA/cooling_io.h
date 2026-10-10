@@ -119,6 +119,28 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
   *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p, xp);
 }
 
+INLINE static void convert_part_cooling_time(const struct engine *e,
+                                             const struct part *p,
+                                             const struct xpart *xp,
+                                             float *ret) {
+
+  /* Firehose stream particles: the mixing-layer cooling time computed
+   * during the last cooling step */
+  if (p->chemistry_data.radius_stream > 0.f &&
+      p->chemistry_data.rho_ambient > 0.f) {
+    *ret = p->cooling_data.mixing_layer_cool_time;
+    return;
+  }
+
+  /* Everyone else: the particle's own cooling time, computed only here
+   * (cooling_time() renormalizes the species in xp, so use a copy) */
+  struct xpart xp_temp = *xp;
+  *ret = cooling_time(e->physical_constants, e->internal_units,
+                      e->hydro_properties, e->cosmology, e->cooling_func, p,
+                      &xp_temp, p->rho,
+                      hydro_get_comoving_internal_energy(p, xp));
+}
+
 /**
  * @brief Specifies which particle fields to write to a dataset
  *
@@ -214,11 +236,12 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
                            "Dust temperatures in subgrid ISM dust model.");
   num++;
 
-  list[num] = io_make_output_field(
-      "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
-      cooling_data.mixing_layer_cool_time,
-      "Cooling times for the gas particle. If it's currently a firehose wind "
-      "particle (decoupling_delay_time>0), this is the mixing layer cooling time.");
+  list[num] = io_make_output_field_convert_part(
+      "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts, xparts,
+      convert_part_cooling_time,
+      "Cooling times of the gas particles (negative if cooling). For firehose "
+      "stream particles (non-zero stream radius), this is instead the mixing "
+      "layer cooling time.");
   num++;
 
   list[num] = io_make_output_field(

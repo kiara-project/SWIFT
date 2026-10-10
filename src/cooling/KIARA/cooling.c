@@ -1166,15 +1166,16 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
   /* Initialize cooling time */
   p->cooling_data.mixing_layer_cool_time = 0.f;
 
-  const float u = hydro_get_comoving_internal_energy(p, xp);
-
-  /* If it's not a firehose particle, just compute particle cooling time */
+  /* Only firehose stream particles need a cooling time during the run (the
+   * mixing-layer time, used in chemistry_iact.h). For all other particles it
+   * is only an output quantity, computed at snapshot time (cooling_io.h), so
+   * skip the extra grackle call here. */
   if (p->chemistry_data.radius_stream <= 0.f ||
       p->chemistry_data.rho_ambient <= 0.f) {
-    p->cooling_data.mixing_layer_cool_time = cooling_time(
-        phys_const, us, hydro_props, cosmo, cooling, p, xp, p->rho, u);
     return;
   }
+
+  const float u = hydro_get_comoving_internal_energy(p, xp);
 
   /* It's a firehose particles, so compute the cooling rate
    * in the mixing layer */
