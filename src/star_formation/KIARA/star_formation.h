@@ -459,10 +459,12 @@ INLINE static void star_formation_compute_SFR_wn07(
   /* Store dense gas fraction, corrected for sSFR dependence of SF efficiency */
   p->sf_data.dense_gas_fraction = fmin(f_c * epsc / 0.01, 1.f);
 
-  /* This is the SFR density from eq. 17, except use actual
-   * density rho_V not estimated density rho_c. 3pi/32=0.294524.
-   */
-  const double rhosfr = epsc * sqrt(0.294524 * phys_const->const_newton_G * rho_V) * f_c;
+  /* This is the SFR density from eq. 17, except use actual density rho_V
+   * not estimated density rho_c, per free-fall time
+   * 1/t_ff = sqrt(32 G rho / (3 pi)) as in the other SF models (the rho_V
+   * prefactor is applied below). */
+  const double rhosfr =
+      epsc * starform->lognormal.ff_const_inv * sqrt(rho_V) * f_c;
 
   /* multiply by dense gas effective volume to get SFR (rho_V appears in both
    * this eqn and previous one so it is cancelled out for efficiency) */
