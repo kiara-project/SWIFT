@@ -1187,9 +1187,11 @@ int main(int argc, char *argv[]) {
     }
 
     /* Initialise the hydro properties */
-    if (with_hydro)
+    if (with_hydro) {
       hydro_props_init(&hydro_properties, &prog_const, &us, params);
-    else
+      hydro_props_set_initial_temperature_from_CMB(
+          &hydro_properties, &prog_const, &cosmo, with_cosmology);
+    } else
       bzero(&hydro_properties, sizeof(struct hydro_props));
 
     /* Initialise the equation of state */

@@ -27,6 +27,7 @@
 /* Local headers. */
 #include "adiabatic_index.h"
 #include "common_io.h"
+#include "cosmology.h"
 #include "dimension.h"
 #include "equation_of_state.h"
 #include "error.h"
@@ -55,6 +56,72 @@
  * @param us The internal unit system.
  * @param params The parsed parameters.
  */
+/**
+ * @brief Compute the initial internal energy from the initial temperature.
+ *
+ * u_init = k_B T_init / (mu m_p (gamma - 1)); zero (i.e. keep the internal
+ * energies of the ICs) if the initial temperature is not positive.
+ *
+ * @param p The #hydro_props.
+ * @param phys_const The physical constants in internal units.
+ */
+static void hydro_props_compute_initial_internal_energy(
+    struct hydro_props *p, const struct phys_const *phys_const) {
+
+  if (p->initial_temperature <= 0.f) {
+    p->initial_internal_energy = 0.f;
+    return;
+  }
+
+  double u_init = phys_const->const_boltzmann_k / phys_const->const_proton_mass;
+  u_init *= p->initial_temperature;
+  u_init *= hydro_one_over_gamma_minus_one;
+
+  /* Correct for hydrogen mass fraction (mu) */
+  double mean_molecular_weight;
+  if (p->initial_temperature > p->hydrogen_ionization_temperature)
+    mean_molecular_weight = 4. / (8. - 5. * (1. - p->hydrogen_mass_fraction));
+  else
+    mean_molecular_weight = 4. / (1. + 3. * p->hydrogen_mass_fraction);
+
+  p->initial_internal_energy = u_init / mean_molecular_weight;
+}
+
+/**
+ * @brief If SPH:initial_temperature is -1, set it to the CMB temperature at
+ * the start of the run, T_CMB_0 (1 + z_begin), and compute the initial
+ * internal energy. Does nothing otherwise. T_CMB_0 is the cosmology's (if
+ * non-zero, i.e. Omega_r > 0) or else the physical constant.
+ *
+ * @param p The #hydro_props.
+ * @param phys_const The physical constants in internal units.
+ * @param cosmo The #cosmology (already initialised).
+ * @param with_cosmology Are we running a cosmological simulation?
+ */
+void hydro_props_set_initial_temperature_from_CMB(
+    struct hydro_props *p, const struct phys_const *phys_const,
+    const struct cosmology *cosmo, const int with_cosmology) {
+
+  if (p->initial_temperature >= 0.f) return;
+
+  if (!with_cosmology)
+    error(
+        "SPH:initial_temperature = -1 (CMB temperature) requires a "
+        "cosmological run");
+
+  /* The cosmology infers T_CMB_0 from Omega_r, which is often zero; fall
+   * back on the physical constant then */
+  const double T_CMB_0 =
+      (cosmo->T_CMB_0 > 0.) ? cosmo->T_CMB_0 : phys_const->const_T_CMB_0;
+
+  p->initial_temperature = T_CMB_0 / cosmo->a_begin;
+
+  if (p->initial_temperature < p->minimal_temperature)
+    error("Initial (CMB) temperature lower than minimal allowed temperature!");
+
+  hydro_props_compute_initial_internal_energy(p, phys_const);
+}
+
 void hydro_props_init(struct hydro_props *p,
                       const struct phys_const *phys_const,
                       const struct unit_system *us,
@@ -164,8 +231,13 @@ void hydro_props_init(struct hydro_props *p,
   p->initial_temperature = parser_get_opt_param_float(
       params, "SPH:initial_temperature", hydro_props_default_init_temp);
 
-  if (p->initial_temperature < 0.f)
-    error("ERROR: Initial temperature set to a negative value!!!");
+  /* A negative value means: use the CMB temperature at the start of the run
+   * (set by hydro_props_set_initial_temperature_from_CMB(), once the
+   * cosmology is known) */
+  if (p->initial_temperature < 0.f && p->initial_temperature != -1.f)
+    error(
+        "ERROR: Initial temperature set to a negative value other than -1 "
+        "(which means the CMB temperature at the initial redshift)!!!");
 
   /* ------ Temperature parameters ----------------- */
 
@@ -176,7 +248,7 @@ void hydro_props_init(struct hydro_props *p,
   if (p->minimal_temperature < 0.f)
     error("ERROR: Minimal temperature set to a negative value!!!");
 
-  if ((p->initial_temperature != 0.) &&
+  if ((p->initial_temperature > 0.) &&
       (p->initial_temperature < p->minimal_temperature))
     error("Initial temperature lower than minimal allowed temperature!");
 
@@ -204,21 +276,10 @@ void hydro_props_init(struct hydro_props *p,
   /* Same for the thermal diffusion parameters */
   diffusion_init(params, us, phys_const, &(p->diffusion));
 
-  /* Compute the initial energy (Note the temp. read is in internal units)
-   */
-  /* u_init = k_B T_init / (mu m_p (gamma - 1)) */
-  double u_init = phys_const->const_boltzmann_k / phys_const->const_proton_mass;
-  u_init *= p->initial_temperature;
-  u_init *= hydro_one_over_gamma_minus_one;
-
-  /* Correct for hydrogen mass fraction (mu) */
+  /* Compute the initial energy (Note the temp. read is in internal units).
+   * For the CMB temperature (negative value), this is done later. */
+  hydro_props_compute_initial_internal_energy(p, phys_const);
   double mean_molecular_weight;
-  if (p->initial_temperature > p->hydrogen_ionization_temperature)
-    mean_molecular_weight = 4. / (8. - 5. * (1. - p->hydrogen_mass_fraction));
-  else
-    mean_molecular_weight = 4. / (1. + 3. * p->hydrogen_mass_fraction);
-
-  p->initial_internal_energy = u_init / mean_molecular_weight;
 
   /* Compute the minimal energy (Note the temp. read is in internal units) */
   /* u_min = k_B T_min / (mu m_p (gamma - 1)) */
