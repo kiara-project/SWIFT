@@ -254,6 +254,10 @@ struct black_holes_props {
   /*! Sets maximum expansion factor for evolving ADAF mass limit */
   float adaf_mass_limit_a_min;
 
+  /*! Width (in units of the ADAF mass limit) over which the ADAF feedback
+   * energy ramps up from 0 at the limit to full strength; 0 = no ramp */
+  float adaf_energy_ramp_width;
+
   /*! A multiplicative factor for delaying cooling on a particle in ADAF mode */
   float adaf_cooling_shutoff_factor;
 
@@ -995,6 +999,11 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_mass_limit_a_min = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_mass_limit_a_min", 0.f);
 
+  bp->adaf_energy_ramp_width = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_energy_ramp_width", 0.f);
+  if (bp->adaf_energy_ramp_width < 0.f)
+    error("ObsidianAGN:adaf_energy_ramp_width must be >= 0");
+
   bp->adaf_cooling_shutoff_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_cooling_shutoff_factor", 0.f);
 
@@ -1204,6 +1213,11 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             bp->adaf_f_accretion);
     message("Black hole ADAF v_wind is %g km/s (thermally dumped)",
             bp->adaf_wind_speed / bp->kms_to_internal);
+    if (bp->adaf_energy_ramp_width > 0.f)
+      message(
+          "Black hole ADAF energy ramps up from the ADAF mass limit to %g "
+          "times it",
+          1.f + bp->adaf_energy_ramp_width);
   }
 }
 
@@ -1288,6 +1302,33 @@ black_hole_compute_jet_energy_ramp(const struct bpart *bi,
     jet_ramp = fmin(bi->subgrid_mass / my_adaf_mass_limit - 1.f, 1.f);
   }
   return jet_ramp;
+}
+
+/**
+ * @brief Compute ramp-up of ADAF feedback energy above the ADAF mass limit.
+ *
+ * Rises linearly from 0 at the limit to 1 at (1 + adaf_energy_ramp_width)
+ * times the limit, so that a BH entering ADAF mode does not immediately
+ * deposit its full ADAF energy. Always 1 if adaf_energy_ramp_width = 0.
+ *
+ * @param bi Black hole particle.
+ * @param cosmo The current cosmological model.
+ * @param props The properties of the black hole scheme.
+ */
+__attribute__((always_inline)) INLINE static float
+black_hole_compute_adaf_energy_ramp(const struct bpart *bi,
+                                    const struct cosmology *cosmo,
+                                    const struct black_holes_props *props) {
+
+  if (props->adaf_energy_ramp_width <= 0.f) return 1.f;
+
+  const float my_adaf_mass_limit =
+      get_black_hole_adaf_mass_limit(bi, props, cosmo);
+  if (bi->subgrid_mass <= my_adaf_mass_limit) return 0.f;
+
+  return fminf((bi->subgrid_mass / my_adaf_mass_limit - 1.f) /
+                   props->adaf_energy_ramp_width,
+               1.f);
 }
 
 /**

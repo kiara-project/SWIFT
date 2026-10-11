@@ -1509,15 +1509,19 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Note: bp->subgrid_mass has been integrated, so avoid BH_mass variable */
   if (bp->state == BH_states_adaf && BH_mass > my_adaf_mass_limit) {
 
+    /* Ramp up the ADAF energy above the mass limit (1 if no ramp) */
+    const float adaf_ramp =
+        black_hole_compute_adaf_energy_ramp(bp, cosmo, props);
+
     /* ergs to dump in a kernel-weighted fashion */
     if (props->adaf_wind_mass_loading == 0.f) {
       bp->adaf_energy_to_dump =
-          get_black_hole_coupling(bp, props, cosmo, phys_const) *
+          adaf_ramp * get_black_hole_coupling(bp, props, cosmo, phys_const) *
           props->adaf_disk_efficiency * bp->accretion_rate * c * c * dt;
     } else {
       const float adaf_v2 = bp->v_kick * bp->v_kick;
       const float mass_this_step =
-          get_black_hole_adaf_wind_mass_loading(props, cosmo) *
+          adaf_ramp * get_black_hole_adaf_wind_mass_loading(props, cosmo) *
           bp->accretion_rate * dt;
       bp->adaf_energy_to_dump += 0.5f * mass_this_step * adaf_v2;
     }
