@@ -2139,12 +2139,7 @@ AC_SUBST([SUNDIALS_INCS])
 # As an example for this, see the call to AC_ARG_WITH for cooling.
 AC_ARG_WITH([subgrid],
 	[AS_HELP_STRING([--with-subgrid=<subgrid>],
-<<<<<<< HEAD
 		[Master switch for subgrid methods. Inexperienced user should start here. Options are: @<:@none, GEAR, GEAR-G3, AGORA, QLA, QLA-EAGLE, EAGLE, EAGLE-XL, SPIN_JET_EAGLE, FLAMINGO, SPIN_JET_FLAMINGO, SIMBA, KIARA, KIARART default: none@:>@]
-=======
-		[Master switch for subgrid methods. Inexperienced user should
-		start here. Options are: @<:@none, GEAR, GEAR-G3, GEAR-BH, AGORA, QLA, QLA-EAGLE, EAGLE, EAGLE-XL, SPIN_JET_EAGLE, FLAMINGO, SPIN_JET_FLAMINGO default: none@:>@]
->>>>>>> 477dd1cf93e98d8579814af69c2439dd70da3102
 	)],
 	[with_subgrid="$withval"],
 	[with_subgrid=none]
