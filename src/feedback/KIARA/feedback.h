@@ -716,46 +716,43 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     ejecta_unprocessed = 0.f;
   }
 
-  /* D. Rennehan: Do some magic that I still don't understand
-   */
-  double dum = 0.;
-  int flag_negative = 0;
-  /* Here we can loop over Swift metals because metal_mass_fraction
-   * would be zero for the unique Chem5 metals anyway, and would
-   * not activate the condition.
-   */
+  /* Add the unprocessed ejecta, which carry the star's own composition, to
+   * the processed (net) yields. We can loop over the Swift elements only,
+   * because the star has none of the other Chem5 elements. */
   for (elem = 0; elem < chemistry_element_count; elem++) {
-    dum = ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction[elem];
     const int elem_conv = feedback_props->element_index_conversions[elem];
-    ejecta_metal_mass[elem_conv] += dum;
-    if (ejecta_metal_mass[elem_conv] < 0.) {
-      warning("EJECTA METAL MASS<0: z=%g sid=%lld elem=%d %d Z*=%g ej=%g Zej=%g, setting to 0", cosmo->z, sp->id, elem, elem_conv, sp->chemistry_data.metal_mass_fraction[elem], ejecta_unprocessed, ejecta_metal_mass[elem_conv]);
-      ejecta_metal_mass[elem_conv] = 0.;
-      flag_negative = 1;
-      /* Do not break here, we need the zeroed elements where negative */
-    }
+    ejecta_metal_mass[elem_conv] +=
+        ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction[elem];
   }
 
-  /* Check for any remaining that have negative mass after adding unprocessed */
-  for (elem = 0; elem < chem5_element_count; elem++) {
+  /* Net yields can be negative (e.g. destruction of H, or of C and O by
+   * hot-bottom burning, in AGB stars). For stars with almost none of an
+   * element (e.g. nearly metal-free stars) the destruction can exceed what
+   * the star had: clamp such elements at zero, and add the clamped mass to
+   * the ejecta so that they remain the sum of the element masses. Only
+   * warn when this is not negligible. */
+  double clamped_mass = 0., clamped_metal_mass = 0.;
+  for (elem = chem5_element_H; elem < chem5_element_count; elem++) {
     if (ejecta_metal_mass[elem] < 0.) {
+      clamped_mass -= ejecta_metal_mass[elem];
+      if (elem >= chem5_element_C) clamped_metal_mass -= ejecta_metal_mass[elem];
       ejecta_metal_mass[elem] = 0.;
-      flag_negative = 1;
     }
   }
 
-  /* If ANY element ended up negative we recompute everything */
-  if (flag_negative) {
-    ejecta_mass = 0.;
-    ejecta_metal_mass[chem5_element_Z] = 0.;
-    for (elem = chem5_element_H; elem < chem5_element_Zn; elem++) {
-      ejecta_mass += ejecta_metal_mass[elem];
+  if (clamped_mass > 0.) {
+    if (clamped_mass > 1.e-6 * ejecta_mass) {
+      warning(
+          "Negative net ejecta of some elements clamped: z=%g sid=%lld "
+          "Z*=%g clamped/ejecta=%g",
+          cosmo->z, sp->id, sp->chemistry_data.metal_mass_fraction_total,
+          (ejecta_mass > 0.) ? clamped_mass / ejecta_mass : -1.);
     }
-
-    for (elem = chem5_element_C; elem < chem5_element_Zn; elem++) {
-      ejecta_metal_mass[chem5_element_Z] += ejecta_metal_mass[elem];
-    }
+    ejecta_mass += clamped_mass;
+    ejecta_metal_mass[chem5_element_Z] += clamped_metal_mass;
   }
+  ejecta_metal_mass[chem5_element_Z] =
+      max(ejecta_metal_mass[chem5_element_Z], 0.);
 
   /* Now we loop over the Swift metals and set the proper values using the
      conversion map */
