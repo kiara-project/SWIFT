@@ -175,10 +175,7 @@ static double interpolate_2D_non_uniform(const double *array_x1,
   // bin value (should always be 0 though if properly binned) check for star age
   /* TODO: add debug macro for the error check. */
 
-  if (array_y == NULL) {
-    printf("ERROR: array_y is NULL!\n");
-    return 0;  // Handle error properly
-  }
+  if (array_y == NULL) error("Interpolation table array_y is NULL!");
 
   if (x2 > array_x2[size2 - 1]) {
     // printf("\n");
@@ -217,12 +214,11 @@ static double interpolate_2D_non_uniform(const double *array_x1,
   // Now we get the lower index for the Times
   const int Ind2 = interpolate_1D_non_uniform_LowerBound(array_x2, size2, x2);
 
-  if (Ind1 >= size1 - 1 || Ind2 >= size2 - 1) {
-    printf("Index out of bounds: Ind1=%d, Ind2=%d (size1=%d, size2=%d)\n", Ind1,
-           Ind2, size1, size2);
-    printf("x1 = %e, x2 = %e\n", x1, x2);
-    exit(1);  // or return a safe default
-  }
+  if (Ind1 >= size1 - 1 || Ind2 >= size2 - 1)
+    error(
+        "Interpolation index out of bounds: Ind1=%d, Ind2=%d (size1=%d, "
+        "size2=%d), x1 = %e, x2 = %e",
+        Ind1, Ind2, size1, size2, x1, x2);
 
   if (Ind1 < 0 || Ind2 < 0) {
     error("Interpolation index out of bounds! Ind1=%d Ind2=%d", Ind1, Ind2);
@@ -232,11 +228,9 @@ static double interpolate_2D_non_uniform(const double *array_x1,
   double dx2 = array_x2[Ind2 + 1] - array_x2[Ind2];
 
   // Handle very small differences (avoid division by zero)
-  if (fabs(dx1) < 1e-10 || fabs(dx2) < 1e-10) {
-    printf("Warning: Small step sizes detected: dx1 = %g, dx2 = %g\n", dx1,
-           dx2);
-    exit(1);  // Or return a default value if this is recoverable
-  }
+  if (fabs(dx1) < 1e-10 || fabs(dx2) < 1e-10)
+    error("Interpolation table step sizes too small: dx1 = %g, dx2 = %g", dx1,
+          dx2);
 
   // We know the values we need are at [Ind1,Ind2], [Ind1 + 1,Ind2], [Ind1,Ind2
   // + 1] and [Ind1 + 1,Ind2 + 1] We calculate the offsets over the first
@@ -249,10 +243,9 @@ static double interpolate_2D_non_uniform(const double *array_x1,
   // Interpolate [Ind1,Ind2] --- [Ind1+1,Ind2]   and interpolate [Ind1,Ind2+1]
   // --- [Ind1+1,Ind2+1] with offset1 to make 2 new values.
 
-  if (array_y[Ind1] == NULL || array_y[Ind1 + 1] == NULL) {
-    printf("ERROR: array_y[%d] or array_y[%d] is NULL!\n", Ind1, Ind1 + 1);
-    exit(1);
-  }
+  if (array_y[Ind1] == NULL || array_y[Ind1 + 1] == NULL)
+    error("Interpolation table row array_y[%d] or array_y[%d] is NULL!", Ind1,
+          Ind1 + 1);
 
   const double Interpol1 =
       offset1 * array_y[Ind1][Ind2] + (1. - offset1) * array_y[Ind1 + 1][Ind2];
@@ -261,15 +254,12 @@ static double interpolate_2D_non_uniform(const double *array_x1,
 
   const double result = offset2 * Interpol1 + (1. - offset2) * Interpol2;
 
-  if (isnan(result) || isinf(result)) {
-    printf("Interpolation result is NaN or Inf\n");
-    printf("Metallicity (x1) = %g, age (x2) = %g, offsets: %g, %g\n", x1, x2,
-           offset1, offset2);
-    printf("array_y values: %g %g %g %g\n", array_y[Ind1][Ind2],
-           array_y[Ind1 + 1][Ind2], array_y[Ind1][Ind2 + 1],
-           array_y[Ind1 + 1][Ind2 + 1]);
-    exit(1);
-  }
+  if (isnan(result) || isinf(result))
+    error(
+        "Interpolation result is NaN or Inf: metallicity (x1) = %g, age (x2) "
+        "= %g, offsets: %g, %g, array_y values: %g %g %g %g",
+        x1, x2, offset1, offset2, array_y[Ind1][Ind2], array_y[Ind1 + 1][Ind2],
+        array_y[Ind1][Ind2 + 1], array_y[Ind1 + 1][Ind2 + 1]);
 
   return result;
 }
