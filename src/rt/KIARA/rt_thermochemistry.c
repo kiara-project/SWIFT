@@ -502,7 +502,49 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   p->rt_data.tchem.mass_fraction_HeIII = xp->cooling_data.HeIII_frac;
 
   /* Update radiation fields */
-  /* First get absorption rates at the start of the step */
+
+  /* In the subgrid ISM, only the cold clouds absorb, and they absorb all
+   * the radiation they cover; the warm medium between them is taken to be
+   * transparent. The clouds (cold mass fraction f_c at density rho_c) fill
+   * a fraction phi = f_c rho / rho_c of the particle volume. N clouds of
+   * equal size cover a fraction C = N^(1/3) phi^(2/3) of the particle cross
+   * section, so over the path L = c dt travelled this step the absorbed
+   * fraction is 1 - (1 - C)^(L / 2 R_p), with R_p the particle radius. */
+  if (p->cooling_data.subgrid_temp > 0. &&
+      p->cooling_data.subgrid_fcold > 1.e-6) {
+
+    double f = 0.;
+    if (p->cooling_data.subgrid_temp < rt_props->ism_cold_cloud_temperature) {
+      const double rho_phys = hydro_get_physical_density(p, cosmo);
+      const double rho_cold = cooling_get_subgrid_density(p, xp);
+      const double phi =
+          (rho_cold > 0.)
+              ? fmin(p->cooling_data.subgrid_fcold * rho_phys / rho_cold, 1.)
+              : 0.;
+      const double C =
+          fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
+      const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
+      const double L = rt_params.reduced_speed_of_light * dt;
+      f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
+    }
+
+    for (int g = 0; g < RT_NGROUPS; g++) {
+      const float E_old = p->rt_data.radiation[g].energy_density;
+      p->rt_data.radiation[g].energy_density *= (1. - f);
+      for (int i = 0; i < 3; i++) {
+        p->rt_data.radiation[g].flux[i] *= (1. - f);
+      }
+      rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
+                                p->rt_data.radiation[g].flux, E_old,
+                                /*callloc=*/2);
+    }
+
+    free(iact_rates);
+    return;
+  }
+
+  /* Outside the subgrid ISM: absorption by the gas species.
+   * First get absorption rates at the start of the step */
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, rt_species, rt_props->average_photon_energy,

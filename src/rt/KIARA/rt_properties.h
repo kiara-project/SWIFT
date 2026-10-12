@@ -100,6 +100,14 @@ struct rt_props {
   /* Coupling with galaxy subgrid physics? */
   int rt_with_galaxy_subgrid;
 
+  /*! Subgrid ISM: cold clouds (subgrid temperature below this, in K) absorb
+   * all radiation they cover; the warm medium between them is transparent */
+  float ism_cold_cloud_temperature;
+
+  /*! Subgrid ISM: number of cold clouds per gas particle (sets the covering
+   * fraction for a given cold volume filling fraction) */
+  float ism_clouds_per_particle;
+
   /* Re-do thermochemistry recursively if difference in internal energy is too
    * big? */
   int max_tchem_recursion;
@@ -437,6 +445,14 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   /* Are we skipping thermochemistry? */
   rtp->skip_thermochemistry = parser_get_opt_param_int(
       params, "KIARART:skip_thermochemistry", /* default = */ 0);
+
+  /* Cold clouds in the subgrid ISM */
+  rtp->ism_cold_cloud_temperature = parser_get_opt_param_float(
+      params, "KIARART:ism_cold_cloud_temperature_K", 300.f);
+  rtp->ism_clouds_per_particle = parser_get_opt_param_float(
+      params, "KIARART:ism_clouds_per_particle", 1.f);
+  if (rtp->ism_clouds_per_particle <= 0.f)
+    error("KIARART:ism_clouds_per_particle must be > 0");
 
   /* Are we coupling with galaxy subgrid modules? */
   rtp->rt_with_galaxy_subgrid = parser_get_opt_param_int(
