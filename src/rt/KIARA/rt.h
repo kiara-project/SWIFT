@@ -417,14 +417,13 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   }
   if (total_energy_density <= 0.) return 1e20f;
 
-  /* Size from max of geometric radius, smoothing length, grav softening */
-  float psize = p->h;
-  const float gsize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
+  /* Courant condition: radiation travels at c_red/a in comoving
+   * coordinates, so the (physical) time to cross the particle's comoving
+   * size (radius of its volume) is a * psize / c_red */
+  const float psize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
                            hydro_dimension_inv);
-  psize = fmax(psize, gsize);
-  psize = fmax(psize, grav_props->epsilon_baryon_comoving);
   float dt = psize * rt_params.reduced_speed_of_light_inverse * cosmo->a *
-             cosmo->a * rt_props->CFL_condition;
+             rt_props->CFL_condition;
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -578,7 +577,9 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 #endif
 
   struct rt_part_data *restrict rtd = &p->rt_data;
-  const float Vinv = 1.f / p->geometry.volume;
+  /* The fluxes are in comoving units over a physical time-step: with
+   * dU/dt + (1/a) div(F) = 0, the transport is slowed by 1/a */
+  const float Vinv = cosmo->a_inv / p->geometry.volume;
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
   const float redshift_factor =
