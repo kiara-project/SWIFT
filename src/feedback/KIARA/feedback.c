@@ -214,11 +214,11 @@ void feedback_dust_production_condensation(
                  sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
              delta_table[chemistry_element_Si] *
                  sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
-             fb_props->delta_AGBCOL1[chemistry_element_S] *
+             delta_table[chemistry_element_S] *
                  sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
-             fb_props->delta_AGBCOL1[chemistry_element_Ca] *
+             delta_table[chemistry_element_Ca] *
                  sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
-             fb_props->delta_AGBCOL1[chemistry_element_Fe] *
+             delta_table[chemistry_element_Fe] *
                  sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
         sp->feedback_data.delta_dust_mass[k] =
@@ -1706,9 +1706,10 @@ void feedback_props_init(struct feedback_props *fp,
   fp->delta_AGBCOL1[chemistry_element_Ca] = 0.2;
   fp->delta_AGBCOL1[chemistry_element_Fe] = 0.2;
 
-  /* From Poping+17, default=2 in Simba's dust model */
+  /* Multiplier of the SNII condensation efficiencies (Poping+17; Simba's
+   * dust model used 2) */
   const float dust_boost_factor = parser_get_opt_param_float(
-      params, "KIARAFeedback:dust_boost_factor", 2.f);
+      params, "KIARAFeedback:dust_boost_factor", 1.f);
 
   fp->delta_SNII[chemistry_element_H] = 0.00 * dust_boost_factor;
   fp->delta_SNII[chemistry_element_He] = 0.00 * dust_boost_factor;
