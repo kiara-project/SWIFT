@@ -2962,7 +2962,7 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
   /* We reached a leaf OR a cell small enough to be processed quickly */
   if (!ci->split || ci->hydro.count < space_recurse_size_pair_hydro ||
       !cj->split || cj->hydro.count < space_recurse_size_pair_hydro) {
-
+    
     /* Do any of the cells need to be sorted first?
      * Since h_max might have changed, we may not have sorted at this level */
     if (!(ci->hydro.sorted & (1 << sid)) ||

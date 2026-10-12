@@ -382,26 +382,27 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   /* Nothing to do here? */
   if (rt_props->skip_thermochemistry) return;
 
-  /* Compute cooling time and other quantities needed for firehose
-  if (dt > 0. && dt_therm > 0.) {
-    firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props,
-                              cooling, p, xp, dt);
-  }*/
-
-  /* Update the subgrid properties
-  cooling_set_particle_subgrid_properties( phys_const, us,
-          cosmo, hydro_props, floor_props, cooling, p, xp);*/
-
-  /* No cooling if particle is decoupled
-  if (p->decoupled) return; */
-
+  /* Nothing happens for zero timestep */
   if (dt == 0.f || dt_therm == 0.f) return;
+
+  /* Don't do thermochemistry if particle is decoupled  */
+  if (p->decoupled) {
+    /* Compute cooling time and other quantities needed for firehose */
+    if (dt > 0. && dt_therm > 0.) {
+      firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props, cooling, p,
+                                xp, dt);
+    }
+    /* Update the subgrid properties */
+    cooling_set_particle_subgrid_properties(phys_const, us, cosmo, hydro_props,
+                                            floor_props, cooling, p, xp);
+    return;
+  }
 
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
 
-  /* TODO: put the iact_rates to the cooling grackle data. */
+  /* Compute the iact_rates for the cooling grackle data. */
   gr_float *iact_rates = (gr_float *)malloc(5 * sizeof(gr_float));
   if (iact_rates == NULL) {
     fprintf(stderr, "Error: malloc failed for iact_rates\n");
@@ -449,9 +450,21 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     // message("RT rate at index %d: %.4g", i, iact_rates[i]);
   }
 
+  /* Output internal energy before cooling grackle calculation. */
+  p->cooling_data.u_cooling_before =
+      hydro_get_physical_internal_energy(p, xp, cosmo);
+
   /* solve chemistry, update thermal energy */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                              cooling, p, xp, iact_rates, dt, dt_therm);
+
+  /* Output du_dt and u  for debug. */
+  p->cooling_data.du_dt_cooling =
+      hydro_get_physical_internal_energy_dt(p, cosmo);
+  p->cooling_data.u_cooling = hydro_get_physical_internal_energy(p, xp, cosmo);
+
+  /* Update cooling times this step. */
+  p->cooling_data.ncool_this_step += 1;
 
   // int target_id = 2134785;
   // int range = 50;

@@ -51,6 +51,29 @@ struct cooling_part_data {
 
   /*! The strength of the interstellar radiation field in Habing units */
   float G0;
+
+  /*! Particle number of cooling times this hydro step */
+  int ncool_this_step;
+
+  /*! Output du_dt for cooling. */
+  float du_dt_cooling;
+
+  /*! Output u for cooling. */
+  float u_cooling;
+
+  /*! Output u for chemistry. */
+  float u_chemistry;
+
+  /*! Output u for cooling. */
+  float u_cooling_before;
+
+  /*! Output u for feedback. */
+  float u_wind_before;
+  float u_wind_after;
+  float du_wind_this_step;
+  float u_sn_before;
+  float u_sn_after;
+  float du_sn_this_step;
 };
 
 /**

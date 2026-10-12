@@ -588,6 +588,20 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   /* Init geometry for FVPM Radiative Transfer */
   fvpm_geometry_init(p);
+
+  /* Init ncool at beginning of each hydro steps. */
+  p->cooling_data.ncool_this_step = 0;
+  p->dt_therm_debug = 0;
+  p->u_dt_hydro_kick = 0;
+  p->u_full_hydro_kick_before = 0;
+  p->u_full_hydro_kick_after = 0;
+  p->u_hydro_kick_before = 0;
+  p->u_hydro_kick_after = 0;
+  p->u_dt_hydro_drift = 0;
+  p->u_full_hydro_drift_before = 0;
+  p->u_full_hydro_drift_after = 0;
+  p->u_hydro_drift_before = 0;
+  p->u_hydro_drift_after = 0;
 }
 
 /**
@@ -1600,6 +1614,25 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
 
   /* Finish matrix and volume computations for FVPM Radiative Transfer */
   fvpm_compute_volume_and_matrix(p, h_inv_dim);
+
+  // rescale photon energy density
+  // const float h_new = p->h;
+  // const float h_old = p->geometry.h_old;
+
+  // if (h_old > 0.f && h_new > 0.f) {
+
+  // const float ratio = h_old / h_new;
+  // const float ratio2 = ratio * ratio;
+
+  // for (int g = 0; g < RT_NGROUPS; g++) {
+  // p->rt_data.radiation[g].energy_density *= ratio * ratio2;
+  // p->rt_data.radiation[g].flux[0] *= ratio2;
+  // p->rt_data.radiation[g].flux[1] *= ratio2;
+  // p->rt_data.radiation[g].flux[2] *= ratio2;
+  //}
+  //}
+
+  // p->geometry.h_old = p->h;
 }
 
 /**
@@ -2068,6 +2101,12 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     const struct hydro_props *hydro_props,
     const struct entropy_floor_properties *floor_props,
     const struct pressure_floor_props *pressure_floor) {
+  /* debug for energy in drift. */
+  p->u_dt_hydro_drift = hydro_get_physical_internal_energy_dt(p, cosmo);
+  p->u_hydro_drift_before =
+      hydro_get_drifted_physical_internal_energy(p, cosmo);
+  p->u_full_hydro_drift_before =
+      hydro_get_physical_internal_energy(p, xp, cosmo);
 
   /* Predict the internal energy */
   p->u += p->u_dt * dt_therm;
@@ -2119,6 +2158,11 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 
   /* Update signal velocity if we need to */
   p->dt_min = min(p->dt_min, p->h_min / v_sig);
+
+  /* Get internal energy at end of drift. */
+  p->u_full_hydro_drift_after =
+      hydro_get_physical_internal_energy(p, xp, cosmo);
+  p->u_hydro_drift_after = hydro_get_drifted_physical_internal_energy(p, cosmo);
 }
 
 /**
@@ -2225,6 +2269,12 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   /* Integrate the internal energy forward in time */
   const float delta_u = p->u_dt * dt_therm;
 
+  p->dt_therm_debug = dt_therm;
+  p->u_dt_hydro_kick = hydro_get_physical_internal_energy_dt(p, cosmo);
+  p->u_hydro_kick_before = hydro_get_drifted_physical_internal_energy(p, cosmo);
+  p->u_full_hydro_kick_before =
+      hydro_get_physical_internal_energy(p, xp, cosmo);
+
   /* Do not decrease the energy by more than a factor of 2*/
   xp->u_full = max(xp->u_full + delta_u, 0.5f * xp->u_full);
 
@@ -2243,6 +2293,10 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     xp->u_full = energy_min;
     p->u_dt = 0.f;
   }
+
+  /* Get internal energy at end of kick. */
+  p->u_full_hydro_kick_after = hydro_get_physical_internal_energy(p, xp, cosmo);
+  p->u_hydro_kick_after = hydro_get_drifted_physical_internal_energy(p, cosmo);
 }
 
 /**

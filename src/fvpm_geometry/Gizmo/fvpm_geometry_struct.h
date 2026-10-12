@@ -16,6 +16,9 @@ struct fvpm_geometry_struct {
   /* Volume of the particle. */
   float volume;
 
+  /* Volume of the particle. */
+  float h_old;
+
   /* Geometrical shear matrix used to calculate second order accurate
      gradients */
   float matrix_E[3][3];

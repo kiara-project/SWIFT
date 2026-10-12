@@ -145,6 +145,24 @@ struct part {
   /*! Conduction du/dt */
   float u_dt_cond;
 
+  /*! Debug dt_therm */
+  double dt_therm_debug;
+
+  /*! Time derivative of the internal energy. */
+  float u_dt_hydro_kick;
+  float u_dt_hydro_drift;
+
+  /*! The internal energy. */
+  float u_full_hydro_kick_after;
+  float u_hydro_kick_before;
+  float u_full_hydro_kick_before;
+  float u_hydro_kick_after;
+
+  float u_full_hydro_drift_after;
+  float u_hydro_drift_before;
+  float u_full_hydro_drift_before;
+  float u_hydro_drift_after;
+
 #ifdef WITH_FOF_GALAXIES
   /*! Additional data used to record host galaxy information */
   struct fof_galaxy_data galaxy_data;

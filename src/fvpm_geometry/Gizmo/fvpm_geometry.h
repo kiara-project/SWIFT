@@ -59,6 +59,7 @@ __attribute__((always_inline)) INLINE static void fvpm_geometry_init(
     struct part *restrict p) {
 
   p->geometry.volume = 0.0f;
+  p->geometry.h_old = 0.0f;
   p->geometry.matrix_E[0][0] = 0.0f;
   p->geometry.matrix_E[0][1] = 0.0f;
   p->geometry.matrix_E[0][2] = 0.0f;
