@@ -27,6 +27,11 @@
 /* Additional RT data in hydro particle struct */
 struct rt_part_data {
 
+  /*! DEBUG: cumulative photon energy changes (all groups, internal energy
+   * units): 0 injected, 1 absorbed, 2 transport exchange, 3 negative-energy
+   * clamps after transport, 4 redshifting */
+  float debug_dE[5];
+
   /* Radiation state vector. */
   struct {
     /*! Radiation energy density */

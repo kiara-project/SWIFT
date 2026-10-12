@@ -268,6 +268,8 @@ INLINE void rt_do_thermochemistry(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+    p->rt_data.debug_dE[1] -=
+        p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -531,6 +533,8 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+    p->rt_data.debug_dE[1] -=
+        p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);

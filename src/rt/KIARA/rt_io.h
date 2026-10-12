@@ -180,6 +180,14 @@ INLINE static int rt_write_particles(const struct part *parts,
       /*xparts=*/NULL, rt_convert_mass_fractions,
       "Mass fractions of all constituent species");
 
+  /* DEBUG: photon energy budget */
+  list[num_elements] = io_make_output_field(
+      "RTDebugEnergyBudget", FLOAT, 5, UNIT_CONV_ENERGY, 0.f, parts,
+      rt_data.debug_dE,
+      "Cumulative photon energy changes: injected, absorbed, transport, "
+      "clamps, redshift");
+  num_elements++;
+
 #ifdef SWIFT_RT_DEBUG_CHECKS
   num_elements += 8;
   list[3] =

@@ -184,6 +184,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
     const float injected_energy_density =
         si->rt_data.emission_this_step[g] * weight * Vinv;
     pj->rt_data.radiation[g].energy_density += injected_energy_density;
+    pj->rt_data.debug_dE[0] += injected_energy_density * pj->geometry.volume;
     if (g == 0 &&
         injected_energy_density * pj->geometry.volume * 1.98841e+53 > 1.e57)
       message(
