@@ -2582,6 +2582,20 @@ static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
 
 #if defined(BLACK_HOLES_OBSIDIAN) && defined(WITH_FOF_GALAXIES)
 /**
+ * @brief Chandrasekhar dynamical-friction time of a satellite of mass m_sat
+ * at physical radius r in a host of mass M_host (0 if undefined).
+ */
+static double fof_bh_df_time(const double r, const double m_sat,
+                             const double M_host, const double G,
+                             const double factor) {
+
+  if (r <= 0. || m_sat <= 0. || M_host <= 0.) return 0.;
+  const double v_c = sqrt(G * M_host / r);
+  const double log_Lambda = log(1. + M_host / m_sat);
+  return factor * 1.17 * r * r * v_c / (G * m_sat * log_Lambda);
+}
+
+/**
  * @brief Sink secondary BHs onto the most massive BH of their FoF galaxy
  * after a dynamical-friction time.
  *
@@ -2590,10 +2604,13 @@ static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
  * satellite of mass m_sat (its former galaxy's stellar mass plus its own
  * mass) at the current separation r in the host of mass M_host:
  *   t_df = f * 1.17 r^2 v_c / (G m_sat ln(1 + M_host / m_sat)),
- * v_c = sqrt(G M_host / r). Once t_df has elapsed the secondary is put next
- * to the primary with its velocity, so the usual BH-BH swallowing merges
- * the pair. The clock is reset whenever the BH is not in a galaxy with a
- * more massive BH, or the primary changes.
+ * v_c = sqrt(G M_host / r). Once t_df has elapsed, the separation from the
+ * primary and the relative velocity are both shrunk by a fraction f_sink
+ * (the separation not below 0.01 softening lengths) and the clock is
+ * restarted with t_df at the new separation. With f_sink = 1 the secondary
+ * is put next to the primary with its velocity, and the usual BH-BH
+ * swallowing merges the pair. The clock is reset whenever the BH is not in
+ * a galaxy with a more massive BH, or the primary changes.
  *
  * Must be called before the host-galaxy data are updated in this FoF call.
  *
@@ -2610,7 +2627,8 @@ static void fof_bh_dynamical_friction(const struct fof_props *props,
   const struct engine *e = s->e;
   const struct black_holes_props *bh_props = e->black_holes_properties;
   const float factor = bh_props->df_merger_time_factor;
-  if (factor <= 0.f) return;
+  const double f_sink = bh_props->df_sink_fraction;
+  if (factor <= 0.f || f_sink <= 0.) return;
 
   const size_t num_groups = props->num_groups;
   const size_t group_id_default = props->group_id_default;
@@ -2699,47 +2717,51 @@ static void fof_bh_dynamical_friction(const struct fof_props *props,
       dx[j] = bp->x[j] - prim_xv[index * 6 + j];
       if (periodic) dx[j] = nearest(dx[j], dim[j]);
     }
+    const double r = sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
 
     if (bp->df_primary_id != prim_id[index]) {
 
       /* Start the clock */
-      const double r = a * sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
-      const double m_sat = bp->galaxy_data.stellar_mass + bp->subgrid_mass;
-      const double M_host = group_mass[index];
-      double t_df = 0.;
-      if (r > 0. && m_sat > 0. && M_host > 0.) {
-        const double v_c = sqrt(G * M_host / r);
-        const double log_Lambda = log(1. + M_host / m_sat);
-        t_df = factor * 1.17 * r * r * v_c / (G * m_sat * log_Lambda);
-      }
       bp->df_primary_id = prim_id[index];
+      bp->df_sat_mass = bp->galaxy_data.stellar_mass + bp->subgrid_mass;
       bp->df_t_start = time;
-      bp->df_merger_time = t_df;
+      bp->df_merger_time = fof_bh_df_time(a * r, bp->df_sat_mass,
+                                          group_mass[index], G, factor);
       counts[0]++;
     }
 
     if (!allow_moves || time - bp->df_t_start < bp->df_merger_time) continue;
 
-    /* Time is up: put the BH right next to the primary (not on top of it,
-     * to keep the separation non-zero) with the primary's velocity */
+    /* Time is up: shrink the separation (keeping it non-zero) and the
+     * relative velocity by f_sink */
+    const double r_min = 0.01 * bp->gpart->epsilon;
+    if (r <= r_min) continue;
+    const double shrink = fmax(1. - f_sink, r_min / r);
+
 #ifdef OBSIDIAN_DEBUG_CHECKS
-    message("BH_DF_SINK: z=%g bid=%lld onto bid=%lld r=%g kpc t_df=%g Myr "
-            "MBH=%g Mgal=%g",
+    message("BH_DF_SINK: z=%g bid=%lld onto bid=%lld r=%g->%g kpc t_df=%g Myr "
+            "MBH=%g msat=%g",
             e->cosmology->z, bp->id, prim_id[index],
-            a * sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]) *
-                e->internal_units->UnitLength_in_cgs / 3.0857e21,
+            a * r * e->internal_units->UnitLength_in_cgs / 3.0857e21,
+            a * r * shrink * e->internal_units->UnitLength_in_cgs / 3.0857e21,
             bp->df_merger_time * bh_props->time_to_Myr,
             bp->subgrid_mass * bh_props->mass_to_solar_mass,
-            bp->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass);
+            bp->df_sat_mass * bh_props->mass_to_solar_mass);
 #endif
     for (int j = 0; j < 3; j++) {
-      const double delta = -(1. - 1e-3) * dx[j];
+      const double delta = (shrink - 1.) * dx[j];
       bp->x[j] += delta;
       bp->gpart->x[j] += delta;
       bp->x_diff[j] -= delta;
-      bp->v[j] = prim_xv[index * 6 + 3 + j];
-      bp->gpart->v_full[j] = prim_xv[index * 6 + 3 + j];
+      const double v_prim = prim_xv[index * 6 + 3 + j];
+      bp->v[j] = v_prim + shrink * (bp->v[j] - v_prim);
+      bp->gpart->v_full[j] = bp->v[j];
     }
+
+    /* Restart the clock at the new separation */
+    bp->df_t_start = time;
+    bp->df_merger_time = fof_bh_df_time(a * r * shrink, bp->df_sat_mass,
+                                        group_mass[index], G, factor);
     counts[1]++;
   }
 
@@ -2747,7 +2769,8 @@ static void fof_bh_dynamical_friction(const struct fof_props *props,
   MPI_Allreduce(MPI_IN_PLACE, counts, 2, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 #endif
   if (engine_rank == 0 && (counts[0] > 0 || counts[1] > 0))
-    message("BH dynamical friction: %d clock(s) started, %d BH(s) sunk",
+    message("BH dynamical friction: %d clock(s) started, %d BH(s) sunk "
+            "towards their primary",
             counts[0], counts[1]);
 
   swift_free("fof_bh_df_mass", prim_mass);

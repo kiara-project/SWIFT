@@ -395,6 +395,10 @@ struct black_holes_props {
    * a FoF galaxy is sunk onto the galaxy's most massive BH (<= 0: off) */
   float df_merger_time_factor;
 
+  /*! Fraction of the separation from (and relative velocity to) the primary
+   * removed each time the dynamical-friction time elapses (<= 0: off) */
+  float df_sink_fraction;
+
   /* ---- Black hole time-step properties ---------- */
 
   /*! Minimum allowed time-step of BH (internal units) */
@@ -1126,6 +1130,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->df_merger_time_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:bh_df_merger_time_factor", 1.f);
+  bp->df_sink_fraction = parser_get_opt_param_float(
+      params, "ObsidianAGN:bh_df_sink_fraction", 1.f);
+  if (bp->df_sink_fraction > 1.f)
+    error("ObsidianAGN:bh_df_sink_fraction must be <= 1");
 
   /* ---- Black hole time-step properties ------------------ */
 

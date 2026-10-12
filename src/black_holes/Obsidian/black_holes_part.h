@@ -88,6 +88,9 @@ struct bpart {
 
   /*! Dynamical-friction time to sink onto df_primary_id */
   float df_merger_time;
+
+  /*! Satellite mass (former galaxy stars + BH) in the dynamical-friction time */
+  float df_sat_mass;
 #endif
 
   /*! Union for the formation time and formation scale factor */

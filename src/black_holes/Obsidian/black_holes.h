@@ -472,6 +472,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->df_primary_id = 0;
   bp->df_t_start = 0.;
   bp->df_merger_time = 0.f;
+  bp->df_sat_mass = 0.f;
 #endif
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
@@ -1938,6 +1939,7 @@ INLINE static void black_holes_create_from_gas(
   bp->df_primary_id = 0;
   bp->df_t_start = 0.;
   bp->df_merger_time = 0.f;
+  bp->df_sat_mass = 0.f;
 #endif
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
