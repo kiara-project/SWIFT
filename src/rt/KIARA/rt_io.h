@@ -149,6 +149,19 @@ INLINE static void rt_convert_mass_fractions(const struct engine *engine,
 }
 
 /**
+ * @brief DEBUG: interface area sum in units of that of a sphere's volume
+ * radius (sum |A_ij| R / V; 3 for a sphere).
+ */
+INLINE static void rt_convert_area_ratio(const struct engine *engine,
+                                         const struct part *part,
+                                         const struct xpart *xpart,
+                                         float *ret) {
+  const float V = part->geometry.volume;
+  const float R = cbrtf(3.f * V / (4.f * M_PI));
+  ret[0] = (V > 0.f) ? part->rt_data.area_sum_last * R / V : 0.f;
+}
+
+/**
  * @brief Creates additional output fields for the radiative
  * transfer data of hydro particles.
  *
@@ -186,6 +199,12 @@ INLINE static int rt_write_particles(const struct part *parts,
       rt_data.debug_dE,
       "Cumulative photon energy changes: injected, absorbed, transport, "
       "clamps, redshift, drift");
+  num_elements++;
+  list[num_elements] = io_make_output_field_convert_part(
+      "RTDebugInterfaceAreaRatio", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      /*xparts=*/NULL, rt_convert_area_ratio,
+      "Sum of interface areas times volume radius over volume (3 for a "
+      "sphere)");
   num_elements++;
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
