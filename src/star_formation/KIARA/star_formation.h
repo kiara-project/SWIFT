@@ -268,7 +268,8 @@ INLINE static int star_formation_is_star_forming(
     const struct entropy_floor_properties *entropy_floor_props) {
 
   /* No star formation for particles in the wind or with cooling shut off */
-  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) return 0;
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f)
+    return 0;
 
   /* No star formation when outside subgrid model */
   if (cooling_get_subgrid_temperature(p, xp) <= 0.f) return 0;
@@ -320,48 +321,47 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
 
   /* Compute H2 fraction in KMT model if desired */
   if (starform->H2_model == kiara_star_formation_kmt_model) {
-      double gas_sigma = 0.f;
-      float gas_Z = 0.f;
-      float chi = 0.f;
-      float s = 0.f;
-      /* Clumping factor <n^2>/<n>^2 at the resolved scale (>= 1) */
-      float clumping_factor = starform->clumping_factor_scaling;
-      float gas_gradrho_mag = 0.f;
+    double gas_sigma = 0.f;
+    float gas_Z = 0.f;
+    float chi = 0.f;
+    float s = 0.f;
+    /* Clumping factor <n^2>/<n>^2 at the resolved scale (>= 1) */
+    float clumping_factor = starform->clumping_factor_scaling;
+    float gas_gradrho_mag = 0.f;
 
-      gas_Z = p->chemistry_data.metal_mass_fraction_total;
-      gas_Z /= starform->Z_solar;
-      if (gas_Z < 0.01f) {
-        gas_Z = 0.01f;
-      }
+    gas_Z = p->chemistry_data.metal_mass_fraction_total;
+    gas_Z /= starform->Z_solar;
+    if (gas_Z < 0.01f) {
+      gas_Z = 0.01f;
+    }
 
-      if (physical_density > 0.f) {
-        gas_gradrho_mag = sqrtf(p->rho_gradient[0] * p->rho_gradient[0] +
-                                p->rho_gradient[1] * p->rho_gradient[1] +
-                                p->rho_gradient[2] * p->rho_gradient[2]);
+    if (physical_density > 0.f) {
+      gas_gradrho_mag = sqrtf(p->rho_gradient[0] * p->rho_gradient[0] +
+                              p->rho_gradient[1] * p->rho_gradient[1] +
+                              p->rho_gradient[2] * p->rho_gradient[2]);
 
-        if (gas_gradrho_mag > 0) {
-          gas_sigma = (p->rho * p->rho) / gas_gradrho_mag;
+      if (gas_gradrho_mag > 0) {
+        gas_sigma = (p->rho * p->rho) / gas_gradrho_mag;
 
-          /* surface density must be in Msun/pc^2 */
-          gas_sigma *=
-              starform->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
+        /* surface density must be in Msun/pc^2 */
+        gas_sigma *= starform->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
 
-          if (clumping_factor < 1.f) {
-            clumping_factor = 1.f;
-          }
-
-          /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
-          chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
-                (30.f / clumping_factor);
-          s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
-              (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
+        if (clumping_factor < 1.f) {
+          clumping_factor = 1.f;
         }
+
+        /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
+        chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
+              (30.f / clumping_factor);
+        s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
+            (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
       }
-      /* KMT: f_H2 = 1 - (3/4) s / (1 + s/4) for s < 2, and 0 above */
-      if (s > 0.f) {
-        H2_fraction = (s < 2.f) ? 1.f - 0.75f * (s / (1.f + 0.25f * s)) : 0.f;
-      }
-   }
+    }
+    /* KMT: f_H2 = 1 - (3/4) s / (1 + s/4) for s < 2, and 0 above */
+    if (s > 0.f) {
+      H2_fraction = (s < 2.f) ? 1.f - 0.75f * (s / (1.f + 0.25f * s)) : 0.f;
+    }
+  }
 
   /* Compute the SFR */
   p->sf_data.SFR = SFRpergasmass * H2_fraction * hydro_get_mass(p);
@@ -482,7 +482,8 @@ INLINE static void star_formation_compute_SFR_wn07(
       rhosfr * (p->cooling_data.subgrid_fcold * hydro_get_mass(p));
 
   /* Multiply by the H2 fraction */
-  const float H2_frac = (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  const float H2_frac =
+      (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
   p->sf_data.SFR = starform->lognormal.epsilon * sfr * H2_frac;
 }
 
@@ -510,7 +511,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
   const double rho_limit = 1.001 * starform->lognormal.rho0;
 
   /* H2 fraction in the particle */
-  const float H2_frac = (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  const float H2_frac =
+      (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
 
   /* Mean density of the gas described by a lognormal PDF
    * (i.e. subgrid ISM gas) PHYSICAL */
@@ -547,7 +549,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
    */
   const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_V);
 
-  const double mass = H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
+  const double mass =
+      H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
 
   /* Store the SFR */
   p->sf_data.SFR = starform->lognormal.epsilon * sSFR * mass;

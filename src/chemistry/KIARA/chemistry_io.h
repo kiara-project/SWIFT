@@ -83,10 +83,10 @@ INLINE static int chemistry_write_particles(const struct part *parts,
       chemistry_data.diffusion_coefficient, "The full diffusion coefficient");
   num++;
 
-  list[num] =
-      io_make_output_field("CoolingShutoffTimes", FLOAT, 1, UNIT_CONV_TIME,
-                           0.f, parts, feedback_data.cooling_shutoff_delay_time,
-                           "Time remaining with radiative cooling/heating turned off");
+  list[num] = io_make_output_field(
+      "CoolingShutoffTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
+      feedback_data.cooling_shutoff_delay_time,
+      "Time remaining with radiative cooling/heating turned off");
   num++;
 
   list[num] =
@@ -183,8 +183,8 @@ INLINE static int chemistry_write_bparticles(const struct bpart *bparts,
       "Masses of the BH particles in a given element");
   num++;
 
-  list[num] = io_make_output_field("MetalMasses", FLOAT, 1, UNIT_CONV_MASS,
-                                   0.f, bparts, chemistry_data.metal_mass_total,
+  list[num] = io_make_output_field("MetalMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f,
+                                   bparts, chemistry_data.metal_mass_total,
                                    "Masses of the BH particles in metals");
   num++;
 

@@ -374,8 +374,8 @@ void cooling_copy_to_grackle2(
     species_densities[20] =
         p->cooling_data.dust_mass / p->mass * species_densities[12];
     data->dust_density = &species_densities[20];
-    species_densities[21] =
-        p->feedback_data.SNe_ThisTimeStep * dt / p->mass * species_densities[12];
+    species_densities[21] = p->feedback_data.SNe_ThisTimeStep * dt / p->mass *
+                            species_densities[12];
     /* need to pass the number of SNe per volume of particle;
      * recall SNe_ThisTimeStep is the SNe rate */
 
@@ -926,9 +926,11 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
   /* Normalize hydrogen species */
   float X_H = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac;
 #if COOLING_GRACKLE_MODE >= 2
-  X_H += xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac + xp->cooling_data.HM_frac;
+  X_H += xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac +
+         xp->cooling_data.HM_frac;
 #endif
-  const float new_H_frac = p->chemistry_data.metal_mass_fraction[chemistry_element_H];
+  const float new_H_frac =
+      p->chemistry_data.metal_mass_fraction[chemistry_element_H];
   const float H_ratio = (X_H > 0.f) ? new_H_frac / X_H : 1.f;
 
   xp->cooling_data.HI_frac *= H_ratio;
@@ -940,8 +942,10 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
 #endif
 
   /* Normalize helium species */
-  float X_He = xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac;
-  const float new_He_frac = p->chemistry_data.metal_mass_fraction[chemistry_element_He];
+  float X_He = xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac +
+               xp->cooling_data.HeIII_frac;
+  const float new_He_frac =
+      p->chemistry_data.metal_mass_fraction[chemistry_element_He];
   const float He_ratio = (X_He > 0.f) ? new_He_frac / X_He : 1.f;
 
   xp->cooling_data.HeI_frac *= He_ratio;
@@ -996,21 +1000,24 @@ gr_float cooling_grackle_driver(
   grackle_field_data data;
   // cooling_grackle_malloc_fields(&data, 1, cooling->chemistry.use_dust_evol);
 
-  /* Make an initial guess of H2 fractions, to help grackle converge 
+  /* Make an initial guess of H2 fractions, to help grackle converge
   const float H2_frac = xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac;
-  if (p->cooling_data.subgrid_temp > 0.f && H2_frac > 0.f && H2_frac < 1.f && p->chemistry_data.metal_mass_fraction_total > 1.e-6) {
+  if (p->cooling_data.subgrid_temp > 0.f && H2_frac > 0.f && H2_frac < 1.f &&
+  p->chemistry_data.metal_mass_fraction_total > 1.e-6) {
     //float H2_frac_KMT = cooling_KMT_H2_fraction(p, cosmo, cooling);
     //if (H2_frac_KMT < 0.f) H2_frac_KMT = 0.f;
     //if (H2_frac_KMT > 1.f) H2_frac_KMT = 1.f;
-    const float H_frac = H2_frac + xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
-    float P_over_k_cgs = hydro_get_physical_pressure(p, cosmo) * units_cgs_conversion_factor(us, UNIT_CONV_PRESSURE) / 1.38e-16;
-    float Rmol = pow(p->chemistry_data.metal_mass_fraction_total * P_over_k_cgs / (0.0134 * 4.3e4), 0.92);
-    float H2_frac_BR = Rmol / (1.f + Rmol) * H_frac;
-    if (p->id % 10 == 0) message("z=%g T=%g nH=%g P/k=%g Rmol=%g H2old=%g H2BR=%g H=%g", cosmo->z, p->cooling_data.subgrid_temp, p->cooling_data.subgrid_dens * cooling->units.density_units * 0.75 / 1.673e-24, P_over_k_cgs, Rmol, H2_frac, H2_frac_BR, H_frac);
-    const float H2_guess = H2_frac_BR;
-    const float H2_factor = H2_guess / H2_frac;
-    assert(H2_factor > 0.f);
-    assert(non_H2_factor > 0.f);
+    const float H_frac = H2_frac + xp->cooling_data.HI_frac +
+  xp->cooling_data.HII_frac + xp->cooling_data.HM_frac; float P_over_k_cgs =
+  hydro_get_physical_pressure(p, cosmo) * units_cgs_conversion_factor(us,
+  UNIT_CONV_PRESSURE) / 1.38e-16; float Rmol =
+  pow(p->chemistry_data.metal_mass_fraction_total * P_over_k_cgs / (0.0134
+  * 4.3e4), 0.92); float H2_frac_BR = Rmol / (1.f + Rmol) * H_frac; if (p->id %
+  10 == 0) message("z=%g T=%g nH=%g P/k=%g Rmol=%g H2old=%g H2BR=%g H=%g",
+  cosmo->z, p->cooling_data.subgrid_temp, p->cooling_data.subgrid_dens *
+  cooling->units.density_units * 0.75 / 1.673e-24, P_over_k_cgs, Rmol, H2_frac,
+  H2_frac_BR, H_frac); const float H2_guess = H2_frac_BR; const float H2_factor
+  = H2_guess / H2_frac; assert(H2_factor > 0.f); assert(non_H2_factor > 0.f);
     xp->cooling_data.H2I_frac *= H2_factor;
     xp->cooling_data.H2II_frac *= H2_factor;
     xp->cooling_data.HI_frac *= non_H2_factor;
@@ -1018,7 +1025,8 @@ gr_float cooling_grackle_driver(
     xp->cooling_data.HM_frac *= non_H2_factor;
   }*/
 
-  /* Renomalize H,He species to account for any changes due to chemistry, stellar evol, etc */
+  /* Renomalize H,He species to account for any changes due to chemistry,
+   * stellar evol, etc */
   cooling_normalize_primordial_species(p, xp);
 
   /* load particle information from particle to grackle data */
@@ -1180,8 +1188,8 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
   /* Do dust destruction in stream particle */
   if (cooling->use_grackle_dust_evol && p->cooling_data.dust_mass > 0.f) {
     const float u_phys = hydro_get_physical_internal_energy(p, xp, cosmo);
-    const float Tstream =
-        cooling_convert_u_to_temp(u_phys, xp->cooling_data.e_frac, cooling, p, xp);
+    const float Tstream = cooling_convert_u_to_temp(
+        u_phys, xp->cooling_data.e_frac, cooling, p, xp);
     const double Tstream_K =
         Tstream * units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
@@ -1445,8 +1453,9 @@ void cooling_do_grackle_cooling(
 
   /* Compute the ISRF */
   p->cooling_data.G0 =
-      fmax(cooling_compute_G0(p, xp, p->cooling_data.subgrid_dens, T_warm, cooling,
-                              galaxy_mstar, galaxy_ssfr, dt), 0.);
+      fmax(cooling_compute_G0(p, xp, p->cooling_data.subgrid_dens, T_warm,
+                              cooling, galaxy_mstar, galaxy_ssfr, dt),
+           0.);
 
   /* Do grackle cooling */
   const float u_old = hydro_get_physical_internal_energy(p, xp, cosmo);
@@ -1482,8 +1491,8 @@ void cooling_do_grackle_cooling(
     cooling_sputter_dust(us, cosmo, cooling, p, xp, dt);
   } else {
     /* Particle is in subgrid mode; result is stored in subgrid_temp */
-    p->cooling_data.subgrid_temp =
-        cooling_convert_u_to_temp(u_new, xp->cooling_data.e_frac, cooling, p, xp);
+    p->cooling_data.subgrid_temp = cooling_convert_u_to_temp(
+        u_new, xp->cooling_data.e_frac, cooling, p, xp);
 
     /* Set the subgrid cold ISM fraction for particle */
     /* Get H number density */
@@ -1560,8 +1569,7 @@ static INLINE void cooling_decay_SNe_rate(
     struct part *restrict p, const double dt) {
 #if COOLING_GRACKLE_MODE >= 2
   if (cooling->SNe_smoothing_time > 0.) {
-    p->feedback_data.SNe_ThisTimeStep *=
-        exp(-dt / cooling->SNe_smoothing_time);
+    p->feedback_data.SNe_ThisTimeStep *= exp(-dt / cooling->SNe_smoothing_time);
   } else {
     p->feedback_data.SNe_ThisTimeStep = 0.f;
   }
@@ -1655,7 +1663,7 @@ void cooling_set_particle_subgrid_properties(
     struct xpart *xp) {
 
   /* No subgrid ISM if particle is decoupled */
-  if (p->decoupled  || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
     /* Make sure these are always set for the wind particles */
     p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
     p->cooling_data.subgrid_temp = 0.;
@@ -1867,7 +1875,8 @@ void cooling_init_units(const struct unit_system *us,
   cooling->time_to_Myr = time_to_yr * 1.e-6;
   cooling->mass_to_solar_mass = mass_to_solar_mass;
 
-  const double vel_to_km_s =  units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY) * 1.e-5;
+  const double vel_to_km_s =
+      units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY) * 1.e-5;
   cooling->potential_to_kms2 = vel_to_km_s * vel_to_km_s;
   cooling->ff_const = sqrt(3. * M_PI / (32. * phys_const->const_newton_G));
 
@@ -1881,7 +1890,7 @@ void cooling_init_units(const struct unit_system *us,
   /* G0 for MW=1.6 (Parravano etal 2003).  */
   /* Scaled to SFR density in solar neighborhood =0.002 Mo/Gyr/pc^3
      (J. Isern 2019) */
-  //const float sfr_density_solar = 0.002f;
+  // const float sfr_density_solar = 0.002f;
   /* SFR within solar circle is 1.5 Mo/yr */
   const float sfr_density_solar = 0.066f;
   cooling->G0_factor1 = 1.6f * mass_to_solar_mass /
@@ -2115,12 +2124,12 @@ void cooling_init_backend(struct swift_params *parameter_file,
   cooling_read_parameters(parameter_file, cooling, phys_const, us);
 
   /* Maximal density of the firehose mixing layer: the same cap as the
-   * ambient density in the chemistry (KIARAChemistry:firehose_nh_ambient_max_cgs,
-   * a physical H number density), converted to a physical mass density */
+   * ambient density in the chemistry
+   * (KIARAChemistry:firehose_nh_ambient_max_cgs, a physical H number density),
+   * converted to a physical mass density */
   cooling->firehose_rho_max =
-      parser_get_opt_param_double(parameter_file,
-                                  "KIARAChemistry:firehose_nh_ambient_max_cgs",
-                                  0.1) *
+      parser_get_opt_param_double(
+          parameter_file, "KIARAChemistry:firehose_nh_ambient_max_cgs", 0.1) *
       phys_const->const_proton_mass /
       (hydro_props->hydrogen_mass_fraction *
        units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY));

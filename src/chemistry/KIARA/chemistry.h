@@ -363,8 +363,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
        * symmetric, so metal mass stays conserved. */
       float D_capped = D_phys;
       if (cd->time_step_min > 0.f) {
-        const float D_max = cd->diffusion_beta * rho_phys * h_phys * h_phys /
-                            cd->time_step_min;
+        const float D_max =
+            cd->diffusion_beta * rho_phys * h_phys * h_phys / cd->time_step_min;
         D_capped = min(D_capped, D_max);
       }
 
@@ -678,8 +678,8 @@ static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
 /**
  * @brief Prints the properties of the chemistry model to stdout.
  *
- * @param data The #chemistry_global_data containing information about the current
- * model.
+ * @param data The #chemistry_global_data containing information about the
+ * current model.
  */
 static INLINE void chemistry_print_backend(
     const struct chemistry_global_data *data) {
@@ -775,14 +775,11 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
  * @return The comoving stream radius.
  */
 __attribute__((always_inline)) INLINE static float
-firehose_initial_stream_radius(const float galaxy_stellar_mass,
-                               const float minimum_galaxy_stellar_mass,
-                               const double mass_to_solar_mass,
-                               const double length_to_kpc,
-                               const double rho_to_n_cgs,
-                               const double m_dot_wind, const float v_wind_phys,
-                               const float h_launch,
-                               const struct cosmology *cosmo) {
+firehose_initial_stream_radius(
+    const float galaxy_stellar_mass, const float minimum_galaxy_stellar_mass,
+    const double mass_to_solar_mass, const double length_to_kpc,
+    const double rho_to_n_cgs, const double m_dot_wind, const float v_wind_phys,
+    const float h_launch, const struct cosmology *cosmo) {
 
   /* Twice the effective radius of disk galaxies, physical kpc, converted to
    * internal comoving units */
@@ -870,8 +867,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
      * the two phases, so no further (frame-dependent) limit on the kinetic
      * energy is needed. Always apply the exchange, so that it stays
      * conservative between the pair. */
-    const float dv2 = ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] +
-                      ch->dv[2] * ch->dv[2];
+    const float dv2 =
+        ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] + ch->dv[2] * ch->dv[2];
     const float dv_phys = sqrtf(dv2) * cosmo->a_inv;
 
     if (dv_phys > 0.f)
@@ -926,8 +923,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
          * Turning a mass fraction df of cold gas into warm gas costs
          * df (u_warm - u_cold) per unit particle mass. */
         const double f_c = p->cooling_data.subgrid_fcold;
-        const double u_warm =
-            (f_c < 1.) ? (u - f_c * u_cold) / (1. - f_c) : u;
+        const double u_warm = (f_c < 1.) ? (u - f_c * u_cold) / (1. - f_c) : u;
         const double delta_u = u_warm - u_cold;
 
         /* Fraction of the particle mass evaporated, at most all the cold
@@ -944,8 +940,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
           if (p->cooling_data.subgrid_fcold <= 0.f) {
             p->cooling_data.subgrid_temp = 0.f;
-            p->cooling_data.subgrid_dens =
-                hydro_get_physical_density(p, cosmo);
+            p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
             p->cooling_data.subgrid_fcold = 0.f;
           }
         }
@@ -1070,7 +1065,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
   float dZ[chemistry_element_count];
   for (int elem = 0; elem < chemistry_element_count; elem++) {
     dZ[elem] = ch->dZ_dt[elem] * dt * factor;
-    const float new_metal_fraction_elem = ch->metal_mass_fraction[elem] + dZ[elem];
+    const float new_metal_fraction_elem =
+        ch->metal_mass_fraction[elem] + dZ[elem];
 
     /* Make sure that the metallicity is 0 <= x <= 1 */
     if (new_metal_fraction_elem < 0.f) {
@@ -1206,8 +1202,9 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
             "time_step_min (%g Myr): n=%g h=%g D=%g",
             p->id, dt_chem * cd->time_to_Myr,
             cd->time_step_min * cd->time_to_Myr,
-	    rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc, 
-	    D_phys * cd->mass_to_solar_mass / (cd->time_to_Myr * cd->length_to_kpc));
+            rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc,
+            D_phys * cd->mass_to_solar_mass / (cd->time_to_Myr *
+      cd->length_to_kpc));
       }*/
 
       dt_chem = max(dt_chem, cd->time_step_min);

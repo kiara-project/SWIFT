@@ -139,12 +139,12 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     if (p->decoupled) {
       /* Decrement the counter */
       p->feedback_data.decoupling_delay_time -= dt_part;
-  
+
       /* Estimate if it will decouple in the next step, if so set flag=2 */
       if (p->feedback_data.decoupling_delay_time <= dt_part) {
         p->decoupled = 2;
       }
-  
+
       /**
        * Recouple under 3 conditions:
        * (1) Below the density threshold.
@@ -155,13 +155,14 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
           hydro_get_physical_density(p, cosmo) * fb_props->rho_to_n_cgs;
       const double rho_recouple_cgs = fb_props->recouple_density_factor *
                                       fb_props->recouple_ism_density_nH_cgs;
-  
+
       const int recouple = (p->feedback_data.decoupling_delay_time <= 0.f ||
                             p->chemistry_data.radius_stream < 0.f ||
                             rho_nH_cgs < rho_recouple_cgs);
-  
+
       if (recouple && p->decoupled == 1) {
-        /* If it is recoupling, do one more decoupled step to set timestep etc */
+        /* If it is recoupling, do one more decoupled step to set timestep etc
+         */
         p->decoupled = 2;
       } else if (recouple) {
         /* extra decoupled step is done, now properly recouple */
@@ -176,7 +177,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
   }
   return;
 }
-  
+
 /**
  * @brief Sets the wind direction vector for feedback kicks
  *
@@ -577,8 +578,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   const float FIRE_eta_break = feedback_props->FIRE_eta_break;
   const float FIRE_eta_lower_slope = feedback_props->FIRE_eta_lower_slope;
   const float FIRE_eta_upper_slope = feedback_props->FIRE_eta_upper_slope;
-  const float FIRE_eta_lower_slope_EOR =
-      feedback_props->FIRE_eta_lower_slope;
+  const float FIRE_eta_lower_slope_EOR = feedback_props->FIRE_eta_lower_slope;
   const float wind_eta_suppression_redshift =
       feedback_props->wind_eta_suppression_redshift;
 
@@ -607,8 +607,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
      * t_fb. */
     const float p0 = h_phys * eps_term * M_PI * tfb_inv;
     const float t_prev = fmax(star_age_beg_step, 0.f);
-    const float t_end = fmin(star_age_end_step,
-                             feedback_props->early_stellar_feedback_tfb);
+    const float t_end =
+        fmin(star_age_end_step, feedback_props->early_stellar_feedback_tfb);
     const float term1 = pow(t_end * tfb_inv, alpha_power);
     const float term2 = pow(t_prev * tfb_inv, alpha_power);
     const double delta_p = alpha * p0 * sp->mass * (term1 - term2);
@@ -729,7 +729,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
   /* Check that ejecta or metal masses are not <0 */
   if (ejecta_unprocessed < 0.f) {
-    warning("STELLAR EJECTA <0: z=%g sid=%lld ej=%g, setting to 0", cosmo->z, sp->id, ejecta_unprocessed);
+    warning("STELLAR EJECTA <0: z=%g sid=%lld ej=%g, setting to 0", cosmo->z,
+            sp->id, ejecta_unprocessed);
     ejecta_unprocessed = 0.f;
   }
 
@@ -752,7 +753,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   for (elem = chem5_element_H; elem < chem5_element_count; elem++) {
     if (ejecta_metal_mass[elem] < 0.) {
       clamped_mass -= ejecta_metal_mass[elem];
-      if (elem >= chem5_element_C) clamped_metal_mass -= ejecta_metal_mass[elem];
+      if (elem >= chem5_element_C)
+        clamped_metal_mass -= ejecta_metal_mass[elem];
       ejecta_metal_mass[elem] = 0.;
     }
   }
@@ -783,7 +785,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   /* Put some of the ejecta metals into dust.  Must be done after
      chem5->chemistry conversion map is applied */
   if (sp->feedback_data.total_metal_mass > 0.) {
-    feedback_dust_production_condensation(sp, star_age_beg_step, feedback_props);
+    feedback_dust_production_condensation(sp, star_age_beg_step,
+                                          feedback_props);
   }
 #endif
 
@@ -794,9 +797,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
    * stays in the star, so mass is conserved (the per-particle limiter in
    * the enrichment loop is then only a backstop, e.g. for gas enriched by
    * several stars in one step). */
-  const double max_ejecta_mass = (feedback_props->max_mass_increase_factor -
-                                  1.) *
-                                 sp->feedback_data.kernel_wt_sum / kernel_root;
+  const double max_ejecta_mass =
+      (feedback_props->max_mass_increase_factor - 1.) *
+      sp->feedback_data.kernel_wt_sum / kernel_root;
   if (ejecta_mass > max_ejecta_mass) {
     const double ejecta_scale =
         (ejecta_mass > 0.) ? max_ejecta_mass / ejecta_mass : 0.;
@@ -855,7 +858,7 @@ __attribute__((always_inline)) INLINE static void feedback_will_do_feedback(
     struct spart *sp, const struct feedback_props *feedback_props,
     const int with_cosmology, const struct cosmology *cosmo, const double time,
     const struct unit_system *us, const struct phys_const *phys_const,
-    const integertime_t ti_current, const double time_base, 
+    const integertime_t ti_current, const double time_base,
     const timebin_t old_time_bin) {
 
   /* Special case for new-born stars */

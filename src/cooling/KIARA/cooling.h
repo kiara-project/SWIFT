@@ -38,12 +38,12 @@
 #include "entropy_floor.h"
 #include "error.h"
 #include "fof.h"
+#include "gravity.h"
 #include "hydro.h"
 #include "parser.h"
 #include "part.h"
 #include "physical_constants.h"
 #include "units.h"
-#include "gravity.h"
 
 /* need to rework (and check) code if changed */
 #define GRACKLE_NPART 1
@@ -483,10 +483,9 @@ __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
  * @param cooling The properties of the cooling function.
  * @return The H2 fraction (0 outside the subgrid ISM).
  */
-__attribute__((always_inline)) INLINE static float
-cooling_KMT_H2_fraction(const struct part *restrict p,
-			const struct cosmology *cosmo,
-                        const struct cooling_function_data *cooling) {
+__attribute__((always_inline)) INLINE static float cooling_KMT_H2_fraction(
+    const struct part *restrict p, const struct cosmology *cosmo,
+    const struct cooling_function_data *cooling) {
 
   /* No H2 outside of ISM */
   if (p->cooling_data.subgrid_temp == 0.) return 0.f;
@@ -510,17 +509,16 @@ cooling_KMT_H2_fraction(const struct part *restrict p,
                           p->rho_gradient[2] * p->rho_gradient[2]);
 
   if (gas_gradrho_mag > 0) {
-    const float subgrid_dens_comoving = p->cooling_data.subgrid_dens * 
-        cosmo->a * cosmo->a * cosmo->a;
+    const float subgrid_dens_comoving =
+        p->cooling_data.subgrid_dens * cosmo->a * cosmo->a * cosmo->a;
     gas_sigma = (subgrid_dens_comoving * p->rho) / gas_gradrho_mag;
 
     /* surface density must be in Msun/pc^2 */
-    gas_sigma *=
-        cooling->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
+    gas_sigma *= cooling->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
 
     /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
-    chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
-          (30.f / clumping_factor);
+    chi =
+        0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) * (30.f / clumping_factor);
     s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
         (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
   }
@@ -574,13 +572,11 @@ cooling_compute_self_shielding(const struct part *restrict p,
     const double fH_shield = pow(1.f + xH, -1.62) * exp(-0.149 * xH);
 
     fH2_shield *= fH_shield;
-    /* Extra self-shielding from H2 if present - DON'T DO THIS HERE SINCE IT IS IN CRACKLE
-    const float fH2 = p->sf_data.H2_fraction;
-    if (fH2 > 0.f) {
-      const double NH2_cgs = fH2 * NH_cgs;
-      const double DH2_cgs = 1.e-5 * sqrt(2.*1.38e-16 * T_ism * 2.98864e23);
-      const double xH2 = NH2_cgs * 1.18133e-14;
-      fH2_shield *= 0.9379 * pow(1.f + xH2 / DH2_cgs, -1.879) +
+    /* Extra self-shielding from H2 if present - DON'T DO THIS HERE SINCE IT IS
+    IN CRACKLE const float fH2 = p->sf_data.H2_fraction; if (fH2 > 0.f) { const
+    double NH2_cgs = fH2 * NH_cgs; const double DH2_cgs = 1.e-5 *
+    sqrt(2.*1.38e-16 * T_ism * 2.98864e23); const double xH2 = NH2_cgs
+    * 1.18133e-14; fH2_shield *= 0.9379 * pow(1.f + xH2 / DH2_cgs, -1.879) +
           0.03465 * pow(1.f + xH2, -0.473) * exp(-2.293e-4 * sqrt(1.f + xH2));
     } */
   }
@@ -605,8 +601,9 @@ cooling_compute_self_shielding(const struct part *restrict p,
  * @return G0 in Habing units (0 outside the subgrid ISM).
  */
 __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
-    const struct part *restrict p, const struct xpart *restrict xp,  
-    const float rho, const float T_warm, const struct cooling_function_data *cooling) {
+    const struct part *restrict p, const struct xpart *restrict xp,
+    const float rho, const float T_warm,
+    const struct cooling_function_data *cooling) {
 
   /* No ISRF when not in subgrid ISM mode. Also guard the logs/sqrt below
    * (built with -ffast-math, so infs/NaNs are not handled reliably) */
@@ -614,10 +611,12 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
   if (p->cooling_data.subgrid_dens <= 0.f || T_warm <= 10.f) return 0.f;
 
   float t_ff = cooling->ff_const / sqrt(p->cooling_data.subgrid_dens);
-  float t_ff_Myr = t_ff * cooling->time_to_Myr; // * 1.e-3;
+  float t_ff_Myr = t_ff * cooling->time_to_Myr;  // * 1.e-3;
 
-  const float Z = max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6) * 74.627;  // to solar
-  //const float logT = log10(p->cooling_data.subgrid_temp);
+  const float Z =
+      max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6) *
+      74.627;  // to solar
+  // const float logT = log10(p->cooling_data.subgrid_temp);
   const float logT = log10(T_warm);
 
   const float ne = xp->cooling_data.e_frac;
@@ -627,62 +626,64 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
   const float redshift = 1.f / a - 1.f;
 
   // From Diane Salim 28 July 2026 (with t_ff in Myr instead of Gyr
-  //const float z_fact = fmin(redshift + 1.f, 4.f);
-  //float log_G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.18)) - 3.76 + 3.37 * exp(-0.173 * log10(pot_kms2)) * z_fact;
-  //float log_G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.3)) - 2.24;
+  // const float z_fact = fmin(redshift + 1.f, 4.f);
+  // float log_G0 = log10(t_ff_Myr) + log10(pow(logT + Z, 3.18)) - 3.76 + 3.37 *
+  // exp(-0.173 * log10(pot_kms2)) * z_fact; float log_G0 = log10(t_ff_Myr) +
+  // log10(pow(logT + Z, 3.3)) - 2.24;
   //
-  /* From Diane Salim 28 July 2026 (with t_ff being computed with *comoving* density)
-  float log_G0;
-  const float t_ff_com = t_ff_Gyr * pow(redshift + 1.f, 1.5); // in Gyr, corrected for comoving density
-  const float log_sfr40 = log10(p->sf_data.SFR * cooling->mass_to_solar_mass / cooling->time_to_Myr * 1.e-6 * 64);
-  if (redshift < 4.f) {
-    log_G0 = log10(t_ff_com) + 3.61 * exp(log_sfr40) + log10(pow(logT + pow(Z,1.41) - 0.604, 2.4)) - 1.69;
+  /* From Diane Salim 28 July 2026 (with t_ff being computed with *comoving*
+  density) float log_G0; const float t_ff_com = t_ff_Gyr * pow(redshift
+  + 1.f, 1.5); // in Gyr, corrected for comoving density const float log_sfr40 =
+  log10(p->sf_data.SFR * cooling->mass_to_solar_mass / cooling->time_to_Myr
+  * 1.e-6 * 64); if (redshift < 4.f) { log_G0 = log10(t_ff_com) + 3.61 *
+  exp(log_sfr40) + log10(pow(logT + pow(Z,1.41) - 0.604, 2.4)) - 1.69;
   }
   else if (redshift < 5.f) {
-    const float log_G0_lowz = log10(t_ff_com) + 3.61 * exp(log_sfr40) + log10(pow(logT + pow(Z,1.41) - 0.604, 2.4)) - 1.69;
-    const float log_G0_hiz = ne + log10(pow(log10(t_ff_com) + pow(Z, 0.208) + 2.f, 3.3)) - 3.76;
-    log_G0 = (redshift-4.f) * log_G0_hiz + (5.f-redshift) * log_G0_lowz;
+    const float log_G0_lowz = log10(t_ff_com) + 3.61 * exp(log_sfr40) +
+  log10(pow(logT + pow(Z,1.41) - 0.604, 2.4)) - 1.69; const float log_G0_hiz =
+  ne + log10(pow(log10(t_ff_com) + pow(Z, 0.208) + 2.f, 3.3)) - 3.76; log_G0 =
+  (redshift-4.f) * log_G0_hiz + (5.f-redshift) * log_G0_lowz;
   }
   else {
     log_G0 = ne + log10(pow(log10(t_ff_com) + pow(Z, 0.208) + 2.f, 3.3)) - 3.76;
   }
   */
-     
+
   /* From Diane Salim 5 August 2026, not using sfr40 */
   float log_G0;
   const float logZ = log10(Z);
   if (redshift < 4.f) {
     log_G0 = log10(t_ff_Myr) + log10(logT - 0.793) - 0.553;
-  }
-  else if (redshift < 5.f) {
+  } else if (redshift < 5.f) {
     const float log_G0_lowz = log10(t_ff_Myr) + log10(logT - 0.793) - 0.553;
-    const float log_G0_hiz = 1.67 * exp(log10(t_ff_Myr)) + exp(logZ) + log10(pow(logT+ne-0.855, 2.03)) - 4.26;
-    log_G0 = (redshift-4.f) * log_G0_hiz + (5.f-redshift) * log_G0_lowz;
-  }
-  else {
-    log_G0 = 1.67 * exp(log10(t_ff_Myr)) + exp(logZ) + log10(pow(logT+ne-0.855, 2.03)) - 4.26;
+    const float log_G0_hiz = 1.67 * exp(log10(t_ff_Myr)) + exp(logZ) +
+                             log10(pow(logT + ne - 0.855, 2.03)) - 4.26;
+    log_G0 = (redshift - 4.f) * log_G0_hiz + (5.f - redshift) * log_G0_lowz;
+  } else {
+    log_G0 = 1.67 * exp(log10(t_ff_Myr)) + exp(logZ) +
+             log10(pow(logT + ne - 0.855, 2.03)) - 4.26;
   }
 
   const float G0 = powf(10.f, log_G0);
 
 #ifdef KIARA_G0_DEBUG
   const float t_ff_Gyr = t_ff_Myr * 1.e-3;
-  const float pot = fabs(gravity_get_comoving_potential(p->gpart) /
-                         cooling->units.a_value);
+  const float pot =
+      fabs(gravity_get_comoving_potential(p->gpart) / cooling->units.a_value);
   const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
   if (p->id % 100000 == 0) {
-    message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g terms=%g %g %g G0=%g",
-            p->id,
-	    1.f/cooling->units.a_value - 1.f,
-	    p->galaxy_data.stellar_mass * 1.e10 ,
-	    p->galaxy_data.specific_sfr * p->galaxy_data.stellar_mass * 1.e10 / (1.e6 * cooling->time_to_Myr),
-	    t_ff_Myr, 
-	    sqrt(pot_kms2),
-	    p->cooling_data.subgrid_temp,
-	    p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
-            p->cooling_data.dust_temperature,
-	    log10(t_ff_Gyr), log10(logT - 0.793), log10(pow(logT+ne-0.855, 2.03)),
-            G0);
+    message(
+        "G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g "
+        "terms=%g %g %g G0=%g",
+        p->id, 1.f / cooling->units.a_value - 1.f,
+        p->galaxy_data.stellar_mass * 1.e10,
+        p->galaxy_data.specific_sfr * p->galaxy_data.stellar_mass * 1.e10 /
+            (1.e6 * cooling->time_to_Myr),
+        t_ff_Myr, sqrt(pot_kms2), p->cooling_data.subgrid_temp,
+        p->cooling_data.subgrid_dens * cooling->units.density_units *
+            5.97729e23 * 0.75,
+        p->cooling_data.dust_temperature, log10(t_ff_Gyr), log10(logT - 0.793),
+        log10(pow(logT + ne - 0.855, 2.03)), G0);
   }
 #endif
 
@@ -708,7 +709,7 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
  * @return G0 in Habing units (0 outside the subgrid ISM).
  */
 __attribute__((always_inline)) INLINE static float cooling_compute_G0(
-    const struct part *restrict p, const struct xpart *restrict xp, 
+    const struct part *restrict p, const struct xpart *restrict xp,
     const float rho, const float T_warm,
     const struct cooling_function_data *cooling, const float mstar,
     const float ssfr, const float dt) {
@@ -721,31 +722,25 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   /* Determine ISRF in Habing units based on chosen method */
   if (cooling->G0_computation_method == 0) {
     G0 = 0.f;
-  }
-  else if (cooling->G0_computation_method == 1) {
+  } else if (cooling->G0_computation_method == 1) {
     fH2_shield = cooling_compute_self_shielding(p, cooling);
     G0 = fH2_shield * p->chemistry_data.local_sfr_density * cooling->G0_factor1;
-  }
-  else if (cooling->G0_computation_method == 2) {
+  } else if (cooling->G0_computation_method == 2) {
     G0 = ssfr * cooling->G0_factor2;
-  }
-  else if (cooling->G0_computation_method == 3) {
+  } else if (cooling->G0_computation_method == 3) {
     if (ssfr > 0.) {
       G0 = ssfr * cooling->G0_factor2;
-    }
-    else {
+    } else {
       fH2_shield = cooling_compute_self_shielding(p, cooling);
       G0 = fH2_shield * p->chemistry_data.local_sfr_density *
            cooling->G0_factor1;
     }
-  }
-  else if (cooling->G0_computation_method == -3) {
+  } else if (cooling->G0_computation_method == -3) {
     if (p->chemistry_data.local_sfr_density > 0.) {
       fH2_shield = cooling_compute_self_shielding(p, cooling);
       G0 = fH2_shield * p->chemistry_data.local_sfr_density *
            cooling->G0_factor1;
-    }
-    else {
+    } else {
       G0 = ssfr * cooling->G0_factor2;
     }
   }
@@ -753,14 +748,12 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   else if (cooling->G0_computation_method == 4) {
     // Remember SNe_ThisTimeStep stores SN **rate**
     G0 = p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
-  }
-  else if (cooling->G0_computation_method == 5) {
+  } else if (cooling->G0_computation_method == 5) {
     float pssfr = max(p->sf_data.SFR, 0.f);
     pssfr /= max(mstar, 8. * p->mass);
     G0 = max(ssfr, pssfr) * cooling->G0_factor2 +
          p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
-  }
-  else if (cooling->G0_computation_method == 6) {
+  } else if (cooling->G0_computation_method == 6) {
     G0 = cooling_G0_from_FIRE(p, xp, rho, T_warm, cooling);
   }
 #endif
@@ -772,19 +765,14 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   /* Scale G0 by user-input value */
   G0 *= cooling->G0_multiplier;
 
-  /*if (mstar * 1.e10 > 1.e9 && p->id % 100000 == 0 && p->cooling_data.subgrid_temp > 0) {
-    message("G0: id=%lld z=%g M*=%g SFR=%g rho_sfr=%g T=%g nH=%g Td=%g fshield=%g G0=%g",
-            p->id,
-            1.f / cooling->units.a_value - 1.f,
-            mstar * 1.e10,
-            mstar * 1.e10 *
-                ssfr / (1.e6 * cooling->time_to_Myr),
-            p->chemistry_data.local_sfr_density * 0.002 / 1.6,
+  /*if (mstar * 1.e10 > 1.e9 && p->id % 100000 == 0 &&
+  p->cooling_data.subgrid_temp > 0) { message("G0: id=%lld z=%g M*=%g SFR=%g
+  rho_sfr=%g T=%g nH=%g Td=%g fshield=%g G0=%g", p->id, 1.f /
+  cooling->units.a_value - 1.f, mstar * 1.e10, mstar * 1.e10 * ssfr / (1.e6 *
+  cooling->time_to_Myr), p->chemistry_data.local_sfr_density * 0.002 / 1.6,
             p->cooling_data.subgrid_temp,
-            p->cooling_data.subgrid_dens * cooling->units.density_units * 5.97729e23 * 0.75,
-            p->cooling_data.dust_temperature,
-            fH2_shield,
-            G0);
+            p->cooling_data.subgrid_dens * cooling->units.density_units
+  * 5.97729e23 * 0.75, p->cooling_data.dust_temperature, fH2_shield, G0);
   }*/
 
   return G0;

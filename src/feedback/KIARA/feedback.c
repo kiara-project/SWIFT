@@ -180,8 +180,8 @@ void feedback_dust_production_condensation(
         fb_props->delta_AGBCOG1[chemistry_element_C] *
         (sp->feedback_data.metal_mass[chemistry_element_C] -
          0.75 * sp->feedback_data.metal_mass[chemistry_element_O]);
-    const double max_dust_C =
-        fb_props->max_dust_fraction * sp->feedback_data.metal_mass[chemistry_element_C];
+    const double max_dust_C = fb_props->max_dust_fraction *
+                              sp->feedback_data.metal_mass[chemistry_element_C];
     /* Cap the new dust mass formed to some fraction of total ejecta
      * metals in that element
      */
@@ -209,32 +209,36 @@ void feedback_dust_production_condensation(
       if (k ==
           chemistry_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
         sp->feedback_data.delta_dust_mass[k] =
-            16.0 * (delta_table[chemistry_element_Mg] *
-                        sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
-                    delta_table[chemistry_element_Si] *
-                        sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
-                    fb_props->delta_AGBCOL1[chemistry_element_S] *
-                        sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
-                    fb_props->delta_AGBCOL1[chemistry_element_Ca] *
-                        sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
-                    fb_props->delta_AGBCOL1[chemistry_element_Fe] *
-                        sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
+            16.0 *
+            (delta_table[chemistry_element_Mg] *
+                 sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
+             delta_table[chemistry_element_Si] *
+                 sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
+             fb_props->delta_AGBCOL1[chemistry_element_S] *
+                 sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
+             fb_props->delta_AGBCOL1[chemistry_element_Ca] *
+                 sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
+             fb_props->delta_AGBCOL1[chemistry_element_Fe] *
+                 sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
         sp->feedback_data.delta_dust_mass[k] =
             delta_table[k] * sp->feedback_data.metal_mass[k];
       }
 
-      const double max_dust = fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
+      const double max_dust =
+          fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
       if (sp->feedback_data.delta_dust_mass[k] > max_dust) {
         sp->feedback_data.delta_dust_mass[k] = max_dust;
       }
 
       /* Remove dust from gas-phase metals to be distributed from star */
       sp->feedback_data.metal_mass[k] -= sp->feedback_data.delta_dust_mass[k];
-      sp->feedback_data.total_metal_mass -= sp->feedback_data.delta_dust_mass[k];
+      sp->feedback_data.total_metal_mass -=
+          sp->feedback_data.delta_dust_mass[k];
 
       /* We will use element 0 of dust to store total change in dust mass */
-      sp->feedback_data.delta_dust_mass[0] += sp->feedback_data.delta_dust_mass[k];
+      sp->feedback_data.delta_dust_mass[0] +=
+          sp->feedback_data.delta_dust_mass[k];
     }
   }
 }
@@ -900,7 +904,7 @@ void feedback_prepare_interpolation_tables(
   const double sniiz[NZSN] = {0., 0., .001, .004, .008, .02, .05};
   const double sniz[NZSN1Y] = {0., .002, .01, .02, .04, .06, .10};
   const double effHNz[NZSN] = {0.5, 0.5, 0.5, 0.4, 0.232036142, 0.01, 0.01};
-  //const double effHNz[NZSN] = {1.0, 1.0, 1.0, 0.8, 0.5, 0.2, 0.2};
+  // const double effHNz[NZSN] = {1.0, 1.0, 1.0, 0.8, 0.5, 0.2, 0.2};
 
   /* [Fe/H] */
   const double feh_ia[NZSN1R] = {-1.1, -1.0, -0.69896996, 0., 0.39794001};
@@ -1366,12 +1370,10 @@ void feedback_prepare_interpolation_tables(
        * so that ejected = unprocessed + sum of the element yields. */
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
         for (k = 1; k < 3; k++) {
-          snii2_hi =
-              LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1], sniilm[j2],
-                                   snii[k][l][j2], lm_hi);
+          snii2_hi = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
+                                          sniilm[j2], snii[k][l][j2], lm_hi);
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
-                                          sniilm[j2], snii[k][l][j2],
-                                          lm_lo);
+                                          sniilm[j2], snii[k][l][j2], lm_lo);
           if (snii2_hi < 0.) snii2_hi = 0.;
           if (snii2_lo < 0.) snii2_lo = 0.;
           fb_props->tables.SN2E[SN2E_idx(k, l, i)] =
@@ -1390,12 +1392,10 @@ void feedback_prepare_interpolation_tables(
       /* Metals from things that don't direct collapse to BH */
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
         for (k = 3; k < chem5_NXSN; k++) {
-          snii2_hi =
-              LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1], sniilm[j2],
-                                   snii[k][l][j2], lm_hi);
+          snii2_hi = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
+                                          sniilm[j2], snii[k][l][j2], lm_hi);
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
-                                          sniilm[j2], snii[k][l][j2],
-                                          lm_lo);
+                                          sniilm[j2], snii[k][l][j2], lm_lo);
           /* No clipping here: the AGB yields (<= 9 Msun) are net yields,
            * negative for species that are destroyed (e.g. H, and C and O
            * by hot-bottom burning). They are added to the unprocessed
@@ -1421,12 +1421,10 @@ void feedback_prepare_interpolation_tables(
 
       /* IMF integration for total metal mass yield */
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
-        snii2_hi =
-            LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
-                                 snii[0][l][j2], lm_hi);
-        snii2_lo =
-            LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
-                                 snii[0][l][j2], lm_lo);
+        snii2_hi = LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
+                                        snii[0][l][j2], lm_hi);
+        snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
+                                        snii[0][l][j2], lm_lo);
         if (snii2_hi < 0.) snii2_hi = 0.;
         if (snii2_lo < 0.) snii2_lo = 0.;
         fb_props->tables.SN2R[SN2R_idx(l, i)] =

@@ -22,9 +22,9 @@
 
 /* Local includes */
 #include "cooling.h"
+#include "cooling_properties.h"
 #include "engine.h"
 #include "io_properties.h"
-#include "cooling_properties.h"
 
 #ifdef HAVE_HDF5
 
@@ -215,10 +215,10 @@ INLINE static void convert_part_cooling_time(const struct engine *e,
   /* Everyone else: the particle's own cooling time, computed only here
    * (cooling_time() renormalizes the species in xp, so use a copy) */
   struct xpart xp_temp = *xp;
-  *ret = cooling_time(e->physical_constants, e->internal_units,
-                      e->hydro_properties, e->cosmology, e->cooling_func, p,
-                      &xp_temp, p->rho,
-                      hydro_get_comoving_internal_energy(p, xp));
+  *ret =
+      cooling_time(e->physical_constants, e->internal_units,
+                   e->hydro_properties, e->cosmology, e->cooling_func, p,
+                   &xp_temp, p->rho, hydro_get_comoving_internal_energy(p, xp));
 }
 
 /**
@@ -269,8 +269,9 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
   list[num] = io_make_output_field_convert_part(
-      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
-      parts, xparts, convert_part_e_density, "Electron number densities "
+      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      xparts, convert_part_e_density,
+      "Electron number densities "
       "times the proton mass, in units of the gas mass density.");
   num++;
 
@@ -280,10 +281,11 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
 #if COOLING_GRACKLE_MODE >= 2
-  list[num] = io_make_output_field(
-      "SubgridTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, parts,
-      cooling_data.subgrid_temp, "Temperatures of the cold phase "
-                                 "of the subgrid ISM gas particles.");
+  list[num] = io_make_output_field("SubgridTemperatures", FLOAT, 1,
+                                   UNIT_CONV_TEMPERATURE, 0.f, parts,
+                                   cooling_data.subgrid_temp,
+                                   "Temperatures of the cold phase "
+                                   "of the subgrid ISM gas particles.");
   num++;
 
   list[num] = io_make_physical_output_field(
@@ -405,9 +407,8 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   /* The SN rate that stellar feedback deposits on the gas is used (and
    * decays) here, so its smoothing time is read with the cooling */
   cooling->SNe_smoothing_time =
-      parser_get_opt_param_double(parameter_file,
-                                  "KIARAFeedback:SNe_smoothing_time_in_Myr",
-                                  0.) *
+      parser_get_opt_param_double(
+          parameter_file, "KIARAFeedback:SNe_smoothing_time_in_Myr", 0.) *
       phys_const->const_year * 1e6;
 
   /* These are dust parameters for KIARA's dust model (MODE>=2); irrelevant

@@ -597,9 +597,9 @@ feedback_do_chemical_enrichment_of_gas_around_star(
         si->id, Omega_frac, si->count_since_last_enrichment,
         si->feedback_data.kernel_wt_sum, wi, rho_j);
     Omega_frac = 0.f;
-    //if (Omega_frac < 0.f || (Omega_frac > 1.01f && ui < 1.f)) {
-    //  error("Omega_frac negative or too large! aborting");
-    //}
+    // if (Omega_frac < 0.f || (Omega_frac > 1.01f && ui < 1.f)) {
+    //   error("Omega_frac negative or too large! aborting");
+    // }
 
     Omega_frac = fmin(Omega_frac, 1.f);
   }
@@ -794,15 +794,15 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     if (pj->cooling_data.dust_mass > 0.2f * pj->mass) {
       for (int elem = chemistry_element_He; elem < chemistry_element_count;
            elem++) {
-        message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n", 
-	        pj->id, elem,
-		pj->chemistry_data.metal_mass_fraction[elem] * pj->mass, 
+        message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n",
+                pj->id, elem,
+                pj->chemistry_data.metal_mass_fraction[elem] * pj->mass,
                 pj->cooling_data.dust_mass_fraction[elem] *
                     pj->cooling_data.dust_mass,
                 si->feedback_data.delta_dust_mass[elem] * Omega_frac);
       }
       warning("TOTAL DUST EXCEEDS MASS mgas=%g  mdust=%g\n", pj->mass,
-            pj->cooling_data.dust_mass);
+              pj->cooling_data.dust_mass);
     }
   } else {
     /* For some reason the dust mass is zero or negative */
