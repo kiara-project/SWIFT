@@ -23,8 +23,8 @@
 #include <grackle.h>
 
 /**
- * @file src/cooling/grackle/cooling_properties.h
- * @brief Empty infrastructure for the cases without cooling function
+ * @file src/cooling/KIARA/cooling_properties.h
+ * @brief Properties of the KIARA (grackle/crackle) cooling function
  */
 
 /**
@@ -116,18 +116,37 @@ struct cooling_function_data {
    */
   int use_grackle_h2_form;
 
-  /*! G0 conversion factors, scales to MW value based on local/global galaxy
-   * props */
+  /* G0 conversion factors, scaling to the MW value (G0 = 1.6) based on
+   * local/global galaxy properties */
+
+  /*! G0 per unit local SFR density (internal units), normalised to the
+   * solar-circle SFR density */
   double G0_factor1;
+
+  /*! G0 per unit galaxy sSFR (internal units), normalised to the MW sSFR */
   double G0_factor2;
+
+  /*! G0 per SN, normalised to the MW SN rate */
   double G0_factorSNe;
 
-  /*! Dust parameters; see sample yml file */
+  /* Dust parameters passed to grackle; see sample yml file */
+
+  /*! Dust destruction efficiency by SN shocks (destroyed/shocked mass) */
   double dust_destruction_eff;
+
+  /*! SN energy in units of 1e51 erg, for dust destruction */
   double dust_sne_coeff;
+
+  /*! SN shock speed for dust destruction (km/s) */
   double dust_sne_shockspeed;
+
+  /*! Dust grain size (micron) */
   double dust_grainsize;
+
+  /*! Reference density for dust growth (g/cm^3) */
   double dust_growth_densref;
+
+  /*! Dust growth time-scale at the reference density (Gyr) */
   double dust_growth_tauref;
 
   /*! For dust model, need self-enrichment up to a small metallicity to
@@ -137,8 +156,9 @@ struct cooling_function_data {
   /*! For subgrid model (eg KIARA) need a subgrid ISM fraction */
   double cold_ISM_frac;
 
-  /*! For Grackle subgrid model, choose way to determine G0: 1=Local SFR density; 
-   * 2=Global sSFR; 3=2 if sSFR != 0, else 1; -3: vice versa */
+  /*! For Grackle subgrid model, choose way to determine G0: 0=none; 1=Local
+   * SFR density; 2=Global sSFR; 3=2 if sSFR != 0, else 1; -3: vice versa;
+   * 4=SN rate; 5=sSFR + SN rate; 6=FIRE-based fit */
   int G0_computation_method;
 
   /*! For Grackle subgrid model, arbitrary multiplier for G0 */
@@ -159,8 +179,8 @@ struct cooling_function_data {
    * above threshold n_H */
   double subgrid_warm_ism_EOS;
 
-  /*! For Grackle subgrid model, factor above entropy floor allowed to be in
-   * subgrid mode */
+  /*! For Grackle subgrid model, factor above the warm-ISM EoS energy below
+   * which gas is in subgrid mode */
   double entropy_floor_margin;
 
   /*! Option to use Cloudy lookup tables when outside ISM */

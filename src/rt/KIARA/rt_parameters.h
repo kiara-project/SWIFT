@@ -28,10 +28,14 @@
 extern struct rt_parameters rt_params;
 
 /**
- * Some global RT related parameters.
+ * @brief Some global RT related parameters.
  */
 struct rt_parameters {
+
+  /*! Reduced speed of light (internal units) */
   float reduced_speed_of_light;
+
+  /*! Inverse of the reduced speed of light (internal units) */
   float reduced_speed_of_light_inverse;
 };
 

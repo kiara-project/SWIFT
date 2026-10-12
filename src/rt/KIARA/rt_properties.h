@@ -62,21 +62,36 @@ struct rt_props {
   /* Factor to limit cooling time by */
   float f_limit_cooling_time;
 
-  /* do we set initial ionization mass fractions manually? */
+  /*! do we set initial ionization mass fractions manually? */
   int set_initial_ionization_mass_fractions;
+
+  /*! do we set initial ionization mass fractions from ionization
+   * equilibrium? */
   int set_equilibrium_initial_ionization_mass_fractions;
 
-  /* initial mass fractions for ionization species */
-  /* the following are required for manually setting exact values */
+  /* initial mass fractions for ionization species, required for manually
+   * setting exact values */
+
+  /*! Initial HI mass fraction */
   float mass_fraction_HI_init;
+
+  /*! Initial HII mass fraction */
   float mass_fraction_HII_init;
+
+  /*! Initial HeI mass fraction */
   float mass_fraction_HeI_init;
+
+  /*! Initial HeII mass fraction */
   float mass_fraction_HeII_init;
+
+  /*! Initial HeIII mass fraction */
   float mass_fraction_HeIII_init;
   /* float number_density_electrons_init; [> todo: do we need this? <] */
 
-  /* Hydrogen and Helium mass fractions of the non-metal portion of the gas */
+  /*! Hydrogen mass fraction of the non-metal portion of the gas */
   float hydrogen_mass_fraction;
+
+  /*! Helium mass fraction of the non-metal portion of the gas */
   float helium_mass_fraction;
 
   /* Skip thermochemistry? For testing/debugging only! */
@@ -99,9 +114,12 @@ struct rt_props {
   /* If blackbody: get temperature */
   double stellar_spectrum_blackbody_T;
 
-  /* Storage for integrated photoionization cross sections */
-  /* Note: they are always in cgs. */
+  /*! Energy-weighted integrated photoionization cross sections per photon
+   * group and species (always in cgs) */
   double** energy_weighted_cross_sections;
+
+  /*! Number-weighted integrated photoionization cross sections per photon
+   * group and species (always in cgs) */
   double** number_weighted_cross_sections;
   /* Mean photon energy in frequency bin for user provided spectrum. In erg.*/
   double average_photon_energy[RT_NGROUPS];
@@ -545,6 +563,14 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   /* --------- */
 }
 
+/**
+ * @brief Update the RT properties at the start of a step (currently the
+ * grackle units, for the new expansion factor).
+ *
+ * @param rtp The #rt_props.
+ * @param us The internal #unit_system.
+ * @param cosmo The current cosmological model.
+ */
 __attribute__((always_inline)) INLINE static void rt_props_update(
     struct rt_props* rtp, const struct unit_system* us,
     struct cosmology* cosmo) {

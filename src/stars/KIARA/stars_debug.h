@@ -19,6 +19,12 @@
 #ifndef SWIFT_SIMBA_STARS_DEBUG_H
 #define SWIFT_SIMBA_STARS_DEBUG_H
 
+/**
+ * @brief Print the position, velocity, mass and time-step range of a star
+ * particle (for debugging).
+ *
+ * @param p The #spart.
+ */
 __attribute__((always_inline)) INLINE static void stars_debug_particle(
     const struct spart *p) {
   printf(

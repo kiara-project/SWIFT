@@ -53,6 +53,14 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
 }
 #endif
 
+/**
+ * @brief Snapshot converter: atomic hydrogen (HI) mass of a gas particle.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The HI mass.
+ */
 INLINE static void convert_part_HI_mass(const struct engine *e,
                                         const struct part *p,
                                         const struct xpart *xp, float *ret) {
@@ -60,6 +68,18 @@ INLINE static void convert_part_HI_mass(const struct engine *e,
   *ret = hydro_get_mass(p) * xp->cooling_data.HI_frac;
 }
 
+/**
+ * @brief Snapshot converter: molecular hydrogen mass of a gas particle.
+ *
+ * With H2 chemistry (mode >= 2) this is the H2I + H2II fraction of the
+ * cold subgrid phase times the cold fraction; otherwise all non-HI hydrogen
+ * of star-forming gas is counted as H2.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The H2 mass.
+ */
 INLINE static void convert_part_H2_mass(const struct engine *e,
                                         const struct part *p,
                                         const struct xpart *xp, float *ret) {
@@ -76,6 +96,14 @@ INLINE static void convert_part_H2_mass(const struct engine *e,
 #endif
 }
 
+/**
+ * @brief Snapshot converter: ionised hydrogen (HII) mass of a gas particle.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The HII mass.
+ */
 INLINE static void convert_part_HII_mass(const struct engine *e,
                                          const struct part *p,
                                          const struct xpart *xp, float *ret) {
@@ -83,6 +111,14 @@ INLINE static void convert_part_HII_mass(const struct engine *e,
   *ret = hydro_get_mass(p) * xp->cooling_data.HII_frac;
 }
 
+/**
+ * @brief Snapshot converter: HeI mass of a gas particle.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The HeI mass.
+ */
 INLINE static void convert_part_HeI_mass(const struct engine *e,
                                          const struct part *p,
                                          const struct xpart *xp, float *ret) {
@@ -90,6 +126,14 @@ INLINE static void convert_part_HeI_mass(const struct engine *e,
   *ret = hydro_get_mass(p) * xp->cooling_data.HeI_frac;
 }
 
+/**
+ * @brief Snapshot converter: HeII mass of a gas particle.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The HeII mass.
+ */
 INLINE static void convert_part_HeII_mass(const struct engine *e,
                                           const struct part *p,
                                           const struct xpart *xp, float *ret) {
@@ -97,6 +141,14 @@ INLINE static void convert_part_HeII_mass(const struct engine *e,
   *ret = hydro_get_mass(p) * xp->cooling_data.HeII_frac;
 }
 
+/**
+ * @brief Snapshot converter: HeIII mass of a gas particle.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The HeIII mass.
+ */
 INLINE static void convert_part_HeIII_mass(const struct engine *e,
                                            const struct part *p,
                                            const struct xpart *xp, float *ret) {
@@ -104,6 +156,14 @@ INLINE static void convert_part_HeIII_mass(const struct engine *e,
   *ret = hydro_get_mass(p) * xp->cooling_data.HeIII_frac;
 }
 
+/**
+ * @brief Snapshot converter: electron abundance of a gas particle.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The electron fraction (grackle convention n_e m_H / rho).
+ */
 INLINE static void convert_part_e_density(const struct engine *e,
                                           const struct part *p,
                                           const struct xpart *xp, float *ret) {
@@ -111,6 +171,16 @@ INLINE static void convert_part_e_density(const struct engine *e,
   *ret = (float)xp->cooling_data.e_frac;
 }
 
+/**
+ * @brief Snapshot converter: temperature of a gas particle.
+ *
+ * In the subgrid ISM this uses the warm-phase mean molecular weight.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The temperature (internal units).
+ */
 INLINE static void convert_part_T(const struct engine *e, const struct part *p,
                                   const struct xpart *xp, float *ret) {
 
@@ -118,6 +188,17 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
   *ret = cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
 }
 
+/**
+ * @brief Snapshot converter: cooling time of a gas particle.
+ *
+ * Firehose stream particles report the mixing-layer cooling time from the
+ * last cooling step; all others have their own cooling time computed here.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param ret (return) The cooling time (internal units).
+ */
 INLINE static void convert_part_cooling_time(const struct engine *e,
                                              const struct part *p,
                                              const struct xpart *xp,
@@ -262,6 +343,7 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
  * @param parameter_file The parser parameter file
  * @param cooling The cooling properties to initialize
  * @param phys_const The #phys_const.
+ * @param us The internal #unit_system.
  */
 __attribute__((always_inline)) INLINE static void cooling_read_parameters(
     struct swift_params *parameter_file, struct cooling_function_data *cooling,

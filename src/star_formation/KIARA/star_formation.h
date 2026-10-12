@@ -155,12 +155,21 @@ struct star_formation {
  * @brief Determine the mass loading factor for
  *        a given star particle based on its host galaxy.
  *
+ * eta = FIRE_eta_normalization (M* / FIRE_eta_break)^slope, with the lower
+ * slope below the break (FIRE_eta_lower_slope_EOR at z > 6), the upper slope
+ * above it, and an optional high-redshift suppression.
+ *
+ * @param cosmo The current cosmological model.
  * @param group_stellar_mass The stellar mass of the host galaxy
  * @param minimum_galaxy_stellar_mass Floor for stellar mass in eta calculation
  * @param FIRE_eta_normalization Normalization of eta at FIRE_eta_break
  * @param FIRE_eta_break M* at which eta(M*) slope changes
  * @param FIRE_eta_lower_slope Slope below break
  * @param FIRE_eta_upper_slope Slope above break
+ * @param FIRE_eta_lower_slope_EOR Slope below the break at z > 6.
+ * @param wind_eta_suppression_redshift Suppress eta above this redshift as
+ * (a (1 + z_s))^2 if > 0, or by exp(-[a (1 + |z_s|)]^-3) if < 0.
+ * @return The mass loading factor (>= 0).
  */
 __attribute__((always_inline)) INLINE static float feedback_mass_loading_factor(
     const struct cosmology *cosmo, const double group_stellar_mass,
@@ -202,6 +211,7 @@ __attribute__((always_inline)) INLINE static float feedback_mass_loading_factor(
  * @param us The internal system of units.
  * @param cooling The cooling data struct.
  * @param entropy_floor_props The entropy floor assumed in this run.
+ * @return 1 if the gas can form stars, 0 otherwise.
  */
 INLINE static int star_formation_is_star_forming_subgrid(
     const struct part *p, const struct xpart *xp,
@@ -248,6 +258,7 @@ INLINE static int star_formation_is_star_forming_subgrid(
  * @param us The internal system of units.
  * @param cooling The cooling data struct.
  * @param entropy_floor_props The entropy floor assumed in this run.
+ * @return 1 if the gas can form stars, 0 otherwise.
  */
 INLINE static int star_formation_is_star_forming(
     const struct part *p, const struct xpart *xp,
@@ -647,7 +658,6 @@ INLINE static int star_formation_number_spart_to_convert(
  * @param starform The properties of the star formation model.
  * @param e The #engine (for random numbers).
  * @param dt_star The time-step of this particle
- * @param star_prob The probability of converting to a star particle.
  * @return 1 if a conversion should be done, 0 otherwise.
  */
 INLINE static int star_formation_should_convert_to_star(
@@ -724,8 +734,9 @@ INLINE static void star_formation_update_part_not_SFR(
  * @param cooling The cooling data struct.
  * @param chem_data The global properties of the chemistry scheme.
  * @param convert_part Did we convert a part (or spawned one)?
- * @param (return) displacement The 3D displacement vector of the star with
- * respect to the sink position.
+ * @param displacement (return) The random displacement of the new star from
+ * the gas particle position (up to 0.1 h per axis), to avoid zero
+ * separations.
  */
 INLINE static void star_formation_copy_properties(
     const struct part *p, const struct xpart *xp, struct spart *sp,
@@ -1021,6 +1032,7 @@ INLINE static void starformation_print_backend(
  *
  * @param p The particle.
  * @param xp The extended data of the particle.
+ * @return The SFR (internal units), 0 if not star-forming.
  */
 INLINE static float star_formation_get_SFR(const struct part *p,
                                            const struct xpart *xp) {

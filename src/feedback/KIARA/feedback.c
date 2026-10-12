@@ -36,6 +36,9 @@
  *
  * @param sp The #spart outputting the radiation
  * @param age The age of the star in internal units
+ * @param fb_props The feedback properties.
+ * @return log10 of the Habing-band luminosity (erg/s), from fits to
+ * STARBURST99 models interpolated in metallicity; -20 for ages above 1 Gyr.
  */
 double feedback_get_lum_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props) {
@@ -137,6 +140,22 @@ double feedback_get_lum_from_star_particle(
   return lum1 * fhi + lum2 * flo + logmass6;
 }
 
+/**
+ * @brief Condense part of a star particle's ejected metals into dust.
+ *
+ * Uses the condensation efficiencies of the Simba/Li+2019 dust model: for
+ * stars older than 100 Myr with C/O > 1 (by mass excess), C condenses into
+ * graphite with the AGB C-rich efficiency; otherwise the SNII (age < 100
+ * Myr) or AGB O-rich efficiencies are used for each element, with O locked
+ * in silicates and oxides of Mg, Si, S, Ca and Fe. The dust formed in each
+ * element is capped at max_dust_fraction of that element's ejected mass and
+ * removed from the ejected gas-phase metals; delta_dust_mass[0] holds the
+ * total.
+ *
+ * @param sp The #spart whose ejecta are processed.
+ * @param star_age The stellar age (internal units).
+ * @param fb_props The feedback properties.
+ */
 void feedback_dust_production_condensation(
     struct spart *sp, double star_age, const struct feedback_props *fb_props) {
 
@@ -230,6 +249,8 @@ void feedback_dust_production_condensation(
  * (the ejecta are those of the stars that die over [age - dt, age]).
  * @param fb_props The feedback properties.
  * @param dt The current timestep.
+ * @param N_SNe Number of SNe (SNII and SNIa) in this step; accumulated, so
+ * must be zeroed by the caller.
  * @param ejecta_energy The total ejected energy in code units.
  * @param ejecta_mass The total ejected mass in code units.
  * @param ejecta_unprocessed The unprocessed mass in code units.
@@ -670,6 +691,17 @@ void feedback_get_ejecta_from_star_particle(
   }
 }
 
+/**
+ * @brief Lifetime of a star of a given mass and metallicity.
+ *
+ * Bilinear interpolation in log10(mass) and log10(Z) of the Kobayashi et al.
+ * (2000) lifetime table.
+ *
+ * @param fb_props The feedback properties (holding the tables).
+ * @param m The stellar mass (Msun).
+ * @param z The metal mass fraction.
+ * @return The lifetime (yr).
+ */
 double feedback_life_time(const struct feedback_props *fb_props, const double m,
                           const double z) {
   int j, j1, j2, l, l1, l2;
@@ -715,6 +747,15 @@ double feedback_life_time(const struct feedback_props *fb_props, const double m,
   return pow(10., t);
 }
 
+/**
+ * @brief The (unnormalised) IMF per logarithmic mass interval.
+ *
+ * Kroupa (imf=0), Chabrier (imf=1) or a single power law of slope ximf.
+ *
+ * @param fb_props The feedback properties.
+ * @param m The stellar mass (Msun).
+ * @return The IMF value at m.
+ */
 double feedback_imf(const struct feedback_props *fb_props, const double m) {
   if (fb_props->imf == 0) { /* Kroupa */
     if (m >= 0.5) {
@@ -736,6 +777,14 @@ double feedback_imf(const struct feedback_props *fb_props, const double m) {
   }
 }
 
+/**
+ * @brief Interpolate the lifetime table to a given metallicity.
+ *
+ * @param fb_props The feedback properties (holding the tables).
+ * @param z The metal mass fraction (floored at log10 Z = -4.1).
+ * @param LFLT2 (return) log10 lifetimes (yr) on the table mass grid (NMLF
+ * values).
+ */
 void feedback_set_turnover_mass(const struct feedback_props *fb_props,
                                 const double z, double *LFLT2) {
   double lz;
@@ -765,6 +814,16 @@ void feedback_set_turnover_mass(const struct feedback_props *fb_props,
   return;
 }
 
+/**
+ * @brief Turnover mass: the mass of the stars that die at a given age.
+ *
+ * Inverts the lifetime table at the star's metallicity.
+ *
+ * @param fb_props The feedback properties (holding the tables).
+ * @param t The stellar age (yr).
+ * @param z The metal mass fraction.
+ * @return The turnover mass (Msun), limited to [M_l, M_u3] (M_u3 at t = 0).
+ */
 double feedback_get_turnover_mass(const struct feedback_props *fb_props,
                                   const double t, const double z) {
   if (t == 0.) return fb_props->M_u3;
@@ -794,6 +853,18 @@ double feedback_get_turnover_mass(const struct feedback_props *fb_props,
   return result;
 }
 
+/**
+ * @brief Read the chem5 tables and build the IMF-integrated yield tables.
+ *
+ * Reads the SNIa rate, SNIa yield and stellar lifetime tables from
+ * tables_path, combines them with the built-in SNII/HN yields (Kobayashi et
+ * al.) and the IMF, and fills fb_props->tables: cumulative numbers of SNII
+ * (SN2R), SNIa (SN1R) and wind-losing stars (SWR) per unit initial mass, and
+ * cumulative SNII/HN energy, unprocessed, ejected and element masses (SN2E),
+ * all as functions of the turnover mass and metallicity.
+ *
+ * @param fb_props The feedback properties (tables are filled in place).
+ */
 void feedback_prepare_interpolation_tables(
     const struct feedback_props *fb_props) {
   int i, j, k, j1, j2, l;

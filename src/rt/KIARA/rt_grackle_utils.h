@@ -39,13 +39,12 @@
 /**
  * @brief Update grackle units during run
  *
- * @param grackle_units grackle units struct
- * @param cosmo cosmology struct
+ * Currently only sets the expansion factor; other run-time changes (e.g.
+ * switching the UV background on or off with redshift) could be added here.
  *
- * NOTE: In the current implementation, this function does nothing.
- * However, there might be use-cases in the future (e.g. switching
- * UV background on or off depending on redshift) that might be
- * needed in the future, which can be implemented into this function.
+ * @param grackle_units grackle units struct
+ * @param us The internal #unit_system (unused).
+ * @param cosmo cosmology struct
  */
 __attribute__((always_inline)) INLINE void update_grackle_units_cosmo(
     code_units *grackle_units, const struct unit_system *us,
@@ -59,12 +58,15 @@ __attribute__((always_inline)) INLINE void update_grackle_units_cosmo(
  * @brief initialize grackle during rt_props_init
  *
  * @param grackle_units grackle units struct to fill up correctly.
- * @param grackle_chemistry_dat grackle chemistry data struct to fill up
- *correctly.
+ * @param grackle_chemistry_data grackle chemistry data struct to fill up
+ * correctly.
+ * @param grackle_chemistry_rates grackle chemistry rates storage to
+ * initialise.
  * @param hydrogen_mass_fraction global hydrogen mass fraction.
  * @param grackle_verb run grackle in verbose mode?
  * @param case_B_recombination use grackle with case B recombination?
  * @param us #unit_system struct
+ * @param cosmo The current cosmological model.
  **/
 __attribute__((always_inline)) INLINE static void rt_init_grackle(
     code_units *grackle_units, chemistry_data *grackle_chemistry_data,

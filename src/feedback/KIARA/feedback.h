@@ -61,6 +61,7 @@ void feedback_prepare_interpolation_tables(
  * (-ffinite-math-only), so test the exponent bits directly instead.
  *
  * @param x The value to check.
+ * @return 1 if x is finite, 0 otherwise.
  */
 __attribute__((always_inline)) INLINE static int feedback_double_is_finite(
     const double x) {
@@ -70,12 +71,14 @@ __attribute__((always_inline)) INLINE static int feedback_double_is_finite(
 }
 
 /**
- * @brief Recouple wind particles.
+ * @brief Set the flags and reset the wind quantities of a particle that
+ * recouples.
+ *
+ * Clears the decoupling and cooling shut-off times and the stream radius,
+ * resets the subgrid ISM properties and syncs the particle on the timeline.
  *
  * @param p The #part to consider.
- * @param xp The #xpart to consider.
- * @param e The #engine.
- * @param with_cosmology Is this a cosmological simulation?
+ * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
     struct part *p, const struct cosmology *cosmo) {
@@ -209,7 +212,6 @@ __attribute__((always_inline)) INLINE static void feedback_set_wind_direction(
  * @param p The #part to consider.
  * @param xp The #xpart to consider.
  * @param e The #engine.
- * @param with_cosmology Is this a cosmological simulation?
  */
 __attribute__((always_inline)) INLINE static void feedback_update_part(
     struct part *p, struct xpart *xp, const struct engine *e) {}
@@ -229,6 +231,8 @@ __attribute__((always_inline)) INLINE static void feedback_reset_part(
  *
  * @param sp The #spart.
  * @param e The #engine.
+ * @return 1 at the start of the run or if the star is due to enrich this
+ * step, 0 otherwise.
  */
 __attribute__((always_inline)) INLINE static int feedback_is_active(
     const struct spart *sp, const struct engine *e) {
@@ -246,10 +250,11 @@ __attribute__((always_inline)) INLINE static int feedback_is_active(
  *
  * @param sp The #spart.
  * @param e The #engine.
+ * @return 0: KIARA stars do not do the DM loop.
  */
 __attribute__((always_inline)) INLINE static int stars_dm_loop_is_active(
     const struct spart *sp, const struct engine *e) {
-  /* Active stars always do the DM loop for the KIARA model */
+  /* KIARA stars do not do the DM loop */
   return 0;
 }
 
@@ -307,6 +312,9 @@ INLINE static double feedback_get_enrichment_timestep(
 /**
  * @brief Prepares a star's feedback field before computing what
  * needs to be distributed.
+ *
+ * @param sp The #spart.
+ * @param feedback_props The #feedback_props structure.
  */
 __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
     struct spart *sp, const struct feedback_props *feedback_props) {
@@ -393,10 +401,19 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_spart(
  * @brief Compute kick velocity for particle sp based on host galaxy properties,
  *        in code units
  *
- * @param sp The #spart to consider
+ * The circular velocity follows from the galaxy stellar mass (Dutton+11,
+ * scaled with (H/H0)^(1/3)); the wind speed is FIRE_velocity_normalization
+ * times v_circ (with an optional power of v_circ/200 km/s), with a uniform
+ * random scatter and an optional high-redshift suppression.
+ *
+ * @param galaxy_stellar_mass Host galaxy stellar mass (internal units),
+ * floored at minimum_galaxy_stellar_mass.
+ * @param sp_id ID of the launching #spart (seeds the random scatter).
  * @param cosmo The cosmological model.
  * @param fb_props Properties of the feedback scheme.
  * @param ti_current Current integer time used value for seeding random number
+ * @return The kick velocity (internal, comoving units, i.e. a times the
+ * physical kick).
  */
 __attribute__((always_inline)) INLINE static double
 feedback_compute_kick_velocity(const float galaxy_stellar_mass,

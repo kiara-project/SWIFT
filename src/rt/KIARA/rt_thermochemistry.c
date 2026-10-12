@@ -30,7 +30,7 @@
 extern chemistry_data *grackle_data;
 
 /**
- * @file src/rt/KIARA/rt_thermochemistry.h
+ * @file src/rt/KIARA/rt_thermochemistry.c
  * @brief Main header file for the KIARA M1 closure radiative transfer scheme
  * thermochemistry related functions.
  */
@@ -39,10 +39,12 @@ extern chemistry_data *grackle_data;
  * @brief initialize particle quantities relevant for the thermochemistry.
  *
  * @param p part to work with
+ * @param xp extended particle data (its cooling species are initialised)
  * @param rt_props rt_properties struct
  * @param hydro_props hydro properties struct
  * @param phys_const physical constants struct
  * @param us unit system struct
+ * @param cooling The #cooling_function_data used in the run.
  * @param cosmo cosmology struct
  */
 void rt_tchem_first_init_part(
@@ -95,8 +97,10 @@ void rt_tchem_first_init_part(
  * @param cosmo The current cosmological model.
  * @param hydro_props The #hydro_props.
  * @param phys_const The physical constants in internal units.
+ * @param cooling The #cooling_function_data used in the run.
  * @param us The internal system of units.
  * @param dt The time-step of this particle.
+ * @param dt_therm The time-step operator used for thermal quantities.
  * @param depth recursion depth
  */
 INLINE void rt_do_thermochemistry(
@@ -289,7 +293,9 @@ INLINE void rt_do_thermochemistry(
  * @param cosmo The current cosmological model.
  * @param hydro_props The #hydro_props.
  * @param phys_const The physical constants in internal units.
+ * @param cooling The #cooling_function_data used in the run.
  * @param us The internal system of units.
+ * @return The thermochemistry (cooling) time; negative when heating.
  */
 float rt_tchem_get_tchem_time(
     const struct part* restrict p, const struct xpart* restrict xp,
@@ -352,9 +358,12 @@ float rt_tchem_get_tchem_time(
  * @param rt_props RT properties struct
  * @param cosmo The current cosmological model.
  * @param hydro_props The #hydro_props.
+ * @param floor_props Properties of the entropy floor.
  * @param phys_const The physical constants in internal units.
+ * @param cooling The #cooling_function_data used in the run.
  * @param us The internal system of units.
  * @param dt The time-step of this particle.
+ * @param dt_therm The time-step operator used for thermal quantities.
  * @param depth recursion depth
  */
 INLINE void rt_do_thermochemistry_with_subgrid(

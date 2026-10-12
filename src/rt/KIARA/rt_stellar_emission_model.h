@@ -112,7 +112,7 @@ rt_get_emission_this_step_IlievTest(
   }
 }
 
-/*
+/**
  * @brief compute the index of a lower bound bin for a non-uniform spaced 1D array_x.
  * It takes an array_x that indicate the positions, its size and a value x for which
  * we wish to find the lower bound. It returns only the index of the lower bound bin.
@@ -121,6 +121,8 @@ rt_get_emission_this_step_IlievTest(
  * @param array_x Values of gridpoints
  * @param size    Length of array_x
  * @param x       Value within range of array_x for which we want to find the lower bound
+ * @return Index i of the bin with array_x[i] <= x < array_x[i+1], clamped to
+ * [0, size-2].
  */
 static int interpolate_1D_non_uniform_LowerBound(const double* array_x,
 						const int size,
@@ -144,7 +146,7 @@ static int interpolate_1D_non_uniform_LowerBound(const double* array_x,
     return size - 2;
 }
 
-/*
+/**
  * @brief compute an interpolated value from a 2d table (array_y) whose values are
  * given on a non-uniformly spaced grids. The first dimension uses the outer bounds
  * of the grid when given values below/above their min/max. The second dimension does the
@@ -159,6 +161,7 @@ static int interpolate_1D_non_uniform_LowerBound(const double* array_x,
  * here is specifically metallicity
  * @param x2       Value within range of array_x2 to interpolate to
  * here is specifically stellar age
+ * @return The bilinearly interpolated table value.
  */
 
 static double interpolate_2D_non_uniform(const double* array_x1,const double* array_x2,
@@ -283,6 +286,7 @@ return result;
  * erg
  * @param phys_const struct holding physical constants
  * @param internal_units units struct containing internal units
+ * @param f_esc escape fraction applied to the emitted photons
  */
 __attribute__((always_inline)) INLINE static void
 rt_get_emission_this_step_BPASS(

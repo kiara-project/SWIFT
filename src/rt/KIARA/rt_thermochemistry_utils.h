@@ -33,7 +33,8 @@
  * @param XHII mass fraction of HII
  * @param XHeI mass fraction of HeI
  * @param XHeII mass fraction of HeII
- * @param XHeIII mass fraction of HeII
+ * @param XHeIII mass fraction of HeIII
+ * @return The mean molecular weight mu.
  */
 __attribute__((always_inline)) INLINE static double
 rt_tchem_get_mean_molecular_weight(float XHI, float XHII, float XHeI,
@@ -59,6 +60,7 @@ rt_tchem_get_mean_molecular_weight(float XHI, float XHII, float XHeI,
  * @param mu mean molecular weight of the gas
  * @param kB Boltzmann constant
  * @param mp proton mass
+ * @return The gas temperature.
  * */
 __attribute__((always_inline)) INLINE static float
 rt_tchem_temperature_from_internal_energy(double u, double mu, const double kB,
@@ -72,10 +74,11 @@ rt_tchem_temperature_from_internal_energy(double u, double mu, const double kB,
  * of an ideal gas for given temperature and mean molecular
  * weight.
  *
- * @param u specific internal energy of the gas
+ * @param T temperature of the gas
  * @param mu mean molecular weight of the gas
  * @param kB Boltzmann constant
  * @param mp proton mass
+ * @return The specific internal energy.
  * */
 __attribute__((always_inline)) INLINE static float
 rt_tchem_internal_energy_from_T(const double T, const double mu,
@@ -89,10 +92,10 @@ rt_tchem_internal_energy_from_T(const double T, const double mu,
  * (physical) specific internal energy of an ideal gas for
  * given temperature and mean molecular weight
  *
- * @param u specific internal energy of the gas
  * @param mu mean molecular weight of the gas
  * @param kB Boltzmann constant
  * @param mp proton mass
+ * @return du/dT.
  * */
 __attribute__((always_inline)) INLINE static float rt_tchem_internal_energy_dT(
     double mu, const double kB, const double mp) {
@@ -161,6 +164,7 @@ rt_tchem_get_ionizing_species_number_densities(
  * @param p particle to use
  * @param phys_const physical constants struct
  * @param cosmo cosmology struct
+ * @return The physical gas temperature.
  **/
 __attribute__((always_inline)) INLINE static double
 rt_tchem_get_gas_temperature(const struct part* restrict p,
@@ -191,6 +195,8 @@ rt_tchem_get_gas_temperature(const struct part* restrict p,
  * This function is only intended for use in very special case idealized
  * tests, like the Iliev+06 tests, where we require fixed densities and
  * temperatures.
+ *
+ * @param p The particle to modify.
  **/
 __attribute__((always_inline)) INLINE static void
 rt_tchem_set_particle_quantities_for_test(struct part* restrict p) {
@@ -277,6 +283,8 @@ rt_tchem_set_particle_radiation_field_for_test(
  * This function is only intended for use in very special case idealized
  * tests, like the Iliev+06 tests, to deal with boundary conditions in
  * a simple manner.
+ *
+ * @param p The particle to modify.
  * */
 __attribute__((always_inline)) INLINE static void
 rt_tchem_set_boundary_particles_for_test(struct part* restrict p) {

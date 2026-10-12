@@ -32,7 +32,7 @@ enum rt_ionizing_species {
 };
 
 /**
- * Get the ionizing energy in erg for all ionizing species.
+ * @brief Get the ionizing energy in erg for all ionizing species.
  *
  * @param E_ion (return) the ionizing energies.
  **/

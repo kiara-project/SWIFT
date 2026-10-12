@@ -305,10 +305,12 @@ __attribute__((always_inline)) INLINE static void rt_spart_has_no_neighbours(
  * @brief Do checks/conversions on particles on startup.
  *
  * @param p The particle to work on
+ * @param xp The extended particle data
  * @param rt_props The RT properties struct
  * @param hydro_props The hydro properties struct
  * @param phys_const physical constants struct
  * @param us unit_system struct
+ * @param cooling The #cooling_function_data used in the run.
  * @param cosmo cosmology struct
  */
 __attribute__((always_inline)) INLINE static void rt_convert_quantities(
@@ -366,8 +368,9 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
  * @param cosmo The current cosmological model.
  * @param hydro_props The #hydro_props.
  * @param phys_const The physical constants in internal units.
+ * @param cooling The #cooling_function_data used in the run.
  * @param us The internal system of units.
- * @param dt The time-step of this particle.
+ * @return The RT time-step (1e20 if the particle has no radiation).
  */
 __attribute__((always_inline)) INLINE static float rt_compute_timestep(
     const struct part* restrict p, const struct xpart* restrict xp,
@@ -411,6 +414,7 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
  * @param sp spart to work on
  * @param rt_props the RT properties struct
  * @param cosmo the cosmology
+ * @return The maximal RT time-step of star particles.
  */
 __attribute__((always_inline)) INLINE static float rt_compute_spart_timestep(
     const struct spart* restrict sp, const struct rt_props* restrict rt_props,
@@ -522,6 +526,7 @@ __attribute__((always_inline)) INLINE static void rt_end_gradient(
  * @brief finishes up the transport step
  *
  * @param p particle to work on
+ * @param rtp The RT properties struct.
  * @param dt the current time step of the particle
  * @param cosmo #cosmology data structure.
  */
@@ -596,6 +601,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
  * @param hydro_props The #hydro_props.
  * @param floor_props Properties of the entropy floor.
  * @param phys_const The physical constants in internal units.
+ * @param cooling The #cooling_function_data used in the run.
  * @param us The internal system of units.
  * @param dt The time-step of this particle.
  * @param dt_therm The time-step operator used for thermal quantities.

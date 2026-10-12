@@ -34,7 +34,7 @@
  *
  * @param nu frequency at which to evaluate spectrum
  * @param params spectrum integration params. Needs to be of type
- * void* for GSL integrators.
+ * void* for GSL integrators. * @return The (unnormalised) spectrum at frequency nu.
  */
 __attribute__((always_inline)) INLINE static double
 rt_interaction_rates_get_spectrum(const double nu, void *params) {
@@ -73,24 +73,24 @@ rt_interaction_rates_get_spectrum(const double nu, void *params) {
 }
 
 /**
- * Spectrum function to be integrated.
+ * @brief Spectrum function to be integrated.
  * This function is called by the GSL integrator.
  *
  * @param nu frequency at which to evaluate spectrum
  * @param params spectrum integration params. Needs to be of type
- * void* for GSL integrators.
+ * void* for GSL integrators. * @return The spectrum J(nu).
  */
 static double spectrum_integrand(double nu, void *params) {
   return rt_interaction_rates_get_spectrum(nu, params);
 }
 
 /**
- * Spectrum function divided by photon energy h*nu to be integrated.
+ * @brief Spectrum function divided by photon energy h*nu to be integrated.
  * This function is called by the GSL integrator.
  *
  * @param nu frequency at which to evaluate spectrum
  * @param params spectrum integration params. Needs to be of type
- * void* for GSL integrators.
+ * void* for GSL integrators. * @return J(nu) / (h nu), or 0 for nu <= 0.
  */
 static double spectrum_over_hnu_integrand(double nu, void *params) {
   struct rt_spectrum_integration_params *p =
@@ -105,12 +105,12 @@ static double spectrum_over_hnu_integrand(double nu, void *params) {
 }
 
 /**
- * Spectrum times cross section function to be integrated.
+ * @brief Spectrum times cross section function to be integrated.
  * This function is called by the GSL integrator.
  *
  * @param nu frequency at which to evaluate spectrum
  * @param params spectrum integration params. Needs to be of type
- * void* for GSL integrators.
+ * void* for GSL integrators. * @return J(nu) * sigma(nu) for the species in params.
  */
 static double spectrum_times_sigma_integrand(double nu, void *params) {
   struct rt_spectrum_integration_params *p =
@@ -123,12 +123,12 @@ static double spectrum_times_sigma_integrand(double nu, void *params) {
 }
 
 /**
- * Spectrum times cross section divided by h*nu function to be integrated.
- * This function is called by the GSL integrator.
+ * @brief Spectrum times cross section divided by h*nu function to be
+ * integrated. This function is called by the GSL integrator.
  *
  * @param nu frequency at which to evaluate spectrum
  * @param params spectrum integration params. Needs to be of type
- * void* for GSL integrators.
+ * void* for GSL integrators. * @return J(nu) * sigma(nu) / (h nu) for the species in params.
  */
 static double spectrum_times_sigma_over_hnu_integrand(double nu, void *params) {
   struct rt_spectrum_integration_params *p =
@@ -141,12 +141,14 @@ static double spectrum_times_sigma_over_hnu_integrand(double nu, void *params) {
 }
 
 /**
- * Integrate a function from nu_start to nu_stop with GSL routines
+ * @brief Integrate a function from nu_start to nu_stop with GSL routines
  *
  * @param function function to integrate
  * @param nu_start lower boundary of the integral
  * @param nu_stop upper boundary of the integral
+ * @param npoints size of the GSL integration workspace (max. intervals).
  * @param params spectrum integration params.
+ * @return The value of the integral.
  * */
 static double rt_cross_sections_integrate_gsl(
     double (*function)(double, void *), double nu_start, double nu_stop,
@@ -404,6 +406,7 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
  *
  * @param file_name bpass hdf5 file name char
  * @param dataset_name each photon group data set name within the hdf5 file
+ * @return Newly allocated 2D table [rows][columns] of the dataset values.
  **/
 double **read_Bpass_from_hdf5(char *file_name, char *dataset_name){
     double** Table;

@@ -343,7 +343,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
  * stream as a fraction of its summed weight over all stream neighbours.
  * @param cosmo The #cosmology.
  * @param with_cosmology Are we running with cosmology?
- *
+ * @return The mass exchanged over this step (internal units): positive when
+ * the stream grows by entraining ambient gas, negative when shear mixes
+ * stream gas into the ambient medium, 0 if the pair does not interact.
  */
 __attribute__((always_inline)) INLINE static float
 firehose_compute_mass_exchange(const float r2, const float dx[3],
@@ -759,6 +761,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
  * @param pi First particle.
  * @param pj Second particle.
  * @param cosmo The #cosmology.
+ * @return The pair coefficient coef_ij (kernel term in comoving units).
  */
 __attribute__((always_inline)) INLINE static float
 runner_iact_diffusion_pair_coefficient(const float r2, const float hi,
@@ -802,10 +805,10 @@ runner_iact_diffusion_pair_coefficient(const float r2, const float hi,
  * @param a Current scale factor.
  * @param H Current Hubble parameter.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current The current time (in integer)
+ * @param t_current The current time (in integer)
  * @param cosmo The cosmology information.
  * @param with_cosmology Are we running with cosmology?
- *
+ * @param cd #chemistry_global_data containing chemistry information.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
@@ -884,7 +887,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
  * @param a Current scale factor.
  * @param H Current Hubble parameter.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current The current time (in integer)
+ * @param t_current The current time (in integer)
  * @param cosmo The #cosmology.
  * @param with_cosmology Are we running with cosmology?
  * @param cd #chemistry_global_data containing chemistry information.

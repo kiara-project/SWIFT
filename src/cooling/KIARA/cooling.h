@@ -240,6 +240,7 @@ void cooling_sputter_dust(const struct unit_system *restrict us,
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
  * @param xp Pointer to the #xpart data.
+ * @return The electron pressure (always 0 here).
  */
 INLINE static double cooling_get_electron_pressure(
     const struct phys_const *phys_const, const struct hydro_props *hydro_props,
@@ -254,6 +255,7 @@ INLINE static double cooling_get_electron_pressure(
  * grackle species mass fractions (electrons stored as n_e * m_H / rho).
  *
  * @param xp #xpart data.
+ * @return The inverse mean molecular weight 1/mu.
  */
 INLINE static float cooling_get_inverse_mu(const struct xpart *xp) {
 
@@ -278,6 +280,7 @@ INLINE static float cooling_get_inverse_mu(const struct xpart *xp) {
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
  * @param xp #xpart data.
+ * @return The physical specific internal energy (internal units).
  */
 INLINE static double cooling_convert_temp_to_u(
     const double temperature, const double ne,
@@ -296,6 +299,7 @@ INLINE static double cooling_convert_temp_to_u(
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
  * @param xp #xpart data.
+ * @return The temperature (internal units).
  */
 INLINE static double cooling_convert_u_to_temp(
     const double u, const double ne,
@@ -313,6 +317,7 @@ INLINE static double cooling_convert_u_to_temp(
  * gas of the particle's composition: 1/mu = X_H + Y/4 (metals neglected).
  *
  * @param p #part data.
+ * @return The inverse mean molecular weight 1/mu of the warm phase.
  */
 INLINE static float cooling_get_warm_ISM_inverse_mu(const struct part *p) {
 
@@ -327,6 +332,8 @@ INLINE static float cooling_get_warm_ISM_inverse_mu(const struct part *p) {
  * @param temperature Warm-phase temperature in K
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
+ * @return The physical specific internal energy of the warm phase (internal
+ * units).
  */
 INLINE static double cooling_convert_warm_ISM_temp_to_u(
     const double temperature, const struct cooling_function_data *cooling,
@@ -349,6 +356,7 @@ INLINE static double cooling_convert_warm_ISM_temp_to_u(
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
  * @param xp #xpart data.
+ * @return The particle temperature (internal units).
  */
 INLINE static double cooling_convert_u_to_particle_temp(
     const double u, const struct cooling_function_data *cooling,
@@ -368,8 +376,13 @@ INLINE static double cooling_convert_u_to_particle_temp(
  * density. This uses a fit to the density vs. cold gas fraction relation from
  * Springel+Hernquist 2003.
  *
- * @param dens_fac Density factor above threshold density
+ * Below the subgrid threshold density the cold fraction is cold_ISM_frac;
+ * above it, it rises towards 1 as 1 - exp(-log10(n_H/n_thresh)), capped at
+ * MAX_COLD_ISM_FRACTION.
+ *
+ * @param n_H Hydrogen number density (same units as the subgrid threshold).
  * @param cooling #cooling_function_data struct.
+ * @return The cold ISM mass fraction.
  */
 INLINE static double cooling_compute_cold_ISM_fraction(
     const double n_H, const struct cooling_function_data *cooling) {
@@ -403,6 +416,8 @@ INLINE static double cooling_compute_cold_ISM_fraction(
  * @param u_subgrid Specific internal energy of the cold phase at the subgrid
  * temperature (from the cold-phase species).
  * @param cooling #cooling_function_data struct.
+ * @return The physical subgrid (cold-cloud) density, capped at
+ * max_subgrid_density.
  */
 INLINE static double cooling_compute_subgrid_density(
     const double rho, const double u, const double u_subgrid,
@@ -419,11 +434,16 @@ INLINE static double cooling_compute_subgrid_density(
  * @brief Return warm ISM temperature if above SF threshold density, otherwise
  * 0.
  *
+ * Gas above 100 times the mean baryon density and above the subgrid
+ * threshold n_H lies on the warm-ISM equation of state
+ * T = T_thresh (n_H/n_thresh)^subgrid_warm_ism_EOS.
+ *
  * @param p Pointer to the particle data.
  * @param cooling The properties of the cooling function.
- * @param us The unit system.
  * @param phys_const The physical constant in internal units.
  * @param cosmo The current cosmological model.
+ * @return The warm-ISM EoS temperature (internal units), or 0 outside the
+ * subgrid ISM regime.
  */
 __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
     const struct part *restrict p, const struct cooling_function_data *cooling,
@@ -450,6 +470,19 @@ __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
   return temperature;
 }
 
+/**
+ * @brief Compute the H2 fraction of a subgrid ISM particle from the
+ * Krumholz, McKee & Tumlinson (2009) / Krumholz & Gnedin (2011) model.
+ *
+ * The gas surface density is estimated as rho_subgrid * rho / |grad rho|
+ * (converted to Msun/pc^2), with a clumping factor of 30 and the
+ * metallicity in solar units floored at 0.01.
+ *
+ * @param p Pointer to the particle data.
+ * @param cosmo The current cosmological model.
+ * @param cooling The properties of the cooling function.
+ * @return The H2 fraction (0 outside the subgrid ISM).
+ */
 __attribute__((always_inline)) INLINE static float
 cooling_KMT_H2_fraction(const struct part *restrict p,
 			const struct cosmology *cosmo,
@@ -502,8 +535,13 @@ cooling_KMT_H2_fraction(const struct part *restrict p,
  * @brief Computes H and H2 self-shielding for G0 calculation.
  * Based on Schauer et al. 2015 eqs 8,9.
  *
+ * The H column is the physical density times an effective length
+ * rho/|grad rho| limited to [MIN_SHIELD_H_FRAC h, kernel_gamma h]. H2
+ * self-shielding is left to crackle.
+ *
  * @param p The particle to act upon.
  * @param cooling The properties of the cooling function.
+ * @return The shielding factor (1 = unshielded) applied to G0.
  */
 __attribute__((always_inline)) INLINE static float
 cooling_compute_self_shielding(const struct part *restrict p,
@@ -555,11 +593,16 @@ cooling_compute_self_shielding(const struct part *restrict p,
  * @brief Returns the value of G0 for given particle p
  * based on symbolic regression from FIRE simulations (from Diane Salim)
  *
- * @param p Pointer to the particle data.
- * @param rho Physical density in system units.
- * @param cooling The properties of the cooling function.
- * @param dt The cooling timestep.
+ * The fit uses the cold-cloud free-fall time, the warm-ISM temperature, the
+ * metallicity and the electron fraction, with a low-z (z < 4) and a high-z
+ * (z > 5) form interpolated linearly in between.
  *
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the extended particle data.
+ * @param rho Physical density in system units.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param cooling The properties of the cooling function.
+ * @return G0 in Habing units (0 outside the subgrid ISM).
  */
 __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
     const struct part *restrict p, const struct xpart *restrict xp,  
@@ -649,11 +692,20 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 /**
  * @brief Returns the value of G0 for given particle p
  *
- * @param p Pointer to the particle data.
- * @param rho Physical density in system units.
- * @param cooling The properties of the cooling function.
- * @param dt The cooling timestep.
+ * The method is set by G0_computation_method: 0 none; 1 local SFR density
+ * (with H self-shielding); 2 host galaxy sSFR; 3 sSFR if non-zero else local;
+ * -3 local if non-zero else sSFR; 4 SN rate; 5 max(galaxy, particle sSFR) plus
+ * SN rate; 6 FIRE-based fit. The result is scaled by G0_multiplier.
  *
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the extended particle data.
+ * @param rho Physical density in system units.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param cooling The properties of the cooling function.
+ * @param mstar The stellar mass of the host galaxy (internal units).
+ * @param ssfr The specific SFR of the host galaxy (internal units).
+ * @param dt The cooling timestep.
+ * @return G0 in Habing units (0 outside the subgrid ISM).
  */
 __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     const struct part *restrict p, const struct xpart *restrict xp, 

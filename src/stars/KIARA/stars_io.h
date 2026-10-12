@@ -61,6 +61,14 @@ INLINE static void stars_read_particles(struct spart *sparts,
                           UNIT_CONV_TEMPERATURE, sparts, birth_temperature);
 }
 
+/**
+ * @brief Get the position of a star particle for output, wrapped into the
+ * box (and kept away from the upper edge if requested).
+ *
+ * @param e The #engine.
+ * @param sp The #spart.
+ * @param ret (return) The comoving position.
+ */
 INLINE static void convert_spart_pos(const struct engine *e,
                                      const struct spart *sp, double *ret) {
   const struct space *s = e->s;
@@ -80,6 +88,16 @@ INLINE static void convert_spart_pos(const struct engine *e,
   }
 }
 
+/**
+ * @brief Get the peculiar velocity of a star particle for output.
+ *
+ * The velocity is extrapolated from the last kick to the current time
+ * (including the mesh forces) and converted to a peculiar velocity a dx/dt.
+ *
+ * @param e The #engine.
+ * @param sp The #spart.
+ * @param ret (return) The peculiar velocity.
+ */
 INLINE static void convert_spart_vel(const struct engine *e,
                                      const struct spart *sp, float *ret) {
   const int with_cosmology = (e->policy & engine_policy_cosmology);
@@ -115,6 +133,14 @@ INLINE static void convert_spart_vel(const struct engine *e,
   ret[2] *= cosmo->a_inv;
 }
 
+/**
+ * @brief Get the luminosities of a star particle in the photometric bands
+ * for output.
+ *
+ * @param e The #engine.
+ * @param sp The #spart.
+ * @param ret (return) The luminosities.
+ */
 INLINE static void convert_spart_luminosities(const struct engine *e,
                                               const struct spart *sp,
                                               float *ret) {
@@ -123,6 +149,14 @@ INLINE static void convert_spart_luminosities(const struct engine *e,
                          ret);
 }
 
+/**
+ * @brief Get the comoving gravitational potential of a star particle for
+ * output (0 if it has no #gpart).
+ *
+ * @param e The #engine.
+ * @param sp The #spart.
+ * @param ret (return) The comoving potential.
+ */
 INLINE static void convert_spart_potential(const struct engine *e,
                                            const struct spart *sp, float *ret) {
 
@@ -411,6 +445,13 @@ INLINE static void stars_props_print(const struct stars_props *sp) {
 }
 
 #if defined(HAVE_HDF5)
+/**
+ * @brief Write the properties of the stars scheme to a snapshot.
+ *
+ * @param h_grpstars The HDF5 group of the stars scheme.
+ * @param h_grp_columns The HDF5 group of the named columns.
+ * @param sp The #stars_props.
+ */
 INLINE static void stars_props_print_snapshot(hid_t h_grpstars,
                                               hid_t h_grp_columns,
                                               const struct stars_props *sp) {

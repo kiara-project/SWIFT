@@ -64,6 +64,7 @@ extern chemistry_data *grackle_data;
  *
  * Also calls the additional H reionisation energy injection if need be.
  *
+ * @param phys_const The physical constants in internal units.
  * @param cosmo The current cosmological model.
  * @param pressure_floor Properties of the pressure floor.
  * @param cooling The #cooling_function_data used in the run.
@@ -112,12 +113,9 @@ void cooling_print_fractions(const struct xpart *restrict xp) {
  * @brief Initializes grackle particle quantities
  * assuming purely neutral gas
  *
- * Nothing to do here.
+ * H and He start fully neutral with the particle's element mass fractions,
+ * all other species at zero (deuterium at the primordial D/H ratio).
  *
- * @param phys_const The physical constant in internal units.
- * @param us The unit system.
- * @param hydro_props The properties of the hydro scheme.
- * @param cosmo The current cosmological model.
  * @param cooling The properties of the cooling function.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the extended particle data.
@@ -229,6 +227,7 @@ __attribute__((always_inline)) INLINE void cooling_post_init_part(
  * @brief Returns the total radiated energy by this particle.
  *
  * @param xp The extended particle data
+ * @return The total radiated energy (internal units).
  */
 float cooling_get_radiated_energy(const struct xpart *restrict xp) {
 
@@ -271,15 +270,20 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
           cooling->units.a_units);
 }
 
+#if COOLING_GRACKLE_MODE >= 1
 /**
- * @brief copy a #xpart to the grackle data
+ * @brief Copy the primordial (H, He, e) species of a #xpart to the grackle
+ * data.
+ *
+ * The species densities are the stored mass fractions times the density, and
+ * are kept in species_densities, which the grackle data point to.
  *
  * @param data The grackle_field_data structure from grackle.
- * @param p The #part
- * @param xp The #xpart
- * @param rho Particle density
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param rho The particle density (grackle units).
+ * @param species_densities Buffer holding the densities passed to grackle.
  */
-#if COOLING_GRACKLE_MODE >= 1
 void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
                               const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]) {
@@ -308,6 +312,15 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
   data->e_density = &species_densities[5];
 }
 #else
+/**
+ * @brief Copy the primordial species to the grackle data (none in mode 0).
+ *
+ * @param data The grackle_field_data structure from grackle.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param rho The particle density (grackle units).
+ * @param species_densities Buffer holding the densities passed to grackle.
+ */
 void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
                               const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]) {
@@ -320,15 +333,25 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
 }
 #endif
 
+#if COOLING_GRACKLE_MODE >= 2
 /**
- * @brief copy a #xpart to the grackle data
+ * @brief Copy the H2 species and the dust-model inputs of a particle to the
+ * grackle data.
+ *
+ * With the dust model on, this also passes the dust density, the number of
+ * SNe in this step, the interstellar radiation field G0 (-1 outside the
+ * subgrid ISM), the H2 self-shielding length (rho/|grad rho|, limited to
+ * [MIN_SHIELD_H_FRAC h, kernel_gamma h]) and the gas and dust element
+ * densities. Requires the metal density (species_densities[12]) to be set.
  *
  * @param data The grackle_field_data structure from grackle.
- * @param p The #part
- * @param xp The #xpart
- * @param rho Particle density
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param dt The time-step of this particle.
+ * @param rho The particle density (grackle units).
+ * @param species_densities Buffer holding the densities passed to grackle.
  */
-#if COOLING_GRACKLE_MODE >= 2
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
     const struct cooling_function_data *restrict cooling, const double dt,
@@ -449,6 +472,17 @@ void cooling_copy_to_grackle2(
   }
 }
 #else
+/**
+ * @brief Copy the H2 species to the grackle data (none below mode 2).
+ *
+ * @param data The grackle_field_data structure from grackle.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param dt The time-step of this particle.
+ * @param rho The particle density (grackle units).
+ * @param species_densities Buffer holding the densities passed to grackle.
+ */
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
     const struct cooling_function_data *restrict cooling, const double dt,
@@ -459,15 +493,16 @@ void cooling_copy_to_grackle2(
 }
 #endif
 
+#if COOLING_GRACKLE_MODE >= 3
 /**
- * @brief copy a #xpart to the grackle data
+ * @brief Copy the deuterium species of a #xpart to the grackle data.
  *
  * @param data The grackle_field_data structure from grackle.
- * @param p The #part
- * @param xp The #xpart
- * @param rho Particle density
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param rho The particle density (grackle units).
+ * @param species_densities Buffer holding the densities passed to grackle.
  */
-#if COOLING_GRACKLE_MODE >= 3
 void cooling_copy_to_grackle3(grackle_field_data *data, const struct part *p,
                               const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]) {
@@ -484,6 +519,15 @@ void cooling_copy_to_grackle3(grackle_field_data *data, const struct part *p,
   data->HDI_density = &species_densities[11];
 }
 #else
+/**
+ * @brief Copy the deuterium species to the grackle data (none below mode 3).
+ *
+ * @param data The grackle_field_data structure from grackle.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param rho The particle density (grackle units).
+ * @param species_densities Buffer holding the densities passed to grackle.
+ */
 void cooling_copy_to_grackle3(grackle_field_data *data, const struct part *p,
                               const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]) {
@@ -493,15 +537,16 @@ void cooling_copy_to_grackle3(grackle_field_data *data, const struct part *p,
 }
 #endif
 
+#if COOLING_GRACKLE_MODE >= 1
 /**
- * @brief copy the grackle data to a #xpart
+ * @brief Copy the primordial (H, He, e) species from the grackle data back
+ * to the mass fractions of a #xpart.
  *
  * @param data The grackle_field_data structure from grackle.
  * @param p The #part.
  * @param xp The #xpart.
- * @param rho The particle density.
+ * @param rho The particle density (grackle units).
  */
-#if COOLING_GRACKLE_MODE >= 1
 void cooling_copy_from_grackle1(grackle_field_data *data, const struct part *p,
                                 struct xpart *xp, gr_float rho) {
 
@@ -525,19 +570,34 @@ void cooling_copy_from_grackle1(grackle_field_data *data, const struct part *p,
   xp->cooling_data.e_frac = *data->e_density * rhoinv;
 }
 #else
-void cooling_copy_from_grackle1(grackle_field_data *data, const struct part *p,
-                                struct xpart *xp, gr_float rho) {}
-#endif
-
 /**
- * @brief copy the grackle data to a #xpart.
+ * @brief Copy the primordial species from the grackle data (none in mode 0).
  *
  * @param data The grackle_field_data structure from grackle.
  * @param p The #part.
  * @param xp The #xpart.
- * @param rho The particle density.
+ * @param rho The particle density (grackle units).
  */
+void cooling_copy_from_grackle1(grackle_field_data *data, const struct part *p,
+                                struct xpart *xp, gr_float rho) {}
+#endif
+
 #if COOLING_GRACKLE_MODE >= 2
+/**
+ * @brief Copy the H2 species and, with the dust model on, the evolved gas
+ * metal and dust masses from the grackle data back to the particle.
+ *
+ * The gas element mass fractions and total metallicity are overwritten with
+ * grackle's values (which include dust growth and destruction), and the dust
+ * mass and per-element dust mass fractions are updated (index 0 holds the
+ * total).
+ *
+ * @param data The grackle_field_data structure from grackle.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param rho The particle density (grackle units).
+ */
 void cooling_copy_from_grackle2(
     grackle_field_data *data, struct part *p, struct xpart *xp,
     const struct cooling_function_data *restrict cooling, gr_float rho) {
@@ -612,20 +672,29 @@ void cooling_copy_from_grackle2(
   }
 }
 #else
+/**
+ * @brief Copy the H2 species from the grackle data (none below mode 2).
+ *
+ * @param data The grackle_field_data structure from grackle.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param rho The particle density (grackle units).
+ */
 void cooling_copy_from_grackle2(
     grackle_field_data *data, struct part *p, struct xpart *xp,
     const struct cooling_function_data *restrict cooling, gr_float rho) {}
 #endif
 
+#if COOLING_GRACKLE_MODE > 2
 /**
- * @brief copy the grackle data to a #xpart
+ * @brief Copy the deuterium species from the grackle data back to a #xpart.
  *
  * @param data The grackle_field_data structure from grackle.
  * @param p The #part.
  * @param xp The #xpart.
- * @param rho The particle density.
+ * @param rho The particle density (grackle units).
  */
-#if COOLING_GRACKLE_MODE > 2
 void cooling_copy_from_grackle3(grackle_field_data *data, const struct part *p,
                                 struct xpart *xp, gr_float rho) {
 
@@ -640,6 +709,15 @@ void cooling_copy_from_grackle3(grackle_field_data *data, const struct part *p,
   xp->cooling_data.HDI_frac = *data->HDI_density * rhoinv;
 }
 #else
+/**
+ * @brief Copy the deuterium species from the grackle data (none below mode
+ * 3).
+ *
+ * @param data The grackle_field_data structure from grackle.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param rho The particle density (grackle units).
+ */
 void cooling_copy_from_grackle3(grackle_field_data *data, const struct part *p,
                                 struct xpart *xp, gr_float rho) {}
 #endif
@@ -651,6 +729,7 @@ void cooling_copy_from_grackle3(grackle_field_data *data, const struct part *p,
  * (-ffinite-math-only), so test the exponent bits directly instead.
  *
  * @param x The value to check.
+ * @return 1 if x is finite, 0 if it is NaN or infinite.
  */
 static INLINE int cooling_value_is_finite(const gr_float x) {
 #ifdef GRACKLE_FLOAT_4
@@ -665,15 +744,32 @@ static INLINE int cooling_value_is_finite(const gr_float x) {
 }
 
 /**
- * @brief copy a #xpart to the grackle data
+ * @brief Fill the grackle data for a single particle.
  *
- * Warning this function creates some variable, therefore the grackle call
- * should be in a block that still has the variables.
+ * The grackle data point into species_densities and iact_rates, so these
+ * must stay alive (in the caller's scope) until the grackle call is done.
+ *
+ * The density, internal energy and temperature floor depend on the case:
+ * - mode 1 (cooling time): the particle's own density and energy, CMB
+ *   floor, no heating and no UV background;
+ * - gas outside the subgrid ISM (or with a negligible cold fraction): the
+ *   particle's density and energy, the warm-ISM EoS temperature as the floor
+ *   and the hydro du/dt as specific heating rate;
+ * - subgrid ISM gas: the cold-cloud density and subgrid temperature, the CMB
+ *   floor, and the hydro du/dt only if ism_adiabatic_heating_method == 1.
+ * Errors if any value passed to grackle is not finite.
  *
  * @param data The grackle_field_data structure from grackle.
+ * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
+ * @param cooling The #cooling_function_data used in the run.
  * @param p The #part.
  * @param xp The #xpart.
- * @param rho The particle density.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param species_densities Buffer holding the values passed to grackle.
+ * @param iact_rates The RT heating and ionisation rates passed to grackle.
+ * @param mode The grackle driver mode (1 = cooling time).
  */
 void cooling_copy_to_grackle(
     grackle_field_data *data, const struct unit_system *restrict us,
@@ -787,15 +883,14 @@ void cooling_copy_to_grackle(
 }
 
 /**
- * @brief copy a #xpart to the grackle data
- *
- * Warning this function creates some variable, therefore the grackle call
- * should be in a block that still has the variables.
+ * @brief Copy the evolved species (and dust/metals) from the grackle data
+ * back to the particle.
  *
  * @param data The grackle_field_data structure from grackle.
  * @param p The #part.
  * @param xp The #xpart.
- * @param rho The particle density.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param rho The particle density passed to grackle (grackle units).
  */
 void cooling_copy_from_grackle(
     grackle_field_data *data, struct part *p, struct xpart *xp,
@@ -877,7 +972,9 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the particle extra data
+ * @param iact_rates The RT heating and ionisation rates passed to grackle.
  * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
  * @param mode 0=energy, 1=cooling time, 2=temperature, 3=pressure, 4=gamma
  *
  * @return desired quantity based on mode
@@ -993,15 +1090,17 @@ gr_float cooling_grackle_driver(
  *
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
- * @param hydro_props The #hydro_props.
+ * @param hydro_properties The #hydro_props.
  * @param cosmo The #cosmology.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the particle extra data.
- * @param rhocool Density used in tcool calculation.
- * @param ucool Density used in tcool calculation.
+ * @param rhocool Comoving density used in the tcool calculation (if > 0).
+ * @param ucool Comoving internal energy used in the tcool calculation (if >
+ * 0).
  *
- * @return cooling time
+ * @return The cooling time (internal units; positive if heating, negative if
+ * cooling).
  */
 gr_float cooling_time(const struct phys_const *restrict phys_const,
                       const struct unit_system *restrict us,
@@ -1030,12 +1129,13 @@ gr_float cooling_time(const struct phys_const *restrict phys_const,
  * @brief Compute the temperature of a #part based on the cooling function.
  *
  * @param phys_const #phys_const data structure.
- * @param hydro_props The properties of the hydro scheme.
+ * @param hydro_properties The properties of the hydro scheme.
  * @param us The internal system of units.
  * @param cosmo #cosmology data structure.
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
  * @param xp Pointer to the #xpart data.
+ * @return The temperature of the gas (internal units).
  */
 float cooling_get_temperature(
     const struct phys_const *restrict phys_const,
@@ -1061,10 +1161,11 @@ float cooling_get_temperature(
 /**
  * @brief Do dust sputtering and return metals back to gas phase
  *
- * @param phys_const The physical constants in internal units.
+ * Above 1e4 K, dust is destroyed on the thermal sputtering time-scale of
+ * Tsai & Mathews (1995) and its element masses are returned to the gas.
+ *
  * @param us The internal system of units.
  * @param cosmo The current cosmological model.
- * @param hydro_props The #hydro_props.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the #xpart data.
@@ -1319,8 +1420,6 @@ void cooling_init_chemistry(
  * @param iact_rates Interaction rates for radiative transfer (if used)
  * @param dt The time-step of this particle.
  * @param dt_therm The time-step operator used for thermal quantities.
- * @param time The current time (since the Big Bang or start of the run) in
- * internal units.
  */
 void cooling_do_grackle_cooling(
     const struct phys_const *restrict phys_const,
@@ -1477,6 +1576,7 @@ static INLINE void cooling_decay_SNe_rate(
  * @param cosmo The current cosmological model.
  * @param hydro_props The #hydro_props.
  * @param floor_props Properties of the entropy floor.
+ * @param pressure_floor_props Properties of the pressure floor.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the particle' extended data.
@@ -1618,7 +1718,7 @@ void cooling_set_particle_subgrid_properties(
   }
 }
 
-/*
+/**
  * @brief Returns the subgrid temperature of a particle.
  *
  * @param p The particle.
@@ -1630,7 +1730,7 @@ float cooling_get_subgrid_temperature(const struct part *p,
   return p->cooling_data.subgrid_temp;
 }
 
-/*
+/**
  * @brief Returns the subgrid density of a particle.
  *
  * @param p The particle.
@@ -1655,6 +1755,7 @@ float cooling_get_subgrid_density(const struct part *p,
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
  * @param xp Pointer to the #xpart data.
+ * @return The y-Compton contribution (always 0 here).
  */
 double cooling_get_ycompton(const struct phys_const *phys_const,
                             const struct hydro_props *hydro_props,
@@ -1679,6 +1780,7 @@ double cooling_get_ycompton(const struct phys_const *phys_const,
  * @param hydro_props The #hydro_props.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the particle extra data
+ * @return The cooling time-step limit (FLT_MAX: no limit).
  */
 float cooling_timestep(const struct cooling_function_data *restrict cooling,
                        const struct phys_const *restrict phys_const,

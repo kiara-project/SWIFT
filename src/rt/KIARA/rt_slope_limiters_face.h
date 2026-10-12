@@ -81,7 +81,7 @@ __attribute__((always_inline)) INLINE static float rt_slope_limit_face_quantity(
 }
 
 /**
- * the minmod slope limiter.
+ * @brief The minmod slope limiter (applied in place to both slopes).
  *
  * @param dQi left slope
  * @param dQj right slope
@@ -102,7 +102,7 @@ __attribute__((always_inline)) INLINE static void rt_limiter_minmod(
 }
 
 /**
- * the monotonized cenetral limiter.
+ * @brief The monotonized central limiter.
  *
  * @param dQi left slope
  * @param dQj right slope
@@ -117,7 +117,7 @@ __attribute__((always_inline)) INLINE static float rt_limiter_mc(
 }
 
 /**
- * the van Leer limiter.
+ * @brief The van Leer limiter.
  *
  * @param dQi left slope
  * @param dQj right slope
@@ -131,7 +131,7 @@ __attribute__((always_inline)) INLINE static float rt_limiter_vanLeer(
 }
 
 /**
- * the superbee limiter.
+ * @brief The superbee limiter.
  *
  * @param dQi left slope
  * @param dQj right slope

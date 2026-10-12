@@ -39,6 +39,9 @@
  * @param ti_current The current time (in integer).
  * @param time The current time (used if running without cosmology).
  * @param time_base The time base.
+ * @return The time-step (internal units): age times the young/old factor,
+ * floored at min_time_step and capped at the young/old maximum; FLT_MAX for
+ * background stars and stars older than age_threshold_unlimited.
  */
 __attribute__((always_inline)) INLINE static float stars_compute_timestep(
     const struct spart *const sp, const struct stars_props *stars_properties,
@@ -93,6 +96,7 @@ __attribute__((always_inline)) INLINE static float stars_compute_timestep(
  * @param cosmo The cosmological model.
  * @param time The current time (in internal units).
  * @param with_cosmology Are we running with cosmological integration?
+ * @return The age (internal units), 0 if born after the current time.
  */
 __attribute__((always_inline)) INLINE static double stars_compute_age(
     const struct spart *sp, const struct cosmology *cosmo, double time,
