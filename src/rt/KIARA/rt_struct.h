@@ -50,6 +50,14 @@ struct rt_part_data {
    * for a change of volume (0 until the first volume computation) */
   float volume_previous;
 
+  /*! Sum of the (comoving) interface areas |A_ij| with the neighbours,
+   * accumulated during the transport since the last finalise */
+  float area_sum;
+
+  /*! Interface area sum of the last completed transport step, used for the
+   * RT time-step (0 until the first transport) */
+  float area_sum_last;
+
   /* gradients of the radiation state. */
   /* for the flux[3][3] quantity:
    *    first index: x, y, z coordinate of the flux.

@@ -224,6 +224,8 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
 #endif
 
   p->rt_data.volume_previous = 0.f;
+  p->rt_data.area_sum = 0.f;
+  p->rt_data.area_sum_last = 0.f;
 }
 
 /**
@@ -418,12 +420,21 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   if (total_energy_density <= 0.) return 1e20f;
 
   /* Courant condition: radiation travels at c_red/a in comoving
-   * coordinates, so the (physical) time to cross the particle's comoving
-   * size (radius of its volume) is a * psize / c_red */
-  const float psize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
-                           hydro_dimension_inv);
-  float dt = psize * rt_params.reduced_speed_of_light_inverse * cosmo->a *
-             rt_props->CFL_condition;
+   * coordinates. A particle must not send more radiation through its
+   * interfaces in one step than it holds: c_red dt sum|A_ij| / (a V) <= CFL,
+   * with the (comoving) interface areas of its last transport step. Before
+   * the first transport step, use 1/10 of the crossing time of the radius
+   * of its volume. */
+  float dt;
+  if (p->rt_data.area_sum_last > 0.f) {
+    dt = rt_props->CFL_condition * cosmo->a * p->geometry.volume /
+         p->rt_data.area_sum_last * rt_params.reduced_speed_of_light_inverse;
+  } else {
+    const float psize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
+                             hydro_dimension_inv);
+    dt = 0.1f * rt_props->CFL_condition * cosmo->a * psize *
+         rt_params.reduced_speed_of_light_inverse;
+  }
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -628,6 +639,10 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
   rt_part_reset_fluxes(p);
   /* Mark the particle as inactive for now. */
   rtd->flux_dt = -1.f;
+
+  /* Keep the interface area of this transport step for the time-step */
+  rtd->area_sum_last = rtd->area_sum;
+  rtd->area_sum = 0.f;
 }
 
 /**
