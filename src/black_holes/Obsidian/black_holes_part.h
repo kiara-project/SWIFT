@@ -78,6 +78,16 @@ struct bpart {
 #ifdef WITH_FOF_GALAXIES
   /*! Struct for host galaxy information */
   struct fof_galaxy_data galaxy_data;
+
+  /*! ID of the most massive BH of the FoF galaxy this (secondary) BH sits
+   * in, whose dynamical-friction merger clock is running (0 if none) */
+  long long df_primary_id;
+
+  /*! Time at which the dynamical-friction clock started */
+  double df_t_start;
+
+  /*! Dynamical-friction time to sink onto df_primary_id */
+  float df_merger_time;
 #endif
 
   /*! Union for the formation time and formation scale factor */

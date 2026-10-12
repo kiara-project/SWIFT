@@ -391,6 +391,10 @@ struct black_holes_props {
   /*! Maximal distance over which BHs merge, in units of softening length */
   float max_merging_distance_ratio;
 
+  /*! Multiplier of the dynamical-friction time after which a secondary BH in
+   * a FoF galaxy is sunk onto the galaxy's most massive BH (<= 0: off) */
+  float df_merger_time_factor;
+
   /* ---- Black hole time-step properties ---------- */
 
   /*! Minimum allowed time-step of BH (internal units) */
@@ -1119,6 +1123,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->max_merging_distance_ratio =
       parser_get_param_float(params, "ObsidianAGN:merger_max_distance_ratio");
+
+  bp->df_merger_time_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:bh_df_merger_time_factor", 1.f);
 
   /* ---- Black hole time-step properties ------------------ */
 

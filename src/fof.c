@@ -2580,6 +2580,182 @@ static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
 }
 #endif
 
+#if defined(BLACK_HOLES_OBSIDIAN) && defined(WITH_FOF_GALAXIES)
+/**
+ * @brief Sink secondary BHs onto the most massive BH of their FoF galaxy
+ * after a dynamical-friction time.
+ *
+ * At the first FoF call where a BH shares a galaxy with a more massive BH
+ * (the primary), a clock is started with the Chandrasekhar time for a
+ * satellite of mass m_sat (its former galaxy's stellar mass plus its own
+ * mass) at the current separation r in the host of mass M_host:
+ *   t_df = f * 1.17 r^2 v_c / (G m_sat ln(1 + M_host / m_sat)),
+ * v_c = sqrt(G M_host / r). Once t_df has elapsed the secondary is put next
+ * to the primary with its velocity, so the usual BH-BH swallowing merges
+ * the pair. The clock is reset whenever the BH is not in a galaxy with a
+ * more massive BH, or the primary changes.
+ *
+ * Must be called before the host-galaxy data are updated in this FoF call.
+ *
+ * @param props The properties of the FOF scheme.
+ * @param s The #space we act on.
+ * @param group_mass The (global) mass of each group.
+ * @param allow_moves Can BHs be moved (i.e. is a rebuild coming)?
+ */
+static void fof_bh_dynamical_friction(const struct fof_props *props,
+                                      const struct space *s,
+                                      const double *group_mass,
+                                      const int allow_moves) {
+
+  const struct engine *e = s->e;
+  const struct black_holes_props *bh_props = e->black_holes_properties;
+  const float factor = bh_props->df_merger_time_factor;
+  if (factor <= 0.f) return;
+
+  const size_t num_groups = props->num_groups;
+  const size_t group_id_default = props->group_id_default;
+  const double G = e->physical_constants->const_newton_G;
+  const double a = e->cosmology->a;
+  const double time = e->time;
+  const int periodic = s->periodic;
+  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
+  struct bpart *bparts = s->bparts;
+  const size_t nr_bparts = s->nr_bparts;
+
+  float *prim_mass = NULL;
+  long long *prim_id = NULL;
+  double *prim_xv = NULL;
+  if (swift_memalign("fof_bh_df_mass", (void **)&prim_mass, 32,
+                     num_groups * sizeof(float)) != 0 ||
+      swift_memalign("fof_bh_df_id", (void **)&prim_id, 32,
+                     num_groups * sizeof(long long)) != 0 ||
+      swift_memalign("fof_bh_df_xv", (void **)&prim_xv, 32,
+                     num_groups * 6 * sizeof(double)) != 0)
+    error("Unable to allocate memory for the BH dynamical friction");
+  for (size_t i = 0; i < num_groups; ++i) {
+    prim_mass[i] = 0.f;
+    prim_id[i] = LLONG_MAX;
+  }
+  bzero(prim_xv, num_groups * 6 * sizeof(double));
+
+  /* Most massive BH of each group (lowest ID among equals) */
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    const struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) continue;
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    prim_mass[index] = fmaxf(prim_mass[index], bp->subgrid_mass);
+  }
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, prim_mass, num_groups, MPI_FLOAT, MPI_MAX,
+                MPI_COMM_WORLD);
+#endif
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    const struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) continue;
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    if (bp->subgrid_mass == prim_mass[index] && bp->id < prim_id[index])
+      prim_id[index] = bp->id;
+  }
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, prim_id, num_groups, MPI_LONG_LONG, MPI_MIN,
+                MPI_COMM_WORLD);
+#endif
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    const struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) continue;
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    if (bp->id != prim_id[index]) continue;
+    for (int j = 0; j < 3; j++) {
+      prim_xv[index * 6 + j] = bp->x[j];
+      prim_xv[index * 6 + 3 + j] = bp->v[j];
+    }
+  }
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, prim_xv, 6 * num_groups, MPI_DOUBLE, MPI_SUM,
+                MPI_COMM_WORLD);
+#endif
+
+  /* Run the clocks and sink the BHs whose time is up */
+  int counts[2] = {0, 0}; /* clocks started, BHs sunk */
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) {
+      bp->df_primary_id = 0;
+      continue;
+    }
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    if (bp->id == prim_id[index]) {
+      bp->df_primary_id = 0;
+      continue;
+    }
+
+    /* Separation from the primary (nearest periodic image) */
+    double dx[3];
+    for (int j = 0; j < 3; j++) {
+      dx[j] = bp->x[j] - prim_xv[index * 6 + j];
+      if (periodic) dx[j] = nearest(dx[j], dim[j]);
+    }
+
+    if (bp->df_primary_id != prim_id[index]) {
+
+      /* Start the clock */
+      const double r = a * sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
+      const double m_sat = bp->galaxy_data.stellar_mass + bp->subgrid_mass;
+      const double M_host = group_mass[index];
+      double t_df = 0.;
+      if (r > 0. && m_sat > 0. && M_host > 0.) {
+        const double v_c = sqrt(G * M_host / r);
+        const double log_Lambda = log(1. + M_host / m_sat);
+        t_df = factor * 1.17 * r * r * v_c / (G * m_sat * log_Lambda);
+      }
+      bp->df_primary_id = prim_id[index];
+      bp->df_t_start = time;
+      bp->df_merger_time = t_df;
+      counts[0]++;
+    }
+
+    if (!allow_moves || time - bp->df_t_start < bp->df_merger_time) continue;
+
+    /* Time is up: put the BH right next to the primary (not on top of it,
+     * to keep the separation non-zero) with the primary's velocity */
+#ifdef OBSIDIAN_DEBUG_CHECKS
+    message("BH_DF_SINK: z=%g bid=%lld onto bid=%lld r=%g kpc t_df=%g Myr "
+            "MBH=%g Mgal=%g",
+            e->cosmology->z, bp->id, prim_id[index],
+            a * sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]) *
+                e->internal_units->UnitLength_in_cgs / 3.0857e21,
+            bp->df_merger_time * bh_props->time_to_Myr,
+            bp->subgrid_mass * bh_props->mass_to_solar_mass,
+            bp->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass);
+#endif
+    for (int j = 0; j < 3; j++) {
+      const double delta = -(1. - 1e-3) * dx[j];
+      bp->x[j] += delta;
+      bp->gpart->x[j] += delta;
+      bp->x_diff[j] -= delta;
+      bp->v[j] = prim_xv[index * 6 + 3 + j];
+      bp->gpart->v_full[j] = prim_xv[index * 6 + 3 + j];
+    }
+    counts[1]++;
+  }
+
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, counts, 2, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+#endif
+  if (engine_rank == 0 && (counts[0] > 0 || counts[1] > 0))
+    message("BH dynamical friction: %d clock(s) started, %d BH(s) sunk",
+            counts[0], counts[1]);
+
+  swift_free("fof_bh_df_mass", prim_mass);
+  swift_free("fof_bh_df_id", prim_id);
+  swift_free("fof_bh_df_xv", prim_xv);
+}
+#endif
+
 /**
  * @brief Compute the group properties for all groups.
  *
@@ -2601,7 +2777,8 @@ static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
  */
 void fof_calc_group_mass(struct fof_props *props, const struct space *s,
                          int *restrict number_of_local_seeds,
-                         int *restrict number_of_global_seeds) {
+                         int *restrict number_of_global_seeds,
+                         const int allow_bh_moves) {
 
   const size_t nr_gparts = s->nr_gparts;
   const struct gpart *gparts = s->gparts;
@@ -2754,6 +2931,13 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
                 MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, star_formation_rate, props->num_groups, MPI_FLOAT,
                 MPI_SUM, MPI_COMM_WORLD);
+#endif
+
+#if defined(BLACK_HOLES_OBSIDIAN) && defined(WITH_FOF_GALAXIES)
+  /* Uses the BHs' host-galaxy data from the previous call */
+  fof_bh_dynamical_friction(props, s, group_mass, allow_bh_moves);
+#else
+  (void)allow_bh_moves;
 #endif
 
   *number_of_local_seeds = 0;
@@ -4184,8 +4368,10 @@ void fof_compute_group_props(struct fof_props *props,
 
   /* Now, compute all things */
   int number_of_local_seeds = 0, number_of_global_seeds = 0;
+  /* BHs can only be moved if a rebuild follows, i.e. when seeding */
   fof_calc_group_mass(props, s, &number_of_local_seeds,
-                      &number_of_global_seeds);
+                      &number_of_global_seeds,
+                      /*allow_bh_moves=*/seed_black_holes);
 
   if (verbose)
     message("Computing group properties took: %.3f %s.",

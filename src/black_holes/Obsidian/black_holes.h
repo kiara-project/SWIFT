@@ -468,6 +468,11 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->formation_time = -1.f;
   bp->cumulative_number_seeds = 1;
   bp->number_of_mergers = 0;
+#ifdef WITH_FOF_GALAXIES
+  bp->df_primary_id = 0;
+  bp->df_t_start = 0.;
+  bp->df_merger_time = 0.f;
+#endif
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
   bp->number_of_repositions = 0;
@@ -1929,6 +1934,11 @@ INLINE static void black_holes_create_from_gas(
   bp->total_accreted_mass = 0.f;
   bp->cumulative_number_seeds = 1;
   bp->number_of_mergers = 0;
+#ifdef WITH_FOF_GALAXIES
+  bp->df_primary_id = 0;
+  bp->df_t_start = 0.;
+  bp->df_merger_time = 0.f;
+#endif
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
   bp->number_of_time_steps = 0;
