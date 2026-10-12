@@ -873,10 +873,10 @@ void cooling_copy_to_grackle(
   cooling_copy_to_grackle3(data, p, xp, species_densities[12],
                            species_densities);
 
-  /* Set RT heating and ionisation to 0 in dense gas to allow escape */
-  const float nH = hydro_get_physical_density(p, cosmo) *
-                   cooling->units.density_units * 0.75 / 1.673e-24;
-  if (nH > 0.13) {
+  /* In the subgrid ISM, RT photons are absorbed by the cold clouds only
+   * (see rt_do_thermochemistry_with_subgrid), and the warm medium is taken
+   * to be ionized: no RT heating and ionisation in the subgrid ISM */
+  if (p->cooling_data.subgrid_temp > 0.f) {
     for (i = 0; i < 5; i++) iact_rates[i] = 0.f;
   }
 
