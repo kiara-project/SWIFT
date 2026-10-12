@@ -182,10 +182,10 @@ INLINE static int rt_write_particles(const struct part *parts,
 
   /* DEBUG: photon energy budget */
   list[num_elements] = io_make_output_field(
-      "RTDebugEnergyBudget", FLOAT, 5, UNIT_CONV_ENERGY, 0.f, parts,
+      "RTDebugEnergyBudget", FLOAT, 6, UNIT_CONV_ENERGY, 0.f, parts,
       rt_data.debug_dE,
       "Cumulative photon energy changes: injected, absorbed, transport, "
-      "clamps, redshift");
+      "clamps, redshift, drift");
   num_elements++;
 
 #ifdef SWIFT_RT_DEBUG_CHECKS

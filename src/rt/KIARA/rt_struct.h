@@ -29,8 +29,8 @@ struct rt_part_data {
 
   /*! DEBUG: cumulative photon energy changes (all groups, internal energy
    * units): 0 injected, 1 absorbed, 2 transport exchange, 3 negative-energy
-   * clamps after transport, 4 redshifting */
-  float debug_dE[5];
+   * clamps after transport, 4 redshifting, 5 drift correction */
+  float debug_dE[6];
 
   /* Radiation state vector. */
   struct {

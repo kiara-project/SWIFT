@@ -217,7 +217,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_reset_part(p, cosmo);
   rt_part_reset_mass_fluxes(p);
   rt_reset_part_each_subcycle(p, cosmo, 0.);
-  for (int k = 0; k < 5; k++) p->rt_data.debug_dE[k] = 0.f;
+  for (int k = 0; k < 6; k++) p->rt_data.debug_dE[k] = 0.f;
   rt_part_reset_fluxes(p);
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
@@ -822,6 +822,9 @@ __attribute__((always_inline)) INLINE static void rt_predict_extra(
   for (int g = 0; g < RT_NGROUPS; g++) {
     float Unew[4];
     rt_gradients_predict_drift(p, Unew, g, dx);
+    p->rt_data.debug_dE[5] +=
+        (Unew[0] - p->rt_data.radiation[g].energy_density) *
+        p->geometry.volume;
     p->rt_data.radiation[g].energy_density = Unew[0];
     p->rt_data.radiation[g].flux[0] = Unew[1];
     p->rt_data.radiation[g].flux[1] = Unew[2];
