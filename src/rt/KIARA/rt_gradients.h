@@ -454,6 +454,13 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
   /* Apply the slope limiter at this interface */
   rt_slope_limit_face(Ui, Uj, dUi, dUj, dx, r, xij_i, xij_j);
 
+  /* Keep the transport positive: a face energy density may not exceed twice
+   * the particle's own, so that a particle (in particular an empty one) never
+   * exports more radiation than it holds. Otherwise the outflow drives it
+   * negative and clamping it back to zero creates radiation energy. */
+  if (dUi[0] > Ui[0]) dUi[0] = Ui[0];
+  if (dUj[0] > Uj[0]) dUj[0] = Uj[0];
+
   Ui[0] += dUi[0];
   Ui[1] += dUi[1];
   Ui[2] += dUi[2];
