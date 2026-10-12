@@ -51,8 +51,9 @@ struct rt_part_data {
   /* Particle RT time step. */
   float flux_dt;
 
-  /* Smoothing length from previous timestep */
-  float h_previous;
+  /*! Particle (comoving) volume when the radiation state was last updated
+   * for a change of volume (0 until the first volume computation) */
+  float volume_previous;
 
   /* gradients of the radiation state. */
   /* for the flux[3][3] quantity:
