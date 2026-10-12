@@ -127,16 +127,35 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
 __attribute__((always_inline)) INLINE static void rt_init_part(
     struct part *restrict p) {
 
-  /* Correct the energy densities and fluxes for change in volume */
-  float h_ratio = p->rt_data.h_previous / p->h;
-  const float h_ratio2 = h_ratio * h_ratio;
-  for (int g = 0; g < RT_NGROUPS; g++) {
-    p->rt_data.radiation[g].energy_density *= h_ratio * h_ratio2;
-    p->rt_data.radiation[g].flux[0] *= h_ratio2;
-    p->rt_data.radiation[g].flux[1] *= h_ratio2;
-    p->rt_data.radiation[g].flux[2] *= h_ratio2;
+  /* The radiation state is corrected for changes of volume in
+   * rt_update_volume(), once the new volume is known. */
+}
+
+/**
+ * @brief Correct the radiation energy density and flux for the change of
+ * the particle volume, so that the radiation energy (and flux integral)
+ * the particle holds is conserved.
+ *
+ * To be called right after the particle's geometry volume is recomputed.
+ *
+ * @param p Particle to work on.
+ */
+__attribute__((always_inline)) INLINE static void rt_update_volume(
+    struct part *restrict p) {
+
+  const float V = p->geometry.volume;
+  const float V_prev = p->rt_data.volume_previous;
+
+  if (V > 0.f && V_prev > 0.f && V != V_prev) {
+    const float ratio = V_prev / V;
+    for (int g = 0; g < RT_NGROUPS; g++) {
+      p->rt_data.radiation[g].energy_density *= ratio;
+      p->rt_data.radiation[g].flux[0] *= ratio;
+      p->rt_data.radiation[g].flux[1] *= ratio;
+      p->rt_data.radiation[g].flux[2] *= ratio;
+    }
   }
-  p->rt_data.h_previous = p->h;
+  if (V > 0.f) p->rt_data.volume_previous = V;
 }
 
 /**
@@ -204,7 +223,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.debug_radiation_absorbed_tot = 0ULL;
 #endif
 
-  p->rt_data.h_previous = p->h;
+  p->rt_data.volume_previous = 0.f;
 }
 
 /**

@@ -131,6 +131,15 @@ __attribute__((always_inline)) INLINE static void rt_split_part(struct part *p,
                                                                 double n) {}
 
 /**
+ * @brief Correct the radiation state for a change of particle volume
+ * (nothing to do in this scheme).
+ *
+ * @param p Particle to work on.
+ */
+__attribute__((always_inline)) INLINE static void rt_update_volume(
+    struct part *restrict p) {}
+
+/**
  * @brief Exception handle a hydro part not having any neighbours in ghost task
  *
  * @param p The #part.
