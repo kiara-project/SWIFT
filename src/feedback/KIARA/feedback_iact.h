@@ -43,6 +43,8 @@
  * @param ti_current Current integer time value (for random numbers).
  * @param dir_flag Flag to choose direction: 0=random, 1=v x a, 2=outwards.
  * @param dir Direction of kick (returned).
+ * @return The sign (+1 or -1) to apply to the direction (random for the
+ * v x a direction, +1 otherwise).
  */
 __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
     const struct spart *si, const struct part *pj, const float dx[3],
@@ -100,8 +102,15 @@ __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
 /**
  * @brief Compute customized kernel weight for feedback
  *
+ * The weight is zero beyond kick_radius_over_h; with use_sfr_weighted_launch
+ * the SFR is added to the kernel value to favour star-forming gas. The
+ * result is multiplied by the particle mass.
+ *
  * @param pj gas particle.
  * @param wi SPH kernel weight at location of pj
+ * @param ui Distance to pj in units of the star's smoothing length.
+ * @param fb_props Properties of the feedback scheme.
+ * @return The (mass-weighted) launch weight of pj.
  */
 __attribute__((always_inline)) INLINE static float feedback_kernel_weight(
     const struct part *pj, const float wi, const float ui,
@@ -178,6 +187,26 @@ runner_iact_nonsym_feedback_density(const float r2, const float dx[3],
   if (wt > 0.f) si->feedback_data.wind_ngb_mass += mj;
 }
 
+/**
+ * @brief First feedback preparation loop: select the gas particles to kick.
+ *
+ * Each eligible neighbour within kick_radius_over_h of the star is kicked
+ * with probability mass_to_launch * w_j / sum(w), where the launched mass is
+ * capped at max_frac_of_kernel_to_launch of the eligible neighbour mass. A
+ * selected particle is tagged with the star's ID in kick_id; particles
+ * already tagged by another star are skipped.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (si - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param si First (star) particle (not updated).
+ * @param pj Second (gas) particle.
+ * @param xpj Extra particle data (not updated).
+ * @param cosmo The cosmological model.
+ * @param fb_props Properties of the feedback scheme.
+ * @param ti_current Current integer time (seeds the random numbers).
+ */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
                                   const float hi, const float hj,
@@ -525,6 +554,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
  * @param pj Second (gas) particle.
  * @param xpj Extra particle data
  * @param cosmo The cosmological model.
+ * @param hydro_props Properties of the hydro scheme.
  * @param fb_props Properties of the feedback scheme.
  * @param ti_current Current integer time used value for seeding random number
  * generator
@@ -567,9 +597,9 @@ feedback_do_chemical_enrichment_of_gas_around_star(
         si->id, Omega_frac, si->count_since_last_enrichment,
         si->feedback_data.kernel_wt_sum, wi, rho_j);
     Omega_frac = 0.f;
-    //if (Omega_frac < 0.f || (Omega_frac > 1.01f && ui < 1.f)) {
-    //  error("Omega_frac negative or too large! aborting");
-    //}
+    // if (Omega_frac < 0.f || (Omega_frac > 1.01f && ui < 1.f)) {
+    //   error("Omega_frac negative or too large! aborting");
+    // }
 
     Omega_frac = fmin(Omega_frac, 1.f);
   }
@@ -764,15 +794,15 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     if (pj->cooling_data.dust_mass > 0.2f * pj->mass) {
       for (int elem = chemistry_element_He; elem < chemistry_element_count;
            elem++) {
-        message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n", 
-	        pj->id, elem,
-		pj->chemistry_data.metal_mass_fraction[elem] * pj->mass, 
+        message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n",
+                pj->id, elem,
+                pj->chemistry_data.metal_mass_fraction[elem] * pj->mass,
                 pj->cooling_data.dust_mass_fraction[elem] *
                     pj->cooling_data.dust_mass,
                 si->feedback_data.delta_dust_mass[elem] * Omega_frac);
       }
       warning("TOTAL DUST EXCEEDS MASS mgas=%g  mdust=%g\n", pj->mass,
-            pj->cooling_data.dust_mass);
+              pj->cooling_data.dust_mass);
     }
   } else {
     /* For some reason the dust mass is zero or negative */
@@ -822,6 +852,7 @@ feedback_do_chemical_enrichment_of_gas_around_star(
  * @param pj Second (gas) particle.
  * @param xpj Extra particle data
  * @param cosmo The cosmological model.
+ * @param hydro_props Properties of the hydro scheme.
  * @param fb_props Properties of the feedback scheme.
  * @param ti_current Current integer time used value for seeding random number
  * generator

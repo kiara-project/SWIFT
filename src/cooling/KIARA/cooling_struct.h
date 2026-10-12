@@ -20,8 +20,8 @@
 #define SWIFT_COOLING_STRUCT_KIARA_H
 
 /**
- *  * @brief Properties of the cooling stored in the #part data.
- *   */
+ * @brief Properties of the cooling stored in the #part data.
+ */
 struct cooling_part_data {
 
   /*! Subgrid temperature */
@@ -34,15 +34,15 @@ struct cooling_part_data {
   float subgrid_fcold;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Dust properties when use_grackle_dust_evol=1 */
+  /* Dust properties when use_grackle_dust_evol=1 */
 
-  /* Total mass in dust */
-  float dust_mass;  // total mass in dust
+  /*! Total mass in dust */
+  float dust_mass;
 
-  /* Fraction of each metal in dust */
+  /*! Fraction of the dust mass in each element (index 0 holds the sum) */
   float dust_mass_fraction[chemistry_element_count];
 
-  /* Temperature of subgrid ISM */
+  /*! Dust temperature computed by grackle (K) */
   float dust_temperature;
 #endif
 
@@ -64,23 +64,45 @@ struct cooling_xpart_data {
   /*! Last time the cooling was switch off */
   double time_last_event;
 
-/*! here all fractions are mass fraction */
+/* Here all fractions are mass fractions (the electron fraction is
+ * n_e m_H / rho, the grackle convention) */
 #if COOLING_GRACKLE_MODE >= 1
+  /*! Neutral hydrogen mass fraction */
   float HI_frac;
+
+  /*! Ionised hydrogen mass fraction */
   float HII_frac;
+
+  /*! Neutral helium mass fraction */
   float HeI_frac;
+
+  /*! Singly ionised helium mass fraction */
   float HeII_frac;
+
+  /*! Doubly ionised helium mass fraction */
   float HeIII_frac;
+
+  /*! Electron fraction */
   float e_frac;
 
 #if COOLING_GRACKLE_MODE >= 2
+  /*! H- mass fraction */
   float HM_frac;
+
+  /*! Molecular hydrogen mass fraction */
   float H2I_frac;
+
+  /*! Ionised molecular hydrogen (H2+) mass fraction */
   float H2II_frac;
 
 #if COOLING_GRACKLE_MODE >= 3
+  /*! Neutral deuterium mass fraction */
   float DI_frac;
+
+  /*! Ionised deuterium mass fraction */
   float DII_frac;
+
+  /*! HD mass fraction */
   float HDI_frac;
 #endif  // MODE >= 3
 
@@ -88,7 +110,7 @@ struct cooling_xpart_data {
 
 #endif  // MODE >= 1
 
-  /*! metal cooling = 1 */
+  /*! Metal mass fraction (only printed in debugging output) */
   float metal_frac;
 };
 

@@ -48,6 +48,7 @@ rt_part_get_comoving_radiation_energy_density(const struct part *restrict p,
  *
  * @param p Particle.
  * @param E (return) Pointer to the array in which the result needs to be stored
+ * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void
 rt_part_get_physical_radiation_energy_density(const struct part *restrict p,

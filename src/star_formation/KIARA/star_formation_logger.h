@@ -276,7 +276,6 @@ INLINE static void star_formation_logger_log_active_sink(
     const struct sink *sink, struct star_formation_history *sf,
     const double dt_star) {}
 
-
 /**
  * @brief Add the SFR tracer to the total inactive SFR of this cell as long as
  * the SFR tracer is larger than 0

@@ -37,13 +37,28 @@
  * Correct usage is to call rt_init_photoion_cs_params_cgs(),
  * which returns a fully initialized struct. */
 struct rt_photoion_cs_parameters {
-  double E_ion[rt_ionizing_species_count];      /* erg */
-  double E_zero[rt_ionizing_species_count];     /* erg */
-  double sigma_zero[rt_ionizing_species_count]; /* cm^-2 */
+  /*! Ionization energy threshold (erg) */
+  double E_ion[rt_ionizing_species_count];
+
+  /*! Energy scale E_0 of the Verner et al. fit (erg) */
+  double E_zero[rt_ionizing_species_count];
+
+  /*! Cross section normalisation sigma_0 (cm^2) */
+  double sigma_zero[rt_ionizing_species_count];
+
+  /*! Power-law index P of the Verner et al. fit */
   double P[rt_ionizing_species_count];
+
+  /*! Fit parameter y_a of the Verner et al. fit */
   double ya[rt_ionizing_species_count];
+
+  /*! Fit parameter y_w of the Verner et al. fit */
   double yw[rt_ionizing_species_count];
+
+  /*! Fit parameter y_0 of the Verner et al. fit */
   double y0[rt_ionizing_species_count];
+
+  /*! Fit parameter y_1 of the Verner et al. fit */
   double y1[rt_ionizing_species_count];
 };
 
@@ -51,30 +66,32 @@ struct rt_photoion_cs_parameters {
  * the data needs to be encapsulated in a single struct to be passed
  * as an argument for GSL integrators. */
 struct rt_spectrum_integration_params {
-  /* Which species are we dealing with? */
+  /*! Which species are we dealing with? */
   int species;
-  /* Which spectrum type are we dealing with? */
+  /*! Which spectrum type are we dealing with? */
   int spectrum_type;
-  /* Max frequency for const spectrum */
+  /*! Max frequency for const spectrum */
   double const_stellar_spectrum_frequency_max;
-  /* Temperature of blackbody in correct units */
+  /*! Temperature of blackbody in correct units */
   double T;
-  /* Boltzmann constant in correct units */
+  /*! Boltzmann constant in correct units */
   double kB;
-  /* Planck constant in correct units */
+  /*! Planck constant in correct units */
   double h_planck;
-  /* speed of light in correct units */
+  /*! speed of light in correct units */
   double c;
-  /* Values for the cross section parametrization */
+  /*! Values for the cross section parametrization */
   struct rt_photoion_cs_parameters *cs_params;
 };
 
 /**
- * Initialize the parameters for the cross section computation in cgs,
+ * @brief Initialize the parameters for the cross section computation in cgs,
  * and return a fully and correctly initialized struct.
  * The data is taken from Verner et al. 1996
  * (ui.adsabs.harvard.edu/abs/1996ApJ...465..487V) via Rosdahl et al. 2013
  * (ui.adsabs.harvard.edu/abs/2013MNRAS.436.2188R) (Table E1)
+ *
+ * @return The initialised cross section parameters (cgs).
  */
 __attribute__((always_inline)) INLINE static struct rt_photoion_cs_parameters
 rt_init_photoion_cs_params_cgs(void) {
@@ -119,7 +136,8 @@ rt_init_photoion_cs_params_cgs(void) {
 }
 
 /**
- * Compute the parametrized cross section for a given energy and species.
+ * @brief Compute the parametrized cross section for a given energy and
+ * species.
  * The parametrization is taken from Verner et al. 1996
  * (ui.adsabs.harvard.edu/abs/1996ApJ...465..487V) via Rosdahl et al. 2013
  * (ui.adsabs.harvard.edu/abs/2013MNRAS.436.2188R)
@@ -127,6 +145,7 @@ rt_init_photoion_cs_params_cgs(void) {
  * @param E energy for which to compute the cross section, in erg
  * @param species index of species, 0 < species < rt_ionizing_species_count
  * @param params cross section parameters struct
+ * @return The cross section (cm^2 for cgs parameters); 0 below threshold.
  */
 __attribute__((always_inline)) INLINE static double
 photoionization_cross_section(const double E, const int species,

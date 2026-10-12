@@ -343,18 +343,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
  * stream as a fraction of its summed weight over all stream neighbours.
  * @param cosmo The #cosmology.
  * @param with_cosmology Are we running with cosmology?
- *
+ * @return The mass exchanged over this step (internal units): positive when
+ * the stream grows by entraining ambient gas, negative when shear mixes
+ * stream gas into the ambient medium, 0 if the pair does not interact.
  */
 __attribute__((always_inline)) INLINE static float
-firehose_compute_mass_exchange(const float r2, const float dx[3],
-                               const float hi, const float hj,
-                               const struct part *pi, const struct part *pj,
-                               const double time_base,
-                               const integertime_t ti_current,
-                               const struct chemistry_global_data *cd,
-                               float *v2, float *w_frac, float *w_frac_amb,
-                               const struct cosmology *cosmo,
-                               const int with_cosmology) {
+firehose_compute_mass_exchange(
+    const float r2, const float dx[3], const float hi, const float hj,
+    const struct part *pi, const struct part *pj, const double time_base,
+    const integertime_t ti_current, const struct chemistry_global_data *cd,
+    float *v2, float *w_frac, float *w_frac_amb, const struct cosmology *cosmo,
+    const int with_cosmology) {
 
   const int i_stream = pi->decoupled;
   const int j_stream = pj->decoupled;
@@ -527,9 +526,9 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
             cd->temp_to_u_factor,
         hydro_get_drifted_comoving_internal_energy(pj) /
             pi->chemistry_data.u_ambient,
-        c_stream / c_amb, Mach,
-        radius_stream * cd->length_to_kpc * cosmo->a, delta_growth, delta_shear,
-        t_shear, pi->cooling_data.mixing_layer_cool_time, dm / pi->mass);
+        c_stream / c_amb, Mach, radius_stream * cd->length_to_kpc * cosmo->a,
+        delta_growth, delta_shear, t_shear,
+        pi->cooling_data.mixing_layer_cool_time, dm / pi->mass);
   }
 #endif
 
@@ -696,13 +695,11 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
    * momentum */
   float new_v2 = 0.f;
   for (int i = 0; i < 3; i++) {
-    const float new_pi_v_full_i =
-        (wt_ii * pi->v[i] + wt_ij * pj->v[i]) / mi;
+    const float new_pi_v_full_i = (wt_ii * pi->v[i] + wt_ij * pj->v[i]) / mi;
     /* Keep track of the final new velocity */
     chi->dv[i] += new_pi_v_full_i - pi->v[i];
 
-    const float new_pj_v_full_i =
-        (wt_ji * pi->v[i] + wt_jj * pj->v[i]) / mj;
+    const float new_pj_v_full_i = (wt_ji * pi->v[i] + wt_jj * pj->v[i]) / mj;
     chj->dv[i] += new_pj_v_full_i - pj->v[i];
 
     const float dv_i = new_pi_v_full_i - new_pj_v_full_i;
@@ -759,6 +756,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
  * @param pi First particle.
  * @param pj Second particle.
  * @param cosmo The #cosmology.
+ * @return The pair coefficient coef_ij (kernel term in comoving units).
  */
 __attribute__((always_inline)) INLINE static float
 runner_iact_diffusion_pair_coefficient(const float r2, const float hi,
@@ -802,10 +800,10 @@ runner_iact_diffusion_pair_coefficient(const float r2, const float hi,
  * @param a Current scale factor.
  * @param H Current Hubble parameter.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current The current time (in integer)
+ * @param t_current The current time (in integer)
  * @param cosmo The cosmology information.
  * @param with_cosmology Are we running with cosmology?
- *
+ * @param cd #chemistry_global_data containing chemistry information.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
@@ -817,8 +815,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
   if (pi->decoupled || pj->decoupled) {
     if (cd->use_firehose_wind_model) {
       /* If in wind mode, do firehose wind diffusion */
-      firehose_evolve_particle_sym(r2, dx, hi, hj, pi, pj, time_base,
-                                   t_current, cd, cosmo, with_cosmology);
+      firehose_evolve_particle_sym(r2, dx, hi, hj, pi, pj, time_base, t_current,
+                                   cd, cosmo, with_cosmology);
     }
 
     return;
@@ -834,8 +832,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float mi = hydro_get_mass(pi);
 
     /* Pair flux factor (harmonic mean of D, symmetrised kernel term) */
-    const float coef = runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj,
-                                                              cosmo);
+    const float coef =
+        runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj, cosmo);
     const float coef_i = coef * mj;
     const float coef_j = coef * mi;
 
@@ -884,7 +882,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
  * @param a Current scale factor.
  * @param H Current Hubble parameter.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current The current time (in integer)
+ * @param t_current The current time (in integer)
  * @param cosmo The #cosmology.
  * @param with_cosmology Are we running with cosmology?
  * @param cd #chemistry_global_data containing chemistry information.
@@ -908,8 +906,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
     const float mj = hydro_get_mass(pj);
 
     /* Same pair term as the symmetric case, so the flux matches */
-    const float coef = runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj,
-                                                              cosmo);
+    const float coef =
+        runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj, cosmo);
     const float coef_i = coef * mj;
 
     /* Compute the time derivative */

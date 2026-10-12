@@ -101,18 +101,51 @@ enum chem5_element {
  * @brief Stores the yield tables
  */
 struct feedback_tables {
+
+  /*! log10 stellar lifetimes (yr) on the [metallicity][mass] grid */
   double *LFLT;
+
+  /*! log10 stellar masses (Msun) of the lifetime table */
   double *LFLM;
+
+  /*! log10 metal mass fractions of the lifetime table */
   double *LFLZ;
+
+  /*! Work array for lifetimes at a fixed metallicity (unused: a local array
+   * is used in feedback_get_turnover_mass) */
   double *LFLT2;
+
+  /*! Cumulative number of stars losing mass in winds per unit initial mass,
+   * on the [metallicity][turnover mass] grid */
   double *SWR;
+
+  /*! Cumulative SNII/HN energy, unprocessed mass, ejected mass and element
+   * masses per unit initial mass, on the [quantity][metallicity][turnover
+   * mass] grid */
   double *SN2E;
+
+  /*! Cumulative number of SNII per unit initial mass, on the
+   * [metallicity][turnover mass] grid */
   double *SN2R;
+
+  /*! Cumulative number of SNIa per unit initial mass, on the [[Fe/H]][turnover
+   * mass] grid */
   double *SN1R;
+
+  /*! log10 turnover masses of the yield tables (from M_u3 downwards) */
   double *SNLM;
+
+  /*! log10 metal mass fractions of the SNII tables */
   double *SNLZ;
+
+  /*! [Fe/H] grid of the SNIa rate table */
   double *SNLZ1R;
+
+  /*! SNIa energy, unprocessed, ejected and element masses per event, on the
+   * [quantity][metallicity] grid */
   double *SN1E;
+
+  /*! log10 metal mass fractions of the SNIa yield table */
   double *SNLZ1Y;
 };
 

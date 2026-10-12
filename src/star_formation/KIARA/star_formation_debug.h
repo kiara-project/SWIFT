@@ -19,6 +19,12 @@
 #ifndef SWIFT_STAR_FORMATION_KIARA_DEBUG_H
 #define SWIFT_STAR_FORMATION_KIARA_DEBUG_H
 
+/**
+ * @brief Print the star formation data of a gas particle (for debugging).
+ *
+ * @param p The #part.
+ * @param xp The #xpart associated with p (nothing is printed if NULL).
+ */
 __attribute__((always_inline)) INLINE static void star_formation_debug_particle(
     const struct part *p, const struct xpart *xp) {
 

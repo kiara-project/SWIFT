@@ -61,6 +61,7 @@ void feedback_prepare_interpolation_tables(
  * (-ffinite-math-only), so test the exponent bits directly instead.
  *
  * @param x The value to check.
+ * @return 1 if x is finite, 0 otherwise.
  */
 __attribute__((always_inline)) INLINE static int feedback_double_is_finite(
     const double x) {
@@ -70,12 +71,14 @@ __attribute__((always_inline)) INLINE static int feedback_double_is_finite(
 }
 
 /**
- * @brief Recouple wind particles.
+ * @brief Set the flags and reset the wind quantities of a particle that
+ * recouples.
+ *
+ * Clears the decoupling and cooling shut-off times and the stream radius,
+ * resets the subgrid ISM properties and syncs the particle on the timeline.
  *
  * @param p The #part to consider.
- * @param xp The #xpart to consider.
- * @param e The #engine.
- * @param with_cosmology Is this a cosmological simulation?
+ * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
     struct part *p, const struct cosmology *cosmo) {
@@ -136,12 +139,12 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     if (p->decoupled) {
       /* Decrement the counter */
       p->feedback_data.decoupling_delay_time -= dt_part;
-  
+
       /* Estimate if it will decouple in the next step, if so set flag=2 */
       if (p->feedback_data.decoupling_delay_time <= dt_part) {
         p->decoupled = 2;
       }
-  
+
       /**
        * Recouple under 3 conditions:
        * (1) Below the density threshold.
@@ -152,13 +155,14 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
           hydro_get_physical_density(p, cosmo) * fb_props->rho_to_n_cgs;
       const double rho_recouple_cgs = fb_props->recouple_density_factor *
                                       fb_props->recouple_ism_density_nH_cgs;
-  
+
       const int recouple = (p->feedback_data.decoupling_delay_time <= 0.f ||
                             p->chemistry_data.radius_stream < 0.f ||
                             rho_nH_cgs < rho_recouple_cgs);
-  
+
       if (recouple && p->decoupled == 1) {
-        /* If it is recoupling, do one more decoupled step to set timestep etc */
+        /* If it is recoupling, do one more decoupled step to set timestep etc
+         */
         p->decoupled = 2;
       } else if (recouple) {
         /* extra decoupled step is done, now properly recouple */
@@ -173,7 +177,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
   }
   return;
 }
-  
+
 /**
  * @brief Sets the wind direction vector for feedback kicks
  *
@@ -209,7 +213,6 @@ __attribute__((always_inline)) INLINE static void feedback_set_wind_direction(
  * @param p The #part to consider.
  * @param xp The #xpart to consider.
  * @param e The #engine.
- * @param with_cosmology Is this a cosmological simulation?
  */
 __attribute__((always_inline)) INLINE static void feedback_update_part(
     struct part *p, struct xpart *xp, const struct engine *e) {}
@@ -229,6 +232,8 @@ __attribute__((always_inline)) INLINE static void feedback_reset_part(
  *
  * @param sp The #spart.
  * @param e The #engine.
+ * @return 1 at the start of the run or if the star is due to enrich this
+ * step, 0 otherwise.
  */
 __attribute__((always_inline)) INLINE static int feedback_is_active(
     const struct spart *sp, const struct engine *e) {
@@ -246,10 +251,11 @@ __attribute__((always_inline)) INLINE static int feedback_is_active(
  *
  * @param sp The #spart.
  * @param e The #engine.
+ * @return 0: KIARA stars do not do the DM loop.
  */
 __attribute__((always_inline)) INLINE static int stars_dm_loop_is_active(
     const struct spart *sp, const struct engine *e) {
-  /* Active stars always do the DM loop for the KIARA model */
+  /* KIARA stars do not do the DM loop */
   return 0;
 }
 
@@ -307,6 +313,9 @@ INLINE static double feedback_get_enrichment_timestep(
 /**
  * @brief Prepares a star's feedback field before computing what
  * needs to be distributed.
+ *
+ * @param sp The #spart.
+ * @param feedback_props The #feedback_props structure.
  */
 __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
     struct spart *sp, const struct feedback_props *feedback_props) {
@@ -393,10 +402,19 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_spart(
  * @brief Compute kick velocity for particle sp based on host galaxy properties,
  *        in code units
  *
- * @param sp The #spart to consider
+ * The circular velocity follows from the galaxy stellar mass (Dutton+11,
+ * scaled with (H/H0)^(1/3)); the wind speed is FIRE_velocity_normalization
+ * times v_circ (with an optional power of v_circ/200 km/s), with a uniform
+ * random scatter and an optional high-redshift suppression.
+ *
+ * @param galaxy_stellar_mass Host galaxy stellar mass (internal units),
+ * floored at minimum_galaxy_stellar_mass.
+ * @param sp_id ID of the launching #spart (seeds the random scatter).
  * @param cosmo The cosmological model.
  * @param fb_props Properties of the feedback scheme.
  * @param ti_current Current integer time used value for seeding random number
+ * @return The kick velocity (internal, comoving units, i.e. a times the
+ * physical kick).
  */
 __attribute__((always_inline)) INLINE static double
 feedback_compute_kick_velocity(const float galaxy_stellar_mass,
@@ -560,8 +578,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   const float FIRE_eta_break = feedback_props->FIRE_eta_break;
   const float FIRE_eta_lower_slope = feedback_props->FIRE_eta_lower_slope;
   const float FIRE_eta_upper_slope = feedback_props->FIRE_eta_upper_slope;
-  const float FIRE_eta_lower_slope_EOR =
-      feedback_props->FIRE_eta_lower_slope;
+  const float FIRE_eta_lower_slope_EOR = feedback_props->FIRE_eta_lower_slope;
   const float wind_eta_suppression_redshift =
       feedback_props->wind_eta_suppression_redshift;
 
@@ -590,8 +607,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
      * t_fb. */
     const float p0 = h_phys * eps_term * M_PI * tfb_inv;
     const float t_prev = fmax(star_age_beg_step, 0.f);
-    const float t_end = fmin(star_age_end_step,
-                             feedback_props->early_stellar_feedback_tfb);
+    const float t_end =
+        fmin(star_age_end_step, feedback_props->early_stellar_feedback_tfb);
     const float term1 = pow(t_end * tfb_inv, alpha_power);
     const float term2 = pow(t_prev * tfb_inv, alpha_power);
     const double delta_p = alpha * p0 * sp->mass * (term1 - term2);
@@ -712,7 +729,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
   /* Check that ejecta or metal masses are not <0 */
   if (ejecta_unprocessed < 0.f) {
-    warning("STELLAR EJECTA <0: z=%g sid=%lld ej=%g, setting to 0", cosmo->z, sp->id, ejecta_unprocessed);
+    warning("STELLAR EJECTA <0: z=%g sid=%lld ej=%g, setting to 0", cosmo->z,
+            sp->id, ejecta_unprocessed);
     ejecta_unprocessed = 0.f;
   }
 
@@ -735,7 +753,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   for (elem = chem5_element_H; elem < chem5_element_count; elem++) {
     if (ejecta_metal_mass[elem] < 0.) {
       clamped_mass -= ejecta_metal_mass[elem];
-      if (elem >= chem5_element_C) clamped_metal_mass -= ejecta_metal_mass[elem];
+      if (elem >= chem5_element_C)
+        clamped_metal_mass -= ejecta_metal_mass[elem];
       ejecta_metal_mass[elem] = 0.;
     }
   }
@@ -766,7 +785,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   /* Put some of the ejecta metals into dust.  Must be done after
      chem5->chemistry conversion map is applied */
   if (sp->feedback_data.total_metal_mass > 0.) {
-    feedback_dust_production_condensation(sp, star_age_beg_step, feedback_props);
+    feedback_dust_production_condensation(sp, star_age_beg_step,
+                                          feedback_props);
   }
 #endif
 
@@ -777,9 +797,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
    * stays in the star, so mass is conserved (the per-particle limiter in
    * the enrichment loop is then only a backstop, e.g. for gas enriched by
    * several stars in one step). */
-  const double max_ejecta_mass = (feedback_props->max_mass_increase_factor -
-                                  1.) *
-                                 sp->feedback_data.kernel_wt_sum / kernel_root;
+  const double max_ejecta_mass =
+      (feedback_props->max_mass_increase_factor - 1.) *
+      sp->feedback_data.kernel_wt_sum / kernel_root;
   if (ejecta_mass > max_ejecta_mass) {
     const double ejecta_scale =
         (ejecta_mass > 0.) ? max_ejecta_mass / ejecta_mass : 0.;
@@ -838,7 +858,7 @@ __attribute__((always_inline)) INLINE static void feedback_will_do_feedback(
     struct spart *sp, const struct feedback_props *feedback_props,
     const int with_cosmology, const struct cosmology *cosmo, const double time,
     const struct unit_system *us, const struct phys_const *phys_const,
-    const integertime_t ti_current, const double time_base, 
+    const integertime_t ti_current, const double time_base,
     const timebin_t old_time_bin) {
 
   /* Special case for new-born stars */

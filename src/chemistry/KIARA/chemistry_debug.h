@@ -19,6 +19,12 @@
 #ifndef SWIFT_CHEMISTRY_KIARA_DEBUG_H
 #define SWIFT_CHEMISTRY_KIARA_DEBUG_H
 
+/**
+ * @brief Print the chemistry data of a gas particle (for debugging).
+ *
+ * @param p The #part.
+ * @param xp The #xpart associated with p.
+ */
 __attribute__((always_inline)) INLINE static void chemistry_debug_particle(
     const struct part *p, const struct xpart *xp) {
 

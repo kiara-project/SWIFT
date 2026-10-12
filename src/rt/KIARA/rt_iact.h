@@ -168,8 +168,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
     const float injected_energy_density =
         si->rt_data.emission_this_step[g] * weight * Vinv;
     pj->rt_data.radiation[g].energy_density += injected_energy_density;
-    if (pj->rt_data.radiation[g].energy_density > 0.f && g==0) {
-      //message("RT_energy_inj: z=%g sid=%lld pid=%lld RTgrp=%d w=%g Vinv=%g Reff=%g h=%g Enew=%g Eold=%g frac=%g\n", 1./a-1., si->id, pj->id, g, weight, Vinv, pow(3./(4.*M_PI*Vinv), 1./3), pj->h, injected_energy_density, pj->rt_data.radiation[g].energy_density-injected_energy_density, injected_energy_density/pj->rt_data.radiation[g].energy_density);
+    if (pj->rt_data.radiation[g].energy_density > 0.f && g == 0) {
+      // message("RT_energy_inj: z=%g sid=%lld pid=%lld RTgrp=%d w=%g Vinv=%g
+      // Reff=%g h=%g Enew=%g Eold=%g frac=%g\n", 1./a-1., si->id, pj->id, g,
+      // weight, Vinv, pow(3./(4.*M_PI*Vinv), 1./3), pj->h,
+      // injected_energy_density,
+      // pj->rt_data.radiation[g].energy_density-injected_energy_density,
+      // injected_energy_density/pj->rt_data.radiation[g].energy_density);
     }
     /* Don't inject flux. */
   }
@@ -364,16 +369,16 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
      * step. */
     /* Make sure mindt larger than 0 to avoid mindt=-1 case. */
     if (mindt > 0.f) {
-    rti->flux[g].energy -= totflux[0] * mindt;
-    rti->flux[g].flux[0] -= totflux[1] * mindt;
-    rti->flux[g].flux[1] -= totflux[2] * mindt;
-    rti->flux[g].flux[2] -= totflux[3] * mindt;
-    if (mode == 1 || (rtj->flux_dt < 0.f)) {
-      rtj->flux[g].energy += totflux[0] * mindt;
-      rtj->flux[g].flux[0] += totflux[1] * mindt;
-      rtj->flux[g].flux[1] += totflux[2] * mindt;
-      rtj->flux[g].flux[2] += totflux[3] * mindt;
-    }
+      rti->flux[g].energy -= totflux[0] * mindt;
+      rti->flux[g].flux[0] -= totflux[1] * mindt;
+      rti->flux[g].flux[1] -= totflux[2] * mindt;
+      rti->flux[g].flux[2] -= totflux[3] * mindt;
+      if (mode == 1 || (rtj->flux_dt < 0.f)) {
+        rtj->flux[g].energy += totflux[0] * mindt;
+        rtj->flux[g].flux[0] += totflux[1] * mindt;
+        rtj->flux[g].flux[1] += totflux[2] * mindt;
+        rtj->flux[g].flux[2] += totflux[3] * mindt;
+      }
     }
   }
 }

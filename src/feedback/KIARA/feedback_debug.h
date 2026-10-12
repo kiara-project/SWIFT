@@ -20,6 +20,13 @@
 #ifndef SWIFT_FEEDBACK_KIARA_DEBUG_H
 #define SWIFT_FEEDBACK_KIARA_DEBUG_H
 
+/**
+ * @brief Print the feedback data of a gas particle (for debugging; nothing
+ * to print in KIARA).
+ *
+ * @param p The #part.
+ * @param xp The #xpart associated with p.
+ */
 __attribute__((always_inline)) INLINE static void feedback_debug_particle(
     const struct part *p, const struct xpart *xp) {}
 

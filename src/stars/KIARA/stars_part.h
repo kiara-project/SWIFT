@@ -153,15 +153,19 @@ struct spart {
   /*! Has this particle interacted with any unhibited neighbour? */
   char inhibited_exact;
 
+  /*! Neighbour number density (sum of kernel values) */
   float n;
 
+  /*! Exact neighbour number density obtained via brute-force loop */
   float n_exact;
 
+  /*! Gas density at the star's position */
   float rho;
 
   /*! Exact value of the density field obtained via brute-force loop */
   float rho_exact;
 
+  /*! Has this particle done its feedback loop this step? */
   int has_done_feedback;
 #endif
 

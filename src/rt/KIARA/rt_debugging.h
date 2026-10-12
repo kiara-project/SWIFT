@@ -117,6 +117,10 @@ rt_debugging_reset_each_subcycle(struct part *restrict p) {
 
 /**
  * @brief Debugging checks loop over all star particles after each time step
+ *
+ * @param map_data The array of #spart to check.
+ * @param scount The number of particles in the array.
+ * @param extra_data Pointer to the #engine.
  */
 static void rt_debugging_end_of_step_stars_mapper(void *restrict map_data,
                                                   int scount,
@@ -187,6 +191,10 @@ static void rt_debugging_end_of_step_stars_mapper(void *restrict map_data,
 
 /**
  * @brief Debugging checks loop over all hydro particles after each time step
+ *
+ * @param map_data The array of #part to check.
+ * @param count The number of particles in the array.
+ * @param extra_data Pointer to the #engine.
  */
 static void rt_debugging_end_of_step_hydro_mapper(void *restrict map_data,
                                                   int count,

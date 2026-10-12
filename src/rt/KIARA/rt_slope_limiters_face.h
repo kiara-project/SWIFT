@@ -81,13 +81,13 @@ __attribute__((always_inline)) INLINE static float rt_slope_limit_face_quantity(
 }
 
 /**
- * the minmod slope limiter.
+ * @brief The minmod slope limiter (applied in place to both slopes).
  *
  * @param dQi left slope
  * @param dQj right slope
  */
 __attribute__((always_inline)) INLINE static void rt_limiter_minmod(
-    float* dQi, float* dQj) {
+    float *dQi, float *dQj) {
 
   if (*dQi * *dQj > 0.f) {
     if (fabsf(*dQi) < fabsf(*dQj)) {
@@ -102,7 +102,7 @@ __attribute__((always_inline)) INLINE static void rt_limiter_minmod(
 }
 
 /**
- * the monotonized cenetral limiter.
+ * @brief The monotonized central limiter.
  *
  * @param dQi left slope
  * @param dQj right slope
@@ -117,7 +117,7 @@ __attribute__((always_inline)) INLINE static float rt_limiter_mc(
 }
 
 /**
- * the van Leer limiter.
+ * @brief The van Leer limiter.
  *
  * @param dQi left slope
  * @param dQj right slope
@@ -131,7 +131,7 @@ __attribute__((always_inline)) INLINE static float rt_limiter_vanLeer(
 }
 
 /**
- * the superbee limiter.
+ * @brief The superbee limiter.
  *
  * @param dQi left slope
  * @param dQj right slope
@@ -162,7 +162,7 @@ __attribute__((always_inline)) INLINE static float rt_limiter_superbee(
  */
 __attribute__((always_inline)) INLINE static void rt_slope_limit_face(
     const float Qi[4], const float Qj[4], float dQi[4], float dQj[4],
-    const float* dx, const float r, const float xij_i[3],
+    const float *dx, const float r, const float xij_i[3],
     const float xij_j[3]) {
 
   /* In 1D advection tests, any limiter works with the

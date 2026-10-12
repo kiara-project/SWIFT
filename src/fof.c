@@ -2546,7 +2546,8 @@ static int fof_gas_is_galaxy_gas(const struct fof_props *props,
   if (n_H < props->cold_gas_n_H_threshold) return 0;
 
   const double u = hydro_get_physical_internal_energy(p, xp, cosmo);
-  const double T = cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
+  const double T =
+      cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
   return T < props->cold_gas_T_threshold;
 }
 
@@ -2725,8 +2726,8 @@ static void fof_bh_dynamical_friction(const struct fof_props *props,
       bp->df_primary_id = prim_id[index];
       bp->df_sat_mass = bp->galaxy_data.stellar_mass + bp->subgrid_mass;
       bp->df_t_start = time;
-      bp->df_merger_time = fof_bh_df_time(a * r, bp->df_sat_mass,
-                                          group_mass[index], G, factor);
+      bp->df_merger_time =
+          fof_bh_df_time(a * r, bp->df_sat_mass, group_mass[index], G, factor);
       counts[0]++;
     }
 
@@ -2739,14 +2740,15 @@ static void fof_bh_dynamical_friction(const struct fof_props *props,
     const double shrink = fmax(1. - f_sink, r_min / r);
 
 #ifdef OBSIDIAN_DEBUG_CHECKS
-    message("BH_DF_SINK: z=%g bid=%lld onto bid=%lld r=%g->%g kpc t_df=%g Myr "
-            "MBH=%g msat=%g",
-            e->cosmology->z, bp->id, prim_id[index],
-            a * r * e->internal_units->UnitLength_in_cgs / 3.0857e21,
-            a * r * shrink * e->internal_units->UnitLength_in_cgs / 3.0857e21,
-            bp->df_merger_time * bh_props->time_to_Myr,
-            bp->subgrid_mass * bh_props->mass_to_solar_mass,
-            bp->df_sat_mass * bh_props->mass_to_solar_mass);
+    message(
+        "BH_DF_SINK: z=%g bid=%lld onto bid=%lld r=%g->%g kpc t_df=%g Myr "
+        "MBH=%g msat=%g",
+        e->cosmology->z, bp->id, prim_id[index],
+        a * r * e->internal_units->UnitLength_in_cgs / 3.0857e21,
+        a * r * shrink * e->internal_units->UnitLength_in_cgs / 3.0857e21,
+        bp->df_merger_time * bh_props->time_to_Myr,
+        bp->subgrid_mass * bh_props->mass_to_solar_mass,
+        bp->df_sat_mass * bh_props->mass_to_solar_mass);
 #endif
     for (int j = 0; j < 3; j++) {
       const double delta = (shrink - 1.) * dx[j];
@@ -2769,9 +2771,10 @@ static void fof_bh_dynamical_friction(const struct fof_props *props,
   MPI_Allreduce(MPI_IN_PLACE, counts, 2, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 #endif
   if (engine_rank == 0 && (counts[0] > 0 || counts[1] > 0))
-    message("BH dynamical friction: %d clock(s) started, %d BH(s) sunk "
-            "towards their primary",
-            counts[0], counts[1]);
+    message(
+        "BH dynamical friction: %d clock(s) started, %d BH(s) sunk "
+        "towards their primary",
+        counts[0], counts[1]);
 
   swift_free("fof_bh_df_mass", prim_mass);
   swift_free("fof_bh_df_id", prim_id);
@@ -3019,7 +3022,8 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
         const size_t gas_index = -gparts[i].id_or_neg_offset;
         const float rho_com = hydro_get_comoving_density(&parts[gas_index]);
 #ifdef WITH_FOF_GALAXIES
-        const float sfr = star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
+        const float sfr =
+            star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
 #endif
 
         /* Is this the gas paricle which is the densest? */
@@ -3027,7 +3031,7 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
 #ifdef WITH_FOF_GALAXIES
             && sfr > 0.f
 #endif
-	    ) {
+        ) {
 
           /* If so, is this the minimum ID we have seen with this density? */
           if (parts[gas_index].id < id_gas_particle_to_convert[index])

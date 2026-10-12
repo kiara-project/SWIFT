@@ -70,12 +70,36 @@ runner_iact_nonsym_stars_density(const float r2, const float dx[3],
 #endif
 }
 
+/**
+ * @brief First stars preparation loop (nothing to do in KIARA).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (si - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param si First (star) particle.
+ * @param pj Second (gas) particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
+ */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_stars_prep1(const float r2, const float dx[3],
                                const float hi, const float hj, struct spart *si,
                                const struct part *pj, const float a,
                                const float H) {}
 
+/**
+ * @brief Second stars preparation loop (nothing to do in KIARA).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (si - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param si First (star) particle.
+ * @param pj Second (gas) particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
+ */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_stars_prep2(const float r2, const float dx[3],
                                const float hi, const float hj, struct spart *si,

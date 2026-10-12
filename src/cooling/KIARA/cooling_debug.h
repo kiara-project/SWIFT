@@ -19,6 +19,12 @@
 #ifndef SWIFT_COOLING_KIARA_DEBUG_H
 #define SWIFT_COOLING_KIARA_DEBUG_H
 
+/**
+ * @brief Print the cooling data of a particle (for debugging).
+ *
+ * @param p The #part.
+ * @param xp The #xpart (may be NULL).
+ */
 __attribute__((always_inline)) INLINE static void cooling_debug_particle(
     const struct part *p, const struct xpart *xp) {
 

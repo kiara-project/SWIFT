@@ -36,6 +36,7 @@
  * @param kB Boltzmann constant
  * @param h_planck Planck's constant
  * @param c speed of light
+ * @return The specific intensity B_nu(T).
  */
 __attribute__((always_inline)) INLINE double blackbody_spectrum_intensity(
     const double nu, const double T, const double kB, const double h_planck,
@@ -58,13 +59,14 @@ __attribute__((always_inline)) INLINE double blackbody_spectrum_intensity(
 }
 
 /**
- * Return the blackbody spectrum energy density
+ * @brief Return the blackbody spectrum energy density
  *
  * @param nu frequency at which to compute specific intensity
  * @param T temperature characterizing the spectrum
  * @param kB Boltzmann constant
  * @param h_planck Planck's constant
  * @param c speed of light
+ * @return The spectral energy density 4 pi B_nu(T) / c.
  */
 __attribute__((always_inline)) INLINE double blackbody_spectrum_energy_density(
     const double nu, const double T, const double kB, const double h_planck,
@@ -73,12 +75,13 @@ __attribute__((always_inline)) INLINE double blackbody_spectrum_energy_density(
 }
 
 /**
- * Return the frequency at which the blackbody spectrum at a given tempterature
- * peaks.
+ * @brief Return the frequency at which the blackbody spectrum at a given
+ * temperature peaks.
  *
  * @param T temperature characterizing the spectrum
  * @param kB Boltzmann constant
  * @param h_planck Planck's constant
+ * @return The peak frequency (Wien's law in frequency).
  */
 __attribute__((always_inline)) INLINE double blackbody_peak_frequency(
     const double T, const double kB, const double h_planck) {

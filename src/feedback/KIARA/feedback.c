@@ -36,6 +36,9 @@
  *
  * @param sp The #spart outputting the radiation
  * @param age The age of the star in internal units
+ * @param fb_props The feedback properties.
+ * @return log10 of the Habing-band luminosity (erg/s), from fits to
+ * STARBURST99 models interpolated in metallicity; -20 for ages above 1 Gyr.
  */
 double feedback_get_lum_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props) {
@@ -137,6 +140,22 @@ double feedback_get_lum_from_star_particle(
   return lum1 * fhi + lum2 * flo + logmass6;
 }
 
+/**
+ * @brief Condense part of a star particle's ejected metals into dust.
+ *
+ * Uses the condensation efficiencies of the Simba/Li+2019 dust model: for
+ * stars older than 100 Myr with C/O > 1 (by mass excess), C condenses into
+ * graphite with the AGB C-rich efficiency; otherwise the SNII (age < 100
+ * Myr) or AGB O-rich efficiencies are used for each element, with O locked
+ * in silicates and oxides of Mg, Si, S, Ca and Fe. The dust formed in each
+ * element is capped at max_dust_fraction of that element's ejected mass and
+ * removed from the ejected gas-phase metals; delta_dust_mass[0] holds the
+ * total.
+ *
+ * @param sp The #spart whose ejecta are processed.
+ * @param star_age The stellar age (internal units).
+ * @param fb_props The feedback properties.
+ */
 void feedback_dust_production_condensation(
     struct spart *sp, double star_age, const struct feedback_props *fb_props) {
 
@@ -161,8 +180,8 @@ void feedback_dust_production_condensation(
         fb_props->delta_AGBCOG1[chemistry_element_C] *
         (sp->feedback_data.metal_mass[chemistry_element_C] -
          0.75 * sp->feedback_data.metal_mass[chemistry_element_O]);
-    const double max_dust_C =
-        fb_props->max_dust_fraction * sp->feedback_data.metal_mass[chemistry_element_C];
+    const double max_dust_C = fb_props->max_dust_fraction *
+                              sp->feedback_data.metal_mass[chemistry_element_C];
     /* Cap the new dust mass formed to some fraction of total ejecta
      * metals in that element
      */
@@ -190,32 +209,36 @@ void feedback_dust_production_condensation(
       if (k ==
           chemistry_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
         sp->feedback_data.delta_dust_mass[k] =
-            16.0 * (delta_table[chemistry_element_Mg] *
-                        sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
-                    delta_table[chemistry_element_Si] *
-                        sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
-                    fb_props->delta_AGBCOL1[chemistry_element_S] *
-                        sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
-                    fb_props->delta_AGBCOL1[chemistry_element_Ca] *
-                        sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
-                    fb_props->delta_AGBCOL1[chemistry_element_Fe] *
-                        sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
+            16.0 *
+            (delta_table[chemistry_element_Mg] *
+                 sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
+             delta_table[chemistry_element_Si] *
+                 sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
+             delta_table[chemistry_element_S] *
+                 sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
+             delta_table[chemistry_element_Ca] *
+                 sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
+             delta_table[chemistry_element_Fe] *
+                 sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
         sp->feedback_data.delta_dust_mass[k] =
             delta_table[k] * sp->feedback_data.metal_mass[k];
       }
 
-      const double max_dust = fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
+      const double max_dust =
+          fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
       if (sp->feedback_data.delta_dust_mass[k] > max_dust) {
         sp->feedback_data.delta_dust_mass[k] = max_dust;
       }
 
       /* Remove dust from gas-phase metals to be distributed from star */
       sp->feedback_data.metal_mass[k] -= sp->feedback_data.delta_dust_mass[k];
-      sp->feedback_data.total_metal_mass -= sp->feedback_data.delta_dust_mass[k];
+      sp->feedback_data.total_metal_mass -=
+          sp->feedback_data.delta_dust_mass[k];
 
       /* We will use element 0 of dust to store total change in dust mass */
-      sp->feedback_data.delta_dust_mass[0] += sp->feedback_data.delta_dust_mass[k];
+      sp->feedback_data.delta_dust_mass[0] +=
+          sp->feedback_data.delta_dust_mass[k];
     }
   }
 }
@@ -230,6 +253,8 @@ void feedback_dust_production_condensation(
  * (the ejecta are those of the stars that die over [age - dt, age]).
  * @param fb_props The feedback properties.
  * @param dt The current timestep.
+ * @param N_SNe Number of SNe (SNII and SNIa) in this step; accumulated, so
+ * must be zeroed by the caller.
  * @param ejecta_energy The total ejected energy in code units.
  * @param ejecta_mass The total ejected mass in code units.
  * @param ejecta_unprocessed The unprocessed mass in code units.
@@ -670,6 +695,17 @@ void feedback_get_ejecta_from_star_particle(
   }
 }
 
+/**
+ * @brief Lifetime of a star of a given mass and metallicity.
+ *
+ * Bilinear interpolation in log10(mass) and log10(Z) of the Kobayashi et al.
+ * (2000) lifetime table.
+ *
+ * @param fb_props The feedback properties (holding the tables).
+ * @param m The stellar mass (Msun).
+ * @param z The metal mass fraction.
+ * @return The lifetime (yr).
+ */
 double feedback_life_time(const struct feedback_props *fb_props, const double m,
                           const double z) {
   int j, j1, j2, l, l1, l2;
@@ -715,6 +751,15 @@ double feedback_life_time(const struct feedback_props *fb_props, const double m,
   return pow(10., t);
 }
 
+/**
+ * @brief The (unnormalised) IMF per logarithmic mass interval.
+ *
+ * Kroupa (imf=0), Chabrier (imf=1) or a single power law of slope ximf.
+ *
+ * @param fb_props The feedback properties.
+ * @param m The stellar mass (Msun).
+ * @return The IMF value at m.
+ */
 double feedback_imf(const struct feedback_props *fb_props, const double m) {
   if (fb_props->imf == 0) { /* Kroupa */
     if (m >= 0.5) {
@@ -736,6 +781,14 @@ double feedback_imf(const struct feedback_props *fb_props, const double m) {
   }
 }
 
+/**
+ * @brief Interpolate the lifetime table to a given metallicity.
+ *
+ * @param fb_props The feedback properties (holding the tables).
+ * @param z The metal mass fraction (floored at log10 Z = -4.1).
+ * @param LFLT2 (return) log10 lifetimes (yr) on the table mass grid (NMLF
+ * values).
+ */
 void feedback_set_turnover_mass(const struct feedback_props *fb_props,
                                 const double z, double *LFLT2) {
   double lz;
@@ -765,6 +818,16 @@ void feedback_set_turnover_mass(const struct feedback_props *fb_props,
   return;
 }
 
+/**
+ * @brief Turnover mass: the mass of the stars that die at a given age.
+ *
+ * Inverts the lifetime table at the star's metallicity.
+ *
+ * @param fb_props The feedback properties (holding the tables).
+ * @param t The stellar age (yr).
+ * @param z The metal mass fraction.
+ * @return The turnover mass (Msun), limited to [M_l, M_u3] (M_u3 at t = 0).
+ */
 double feedback_get_turnover_mass(const struct feedback_props *fb_props,
                                   const double t, const double z) {
   if (t == 0.) return fb_props->M_u3;
@@ -794,6 +857,18 @@ double feedback_get_turnover_mass(const struct feedback_props *fb_props,
   return result;
 }
 
+/**
+ * @brief Read the chem5 tables and build the IMF-integrated yield tables.
+ *
+ * Reads the SNIa rate, SNIa yield and stellar lifetime tables from
+ * tables_path, combines them with the built-in SNII/HN yields (Kobayashi et
+ * al.) and the IMF, and fills fb_props->tables: cumulative numbers of SNII
+ * (SN2R), SNIa (SN1R) and wind-losing stars (SWR) per unit initial mass, and
+ * cumulative SNII/HN energy, unprocessed, ejected and element masses (SN2E),
+ * all as functions of the turnover mass and metallicity.
+ *
+ * @param fb_props The feedback properties (tables are filled in place).
+ */
 void feedback_prepare_interpolation_tables(
     const struct feedback_props *fb_props) {
   int i, j, k, j1, j2, l;
@@ -829,7 +904,7 @@ void feedback_prepare_interpolation_tables(
   const double sniiz[NZSN] = {0., 0., .001, .004, .008, .02, .05};
   const double sniz[NZSN1Y] = {0., .002, .01, .02, .04, .06, .10};
   const double effHNz[NZSN] = {0.5, 0.5, 0.5, 0.4, 0.232036142, 0.01, 0.01};
-  //const double effHNz[NZSN] = {1.0, 1.0, 1.0, 0.8, 0.5, 0.2, 0.2};
+  // const double effHNz[NZSN] = {1.0, 1.0, 1.0, 0.8, 0.5, 0.2, 0.2};
 
   /* [Fe/H] */
   const double feh_ia[NZSN1R] = {-1.1, -1.0, -0.69896996, 0., 0.39794001};
@@ -1295,12 +1370,10 @@ void feedback_prepare_interpolation_tables(
        * so that ejected = unprocessed + sum of the element yields. */
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
         for (k = 1; k < 3; k++) {
-          snii2_hi =
-              LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1], sniilm[j2],
-                                   snii[k][l][j2], lm_hi);
+          snii2_hi = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
+                                          sniilm[j2], snii[k][l][j2], lm_hi);
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
-                                          sniilm[j2], snii[k][l][j2],
-                                          lm_lo);
+                                          sniilm[j2], snii[k][l][j2], lm_lo);
           if (snii2_hi < 0.) snii2_hi = 0.;
           if (snii2_lo < 0.) snii2_lo = 0.;
           fb_props->tables.SN2E[SN2E_idx(k, l, i)] =
@@ -1319,12 +1392,10 @@ void feedback_prepare_interpolation_tables(
       /* Metals from things that don't direct collapse to BH */
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
         for (k = 3; k < chem5_NXSN; k++) {
-          snii2_hi =
-              LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1], sniilm[j2],
-                                   snii[k][l][j2], lm_hi);
+          snii2_hi = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
+                                          sniilm[j2], snii[k][l][j2], lm_hi);
           snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[k][l][j1],
-                                          sniilm[j2], snii[k][l][j2],
-                                          lm_lo);
+                                          sniilm[j2], snii[k][l][j2], lm_lo);
           /* No clipping here: the AGB yields (<= 9 Msun) are net yields,
            * negative for species that are destroyed (e.g. H, and C and O
            * by hot-bottom burning). They are added to the unprocessed
@@ -1350,12 +1421,10 @@ void feedback_prepare_interpolation_tables(
 
       /* IMF integration for total metal mass yield */
       if (m[i] > m_l && m[i] < fb_props->M_u2) {
-        snii2_hi =
-            LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
-                                 snii[0][l][j2], lm_hi);
-        snii2_lo =
-            LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
-                                 snii[0][l][j2], lm_lo);
+        snii2_hi = LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
+                                        snii[0][l][j2], lm_hi);
+        snii2_lo = LINEAR_INTERPOLATION(sniilm[j1], snii[0][l][j1], sniilm[j2],
+                                        snii[0][l][j2], lm_lo);
         if (snii2_hi < 0.) snii2_hi = 0.;
         if (snii2_lo < 0.) snii2_lo = 0.;
         fb_props->tables.SN2R[SN2R_idx(l, i)] =
@@ -1637,9 +1706,10 @@ void feedback_props_init(struct feedback_props *fp,
   fp->delta_AGBCOL1[chemistry_element_Ca] = 0.2;
   fp->delta_AGBCOL1[chemistry_element_Fe] = 0.2;
 
-  /* From Poping+17, default=2 in Simba's dust model */
+  /* Multiplier of the SNII condensation efficiencies (Poping+17; Simba's
+   * dust model used 2) */
   const float dust_boost_factor = parser_get_opt_param_float(
-      params, "KIARAFeedback:dust_boost_factor", 2.f);
+      params, "KIARAFeedback:dust_boost_factor", 1.f);
 
   fp->delta_SNII[chemistry_element_H] = 0.00 * dust_boost_factor;
   fp->delta_SNII[chemistry_element_He] = 0.00 * dust_boost_factor;

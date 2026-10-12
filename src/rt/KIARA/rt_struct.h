@@ -29,13 +29,17 @@ struct rt_part_data {
 
   /* Radiation state vector. */
   struct {
+    /*! Radiation energy density */
     float energy_density;
+    /*! Radiation flux */
     float flux[3];
   } radiation[RT_NGROUPS];
 
   /* Fluxes in the conservation law sense */
   struct {
+    /*! Radiation energy flux */
     float energy;
+    /*! Flux of the radiation flux (momentum flux) */
     float flux[3];
   } flux[RT_NGROUPS];
 
@@ -50,7 +54,9 @@ struct rt_part_data {
    *    first index: x, y, z coordinate of the flux.
    *    Second index: gradient along x, y, z direction. */
   struct {
+    /*! Gradient of the energy density */
     float energy_density[3];
+    /*! Gradient of the flux components */
     float flux[3][3];
   } gradient[RT_NGROUPS];
 

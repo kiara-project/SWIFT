@@ -59,6 +59,17 @@ firehose_init_ambient_quantities(struct part *restrict p,
   for (int k = 0; k < 3; k++) cpd->v_ambient[k] = 0.f;
 }
 
+/**
+ * @brief Print the properties of a decoupled wind particle to the log.
+ *
+ * Only prints when compiled with CHEMISTRY_OUTPUT_FIREHOSE_LOG; coupled
+ * particles are ignored. Quantities are converted to physical kpc, cm^-3, K
+ * and Myr.
+ *
+ * @param pi The wind #part.
+ * @param cosmo The current cosmological model.
+ * @param cd #chemistry_global_data containing chemistry information.
+ */
 __attribute__((always_inline)) INLINE static void logger_windprops_printprops(
     struct part *pi, const struct cosmology *cosmo,
     const struct chemistry_global_data *cd) {
@@ -97,10 +108,17 @@ __attribute__((always_inline)) INLINE static void logger_windprops_printprops(
 /**
  * @brief Finishes up ambient quantity calculation for the firehose wind model
  *
- * This is called from chemistry_end_density
+ * This is called from chemistry_end_density. For decoupled particles the
+ * kernel-weighted sums are normalised to the ambient density, internal
+ * energy and velocity (falling back to the particle's own values if no
+ * ambient gas was found); the ambient density is then capped at
+ * firehose_ambient_rho_max and the internal energy floored at
+ * firehose_u_floor.
  *
  * @param p The particle to act upon
+ * @param xp The #xpart associated with p.
  * @param cd #chemistry_global_data containing chemistry informations.
+ * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void
 firehose_end_ambient_quantities(struct part *restrict p,
@@ -181,6 +199,9 @@ firehose_end_ambient_quantities(struct part *restrict p,
 
 /**
  * @brief Return a string containing the name of a given #chemistry_element.
+ *
+ * @param elem The element.
+ * @return The name of the element.
  */
 __attribute__((always_inline)) INLINE static const char *
 chemistry_get_element_name(enum chemistry_element elem) {
@@ -251,6 +272,7 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
  * This function requires the #hydro_end_density to have been called.
  *
  * @param p The particle to act upon.
+ * @param xp The #xpart associated with p.
  * @param cd #chemistry_global_data containing chemistry informations.
  * @param cosmo The current cosmological model.
  */
@@ -341,8 +363,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
        * symmetric, so metal mass stays conserved. */
       float D_capped = D_phys;
       if (cd->time_step_min > 0.f) {
-        const float D_max = cd->diffusion_beta * rho_phys * h_phys * h_phys /
-                            cd->time_step_min;
+        const float D_max =
+            cd->diffusion_beta * rho_phys * h_phys * h_phys / cd->time_step_min;
         D_capped = min(D_capped, D_max);
       }
 
@@ -656,8 +678,8 @@ static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
 /**
  * @brief Prints the properties of the chemistry model to stdout.
  *
- * @brief The #chemistry_global_data containing information about the current
- * model.
+ * @param data The #chemistry_global_data containing information about the
+ * current model.
  */
 static INLINE void chemistry_print_backend(
     const struct chemistry_global_data *data) {
@@ -688,15 +710,19 @@ static INLINE void chemistry_print_backend(
 }
 
 /**
- * @brief Check recoupling criterion for firehose stream particle .
- * Returns negative value if it should recouple.
- * Actual recoupling is done in feedback.h.
+ * @brief Check the recoupling criterion for a decoupled wind particle.
  *
- * @param pi Wind particle (not updated).
+ * A particle recouples once it is subsonic relative to the ambient gas with
+ * a similar internal energy, or (for a firehose stream) once it has
+ * exchanged more than firehose_recoupling_fmix of its mass. The actual
+ * recoupling is done in feedback.h.
+ *
+ * @param p Wind particle (not updated).
  * @param Mach Stream Mach number vs ambient
  * @param r_stream Current radius of stream
  * @param cd #chemistry_global_data containing chemistry information.
- *
+ * @return -1 if the particle should recouple, otherwise r_stream (0 if the
+ * firehose model is off).
  */
 __attribute__((always_inline)) INLINE static float
 firehose_recoupling_criterion(struct part *p, const float Mach,
@@ -749,14 +775,11 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
  * @return The comoving stream radius.
  */
 __attribute__((always_inline)) INLINE static float
-firehose_initial_stream_radius(const float galaxy_stellar_mass,
-                               const float minimum_galaxy_stellar_mass,
-                               const double mass_to_solar_mass,
-                               const double length_to_kpc,
-                               const double rho_to_n_cgs,
-                               const double m_dot_wind, const float v_wind_phys,
-                               const float h_launch,
-                               const struct cosmology *cosmo) {
+firehose_initial_stream_radius(
+    const float galaxy_stellar_mass, const float minimum_galaxy_stellar_mass,
+    const double mass_to_solar_mass, const double length_to_kpc,
+    const double rho_to_n_cgs, const double m_dot_wind, const float v_wind_phys,
+    const float h_launch, const struct cosmology *cosmo) {
 
   /* Twice the effective radius of disk galaxies, physical kpc, converted to
    * internal comoving units */
@@ -818,10 +841,12 @@ __attribute__((always_inline)) INLINE static void chemistry_prepare_force(
  * Finish off the diffusion by actually exchanging the metals
  *
  * @param p The particle to act upon.
+ * @param xp The #xpart associated with p.
  * @param cosmo The current cosmological model.
  * @param with_cosmology Are we running with the cosmology?
  * @param time Current time of the simulation.
  * @param dt Time step (in physical units).
+ * @param cd #chemistry_global_data containing chemistry information.
  */
 __attribute__((always_inline)) INLINE static void chemistry_end_force(
     struct part *restrict p, struct xpart *xp, const struct cosmology *cosmo,
@@ -842,8 +867,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
      * the two phases, so no further (frame-dependent) limit on the kinetic
      * energy is needed. Always apply the exchange, so that it stays
      * conservative between the pair. */
-    const float dv2 = ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] +
-                      ch->dv[2] * ch->dv[2];
+    const float dv2 =
+        ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] + ch->dv[2] * ch->dv[2];
     const float dv_phys = sqrtf(dv2) * cosmo->a_inv;
 
     if (dv_phys > 0.f)
@@ -898,8 +923,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
          * Turning a mass fraction df of cold gas into warm gas costs
          * df (u_warm - u_cold) per unit particle mass. */
         const double f_c = p->cooling_data.subgrid_fcold;
-        const double u_warm =
-            (f_c < 1.) ? (u - f_c * u_cold) / (1. - f_c) : u;
+        const double u_warm = (f_c < 1.) ? (u - f_c * u_cold) / (1. - f_c) : u;
         const double delta_u = u_warm - u_cold;
 
         /* Fraction of the particle mass evaporated, at most all the cold
@@ -916,8 +940,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
           if (p->cooling_data.subgrid_fcold <= 0.f) {
             p->cooling_data.subgrid_temp = 0.f;
-            p->cooling_data.subgrid_dens =
-                hydro_get_physical_density(p, cosmo);
+            p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
             p->cooling_data.subgrid_fcold = 0.f;
           }
         }
@@ -1042,7 +1065,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
   float dZ[chemistry_element_count];
   for (int elem = 0; elem < chemistry_element_count; elem++) {
     dZ[elem] = ch->dZ_dt[elem] * dt * factor;
-    const float new_metal_fraction_elem = ch->metal_mass_fraction[elem] + dZ[elem];
+    const float new_metal_fraction_elem =
+        ch->metal_mass_fraction[elem] + dZ[elem];
 
     /* Make sure that the metallicity is 0 <= x <= 1 */
     if (new_metal_fraction_elem < 0.f) {
@@ -1143,7 +1167,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 /**
  * @brief Computes the chemistry-related time-step constraint.
  *
- * Only constraint in KIARA is the diffusion time-step.
+ * The constraints are the metal diffusion time-step and, with the firehose
+ * model, a Courant condition for decoupled winds on their speed relative to
+ * the ambient gas.
  *
  * @param phys_const The physical constants in internal units.
  * @param cosmo The current cosmological model.
@@ -1151,6 +1177,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
  * @param hydro_props The properties of the hydro scheme.
  * @param cd The global properties of the chemistry scheme.
  * @param p Pointer to the particle data.
+ * @return The time-step (FLT_MAX if not limited).
  */
 __attribute__((always_inline)) INLINE static float chemistry_timestep(
     const struct phys_const *restrict phys_const,
@@ -1175,8 +1202,9 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
             "time_step_min (%g Myr): n=%g h=%g D=%g",
             p->id, dt_chem * cd->time_to_Myr,
             cd->time_step_min * cd->time_to_Myr,
-	    rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc, 
-	    D_phys * cd->mass_to_solar_mass / (cd->time_to_Myr * cd->length_to_kpc));
+            rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc,
+            D_phys * cd->mass_to_solar_mass / (cd->time_to_Myr *
+      cd->length_to_kpc));
       }*/
 
       dt_chem = max(dt_chem, cd->time_step_min);
@@ -1322,6 +1350,7 @@ __attribute__((always_inline)) INLINE static void chemistry_split_part(
  * over its gas neighbours.
  *
  * @param p Pointer to the particle data.
+ * @return The total metal mass fraction.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_fraction_for_feedback(
@@ -1338,6 +1367,7 @@ chemistry_get_total_metal_mass_fraction_for_feedback(
  * over its gas neighbours.
  *
  * @param p Pointer to the particle data.
+ * @return Pointer to the element mass fractions.
  */
 __attribute__((always_inline)) INLINE static float const *
 chemistry_get_metal_mass_fraction_for_feedback(const struct part *restrict p) {
@@ -1352,6 +1382,7 @@ chemistry_get_metal_mass_fraction_for_feedback(const struct part *restrict p) {
  * KIARA uses smooth abundances for everything.
  *
  * @param sp Pointer to the particle data.
+ * @return The total metal mass fraction.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_star_total_metal_mass_fraction_for_feedback(
@@ -1367,6 +1398,7 @@ chemistry_get_star_total_metal_mass_fraction_for_feedback(
  * KIARA uses smooth abundances for everything.
  *
  * @param sp Pointer to the particle data.
+ * @return Pointer to the element mass fractions.
  */
 __attribute__((always_inline)) INLINE static float const *
 chemistry_get_star_metal_mass_fraction_for_feedback(
@@ -1382,6 +1414,7 @@ chemistry_get_star_metal_mass_fraction_for_feedback(
  * KIARA uses smooth abundances for everything.
  *
  * @param p Pointer to the particle data.
+ * @return The total metal mass fraction.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_fraction_for_cooling(
@@ -1397,6 +1430,7 @@ chemistry_get_total_metal_mass_fraction_for_cooling(
  * KIARA uses smooth abundances for everything.
  *
  * @param p Pointer to the particle data.
+ * @return Pointer to the element mass fractions.
  */
 __attribute__((always_inline)) INLINE static float const *
 chemistry_get_metal_mass_fraction_for_cooling(const struct part *restrict p) {
@@ -1411,6 +1445,7 @@ chemistry_get_metal_mass_fraction_for_cooling(const struct part *restrict p) {
  * KIARA uses smooth abundances for everything.
  *
  * @param p Pointer to the particle data.
+ * @return The total metal mass fraction.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_fraction_for_star_formation(
@@ -1426,6 +1461,7 @@ chemistry_get_total_metal_mass_fraction_for_star_formation(
  * KIARA uses smooth abundances for everything.
  *
  * @param p Pointer to the particle data.
+ * @return Pointer to the element mass fractions.
  */
 __attribute__((always_inline)) INLINE static float const *
 chemistry_get_metal_mass_fraction_for_star_formation(
@@ -1439,6 +1475,7 @@ chemistry_get_metal_mass_fraction_for_star_formation(
  * gas particle to be used in the stats related routines.
  *
  * @param p Pointer to the particle data.
+ * @return The metal mass (internal units).
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_total_metal_mass_for_stats(const struct part *restrict p) {
@@ -1451,6 +1488,7 @@ chemistry_get_total_metal_mass_for_stats(const struct part *restrict p) {
  * star particle to be used in the stats related routines.
  *
  * @param sp Pointer to the star particle data.
+ * @return The metal mass (internal units).
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_star_total_metal_mass_for_stats(const struct spart *restrict sp) {
@@ -1463,6 +1501,7 @@ chemistry_get_star_total_metal_mass_for_stats(const struct spart *restrict sp) {
  * black hole particle to be used in the stats related routines.
  *
  * @param bp Pointer to the BH particle data.
+ * @return The metal mass (internal units).
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_bh_total_metal_mass_for_stats(const struct bpart *restrict bp) {
@@ -1475,6 +1514,7 @@ chemistry_get_bh_total_metal_mass_for_stats(const struct bpart *restrict bp) {
  * star particle to be used in the luminosity calculations.
  *
  * @param sp Pointer to the star particle data.
+ * @return The total metal mass fraction.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_star_total_metal_mass_fraction_for_luminosity(

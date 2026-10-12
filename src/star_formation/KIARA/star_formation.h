@@ -155,12 +155,21 @@ struct star_formation {
  * @brief Determine the mass loading factor for
  *        a given star particle based on its host galaxy.
  *
+ * eta = FIRE_eta_normalization (M* / FIRE_eta_break)^slope, with the lower
+ * slope below the break (FIRE_eta_lower_slope_EOR at z > 6), the upper slope
+ * above it, and an optional high-redshift suppression.
+ *
+ * @param cosmo The current cosmological model.
  * @param group_stellar_mass The stellar mass of the host galaxy
  * @param minimum_galaxy_stellar_mass Floor for stellar mass in eta calculation
  * @param FIRE_eta_normalization Normalization of eta at FIRE_eta_break
  * @param FIRE_eta_break M* at which eta(M*) slope changes
  * @param FIRE_eta_lower_slope Slope below break
  * @param FIRE_eta_upper_slope Slope above break
+ * @param FIRE_eta_lower_slope_EOR Slope below the break at z > 6.
+ * @param wind_eta_suppression_redshift Suppress eta above this redshift as
+ * (a (1 + z_s))^2 if > 0, or by exp(-[a (1 + |z_s|)]^-3) if < 0.
+ * @return The mass loading factor (>= 0).
  */
 __attribute__((always_inline)) INLINE static float feedback_mass_loading_factor(
     const struct cosmology *cosmo, const double group_stellar_mass,
@@ -202,6 +211,7 @@ __attribute__((always_inline)) INLINE static float feedback_mass_loading_factor(
  * @param us The internal system of units.
  * @param cooling The cooling data struct.
  * @param entropy_floor_props The entropy floor assumed in this run.
+ * @return 1 if the gas can form stars, 0 otherwise.
  */
 INLINE static int star_formation_is_star_forming_subgrid(
     const struct part *p, const struct xpart *xp,
@@ -248,6 +258,7 @@ INLINE static int star_formation_is_star_forming_subgrid(
  * @param us The internal system of units.
  * @param cooling The cooling data struct.
  * @param entropy_floor_props The entropy floor assumed in this run.
+ * @return 1 if the gas can form stars, 0 otherwise.
  */
 INLINE static int star_formation_is_star_forming(
     const struct part *p, const struct xpart *xp,
@@ -257,7 +268,8 @@ INLINE static int star_formation_is_star_forming(
     const struct entropy_floor_properties *entropy_floor_props) {
 
   /* No star formation for particles in the wind or with cooling shut off */
-  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) return 0;
+  if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f)
+    return 0;
 
   /* No star formation when outside subgrid model */
   if (cooling_get_subgrid_temperature(p, xp) <= 0.f) return 0;
@@ -309,48 +321,47 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
 
   /* Compute H2 fraction in KMT model if desired */
   if (starform->H2_model == kiara_star_formation_kmt_model) {
-      double gas_sigma = 0.f;
-      float gas_Z = 0.f;
-      float chi = 0.f;
-      float s = 0.f;
-      /* Clumping factor <n^2>/<n>^2 at the resolved scale (>= 1) */
-      float clumping_factor = starform->clumping_factor_scaling;
-      float gas_gradrho_mag = 0.f;
+    double gas_sigma = 0.f;
+    float gas_Z = 0.f;
+    float chi = 0.f;
+    float s = 0.f;
+    /* Clumping factor <n^2>/<n>^2 at the resolved scale (>= 1) */
+    float clumping_factor = starform->clumping_factor_scaling;
+    float gas_gradrho_mag = 0.f;
 
-      gas_Z = p->chemistry_data.metal_mass_fraction_total;
-      gas_Z /= starform->Z_solar;
-      if (gas_Z < 0.01f) {
-        gas_Z = 0.01f;
-      }
+    gas_Z = p->chemistry_data.metal_mass_fraction_total;
+    gas_Z /= starform->Z_solar;
+    if (gas_Z < 0.01f) {
+      gas_Z = 0.01f;
+    }
 
-      if (physical_density > 0.f) {
-        gas_gradrho_mag = sqrtf(p->rho_gradient[0] * p->rho_gradient[0] +
-                                p->rho_gradient[1] * p->rho_gradient[1] +
-                                p->rho_gradient[2] * p->rho_gradient[2]);
+    if (physical_density > 0.f) {
+      gas_gradrho_mag = sqrtf(p->rho_gradient[0] * p->rho_gradient[0] +
+                              p->rho_gradient[1] * p->rho_gradient[1] +
+                              p->rho_gradient[2] * p->rho_gradient[2]);
 
-        if (gas_gradrho_mag > 0) {
-          gas_sigma = (p->rho * p->rho) / gas_gradrho_mag;
+      if (gas_gradrho_mag > 0) {
+        gas_sigma = (p->rho * p->rho) / gas_gradrho_mag;
 
-          /* surface density must be in Msun/pc^2 */
-          gas_sigma *=
-              starform->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
+        /* surface density must be in Msun/pc^2 */
+        gas_sigma *= starform->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
 
-          if (clumping_factor < 1.f) {
-            clumping_factor = 1.f;
-          }
-
-          /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
-          chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
-                (30.f / clumping_factor);
-          s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
-              (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
+        if (clumping_factor < 1.f) {
+          clumping_factor = 1.f;
         }
+
+        /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
+        chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
+              (30.f / clumping_factor);
+        s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
+            (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
       }
-      /* KMT: f_H2 = 1 - (3/4) s / (1 + s/4) for s < 2, and 0 above */
-      if (s > 0.f) {
-        H2_fraction = (s < 2.f) ? 1.f - 0.75f * (s / (1.f + 0.25f * s)) : 0.f;
-      }
-   }
+    }
+    /* KMT: f_H2 = 1 - (3/4) s / (1 + s/4) for s < 2, and 0 above */
+    if (s > 0.f) {
+      H2_fraction = (s < 2.f) ? 1.f - 0.75f * (s / (1.f + 0.25f * s)) : 0.f;
+    }
+  }
 
   /* Compute the SFR */
   p->sf_data.SFR = SFRpergasmass * H2_fraction * hydro_get_mass(p);
@@ -471,7 +482,8 @@ INLINE static void star_formation_compute_SFR_wn07(
       rhosfr * (p->cooling_data.subgrid_fcold * hydro_get_mass(p));
 
   /* Multiply by the H2 fraction */
-  const float H2_frac = (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  const float H2_frac =
+      (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
   p->sf_data.SFR = starform->lognormal.epsilon * sfr * H2_frac;
 }
 
@@ -499,7 +511,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
   const double rho_limit = 1.001 * starform->lognormal.rho0;
 
   /* H2 fraction in the particle */
-  const float H2_frac = (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  const float H2_frac =
+      (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
 
   /* Mean density of the gas described by a lognormal PDF
    * (i.e. subgrid ISM gas) PHYSICAL */
@@ -536,7 +549,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
    */
   const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_V);
 
-  const double mass = H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
+  const double mass =
+      H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
 
   /* Store the SFR */
   p->sf_data.SFR = starform->lognormal.epsilon * sSFR * mass;
@@ -647,7 +661,6 @@ INLINE static int star_formation_number_spart_to_convert(
  * @param starform The properties of the star formation model.
  * @param e The #engine (for random numbers).
  * @param dt_star The time-step of this particle
- * @param star_prob The probability of converting to a star particle.
  * @return 1 if a conversion should be done, 0 otherwise.
  */
 INLINE static int star_formation_should_convert_to_star(
@@ -724,8 +737,9 @@ INLINE static void star_formation_update_part_not_SFR(
  * @param cooling The cooling data struct.
  * @param chem_data The global properties of the chemistry scheme.
  * @param convert_part Did we convert a part (or spawned one)?
- * @param (return) displacement The 3D displacement vector of the star with
- * respect to the sink position.
+ * @param displacement (return) The random displacement of the new star from
+ * the gas particle position (up to 0.1 h per axis), to avoid zero
+ * separations.
  */
 INLINE static void star_formation_copy_properties(
     const struct part *p, const struct xpart *xp, struct spart *sp,
@@ -1021,6 +1035,7 @@ INLINE static void starformation_print_backend(
  *
  * @param p The particle.
  * @param xp The extended data of the particle.
+ * @return The SFR (internal units), 0 if not star-forming.
  */
 INLINE static float star_formation_get_SFR(const struct part *p,
                                            const struct xpart *xp) {
