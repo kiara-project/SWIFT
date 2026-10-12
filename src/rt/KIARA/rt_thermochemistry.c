@@ -530,6 +530,8 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
     for (int g = 0; g < RT_NGROUPS; g++) {
       const float E_old = p->rt_data.radiation[g].energy_density;
+      p->rt_data.debug_dE[1] -=
+          p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
       p->rt_data.radiation[g].energy_density *= (1. - f);
       for (int i = 0; i < 3; i++) {
         p->rt_data.radiation[g].flux[i] *= (1. - f);
