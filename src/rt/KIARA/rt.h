@@ -593,9 +593,9 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
      * So we'll need the division by the volume here. */
 
     rtd->radiation[g].energy_density += rtd->flux[g].energy * Vinv;
-    rtd->debug_dE[2] += rtd->flux[g].energy;
-    rtd->debug_dE[4] -= rtd->radiation[g].energy_density * redshift_factor /
-                        Vinv;
+    rtd->debug_dE[2] += rtd->flux[g].energy * cosmo->a_inv;
+    rtd->debug_dE[4] -= rtd->radiation[g].energy_density * redshift_factor *
+                        p->geometry.volume;
 
     rtd->radiation[g].energy_density -=
         rtd->radiation[g].energy_density *
@@ -628,7 +628,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
                               rtd->radiation[g].flux, e_old, /*callloc=*/4);
     rtd->debug_dE[3] +=
-        (rtd->radiation[g].energy_density - e_before_check) / Vinv;
+        (rtd->radiation[g].energy_density - e_before_check) * p->geometry.volume;
   }
 
   /* Reset the fluxes now that they have been applied. */
