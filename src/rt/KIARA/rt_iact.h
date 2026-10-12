@@ -364,6 +364,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   const float mindt =
       (rtj->flux_dt > 0.f) ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
 
+  /* Accumulate the interface areas for the time-step criterion, for the
+   * particles whose fluxes are updated here */
+  if (mindt > 0.f) {
+    rti->area_sum += Anorm;
+    if (mode == 1 || (rtj->flux_dt < 0.f)) rtj->area_sum += Anorm;
+  }
+
   for (int g = 0; g < RT_NGROUPS; g++) {
 
     /* radiation state to be used to compute the flux */
