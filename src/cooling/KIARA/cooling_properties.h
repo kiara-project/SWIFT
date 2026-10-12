@@ -126,7 +126,7 @@ struct cooling_function_data {
   /*! G0 per unit galaxy sSFR (internal units), normalised to the MW sSFR */
   double G0_factor2;
 
-  /*! G0 per SN, normalised to the MW SN rate */
+  /*! G0 per unit SN rate (internal units), normalised to the MW SN rate */
   double G0_factorSNe;
 
   /* Dust parameters passed to grackle; see sample yml file */

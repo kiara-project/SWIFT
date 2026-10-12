@@ -1454,7 +1454,7 @@ void cooling_do_grackle_cooling(
   /* Compute the ISRF */
   p->cooling_data.G0 =
       fmax(cooling_compute_G0(p, xp, p->cooling_data.subgrid_dens, T_warm,
-                              cooling, galaxy_mstar, galaxy_ssfr, dt),
+                              cooling, galaxy_mstar, galaxy_ssfr),
            0.);
 
   /* Do grackle cooling */
@@ -1900,8 +1900,9 @@ void cooling_init_units(const struct unit_system *us,
   /* Calibrated to sSFR for MW=2.71e-11 (Licquia etal 2015) */
   cooling->G0_factor2 = 1.6f / (2.71e-11f * time_to_yr);
 
-  /* Calibrated to 0.015 SNe per year for MW (BC Reed 2005) */
-  cooling->G0_factorSNe = 1.6f / 0.015;
+  /* Calibrated to an SN rate of 0.015 per year for MW (BC Reed 2005);
+   * multiplies the SN rate in internal units */
+  cooling->G0_factorSNe = 1.6f / (0.015f * time_to_yr);
 }
 
 /**

@@ -705,14 +705,13 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
  * @param cooling The properties of the cooling function.
  * @param mstar The stellar mass of the host galaxy (internal units).
  * @param ssfr The specific SFR of the host galaxy (internal units).
- * @param dt The cooling timestep.
  * @return G0 in Habing units (0 outside the subgrid ISM).
  */
 __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     const struct part *restrict p, const struct xpart *restrict xp,
     const float rho, const float T_warm,
     const struct cooling_function_data *cooling, const float mstar,
-    const float ssfr, const float dt) {
+    const float ssfr) {
 
   /* No ISRF outside subgrid ISM */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
@@ -746,13 +745,13 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   }
 #if COOLING_GRACKLE_MODE >= 2
   else if (cooling->G0_computation_method == 4) {
-    // Remember SNe_ThisTimeStep stores SN **rate**
-    G0 = p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
+    /* SNe_ThisTimeStep stores the SN **rate** (internal units) */
+    G0 = p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe;
   } else if (cooling->G0_computation_method == 5) {
     float pssfr = max(p->sf_data.SFR, 0.f);
     pssfr /= max(mstar, 8. * p->mass);
     G0 = max(ssfr, pssfr) * cooling->G0_factor2 +
-         p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe * dt;
+         p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe;
   } else if (cooling->G0_computation_method == 6) {
     G0 = cooling_G0_from_FIRE(p, xp, rho, T_warm, cooling);
   }
