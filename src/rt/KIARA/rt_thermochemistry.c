@@ -456,7 +456,8 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
   /* solve chemistry, update thermal energy */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
-                             cooling, p, xp, iact_rates, dt, dt_therm);
+                             cooling, p, xp, iact_rates, dt, dt_therm,
+                             /*set_u_directly=*/1);
 
   /* Output du_dt and u  for debug. */
   p->cooling_data.du_dt_cooling =

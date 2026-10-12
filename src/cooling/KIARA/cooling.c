@@ -1460,6 +1460,8 @@ void cooling_init_chemistry(
  * @param iact_rates Interaction rates for radiative transfer (if used)
  * @param dt The time-step of this particle.
  * @param dt_therm The time-step operator used for thermal quantities.
+ * @param set_u_directly If 1 (RT), set the new internal energy directly and
+ * zero du/dt; if 0, set du/dt to the Grackle energy change over dt_therm.
  */
 void cooling_do_grackle_cooling(
     const struct phys_const *restrict phys_const,
@@ -1469,7 +1471,7 @@ void cooling_do_grackle_cooling(
     const struct entropy_floor_properties *floor_props,
     const struct cooling_function_data *restrict cooling,
     struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
-    const double dt, const double dt_therm) {
+    const double dt, const double dt_therm, const int set_u_directly) {
 
   /* Self-enrich gas if very low metallicity */
   cooling_init_chemistry(cooling, p);
@@ -1517,16 +1519,16 @@ void cooling_do_grackle_cooling(
     /* Rennehan: Recompute the actual thermal evolution after setting min/max */
     cool_du_dt = (u_new - u_old) / dt_therm;
 
-    /* check whether the the thermochemistry heating/cooling is larger
-     * than du/dt of the particle. If it is, directly set the new internal
-     * energy of the particle, and set du/dt = 0.*/
-    hydro_set_physical_internal_energy(p, xp, cosmo, u_new);
-
-    hydro_set_physical_internal_energy_dt(p, cosmo, 0.);
-
-    /* Update the internal energy time derivative,
-     * which will be evolved later */
-    // hydro_set_physical_internal_energy_dt(p, cosmo, cool_du_dt);
+    if (set_u_directly) {
+      /* RT: directly set the new internal energy of the particle, and set
+       * du/dt = 0 */
+      hydro_set_physical_internal_energy(p, xp, cosmo, u_new);
+      hydro_set_physical_internal_energy_dt(p, cosmo, 0.);
+    } else {
+      /* Update the internal energy time derivative,
+       * which will be evolved later */
+      hydro_set_physical_internal_energy_dt(p, cosmo, cool_du_dt);
+    }
 
     /* If there is any dust outside of the ISM, sputter it
      * back into gas phase metals */
@@ -1677,7 +1679,8 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
 
     /* Do the cooling and chemistry */
     cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
-                               cooling, p, xp, iact_rates, dt, dt_therm);
+                               cooling, p, xp, iact_rates, dt, dt_therm,
+                               /*set_u_directly=*/0);
 
     /* Output du_dt and u for debug. */
     p->cooling_data.du_dt_cooling =
