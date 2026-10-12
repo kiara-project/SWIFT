@@ -295,8 +295,11 @@ rt_get_emission_this_step_BPASS(double emission_this_step[RT_NGROUPS], float M,
 
   /* Get the array for the table range.
    * TODO: Hard code in now, need to replace it. */
-  static const double Metallicities[] = {
-      1e-5, 1e-4, 0.01, 0.02, 0.03, 0.04, 0.06, 0.08, 0.1, 0.14, 0.2, 0.3, 0.4};
+  /* Metallicities (mass fractions) of the BPASS tables: em5, em4, 001, 002,
+   * ..., 040 */
+  static const double Metallicities[] = {1e-5,  1e-4,  0.001, 0.002, 0.003,
+                                         0.004, 0.006, 0.008, 0.010, 0.014,
+                                         0.020, 0.030, 0.040};
   int size_Metals = sizeof(Metallicities) / sizeof(Metallicities[0]);
   static const double age_100Myr[] = {
       0.0,        // 0
