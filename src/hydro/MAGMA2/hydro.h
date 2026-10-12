@@ -382,7 +382,9 @@ hydro_set_drifted_physical_internal_energy(
   const float v_sig = const_viscosity_alpha_prefactor * soundspeed;
 
   p->dt_min = min(p->dt_min, p->h_min / v_sig);
-  if (p->dt_min < 1.e-10) warning("LOW COURANT TIMESTEP: id=%lld h=%g v_sig=%g", p->id, p->h_min, v_sig);
+  if (p->dt_min < 1.e-10)
+    warning("LOW COURANT TIMESTEP: id=%lld h=%g v_sig=%g", p->id, p->h_min,
+            v_sig);
 }
 
 /**
@@ -410,7 +412,9 @@ hydro_set_v_sig_based_on_velocity_kick(struct part *p,
   const float v_sig = v_sig_sound + v_sig_kick;
 
   p->dt_min = min(p->dt_min, p->h_min / v_sig);
-  if (p->dt_min < 1.e-10) warning("LOW KICK TIMESTEP: id=%lld vsig_sound=%g vsig_kick=%g v_sig=%g", p->id, v_sig_sound, v_sig_kick, v_sig);
+  if (p->dt_min < 1.e-10)
+    warning("LOW KICK TIMESTEP: id=%lld vsig_sound=%g vsig_kick=%g v_sig=%g",
+            p->id, v_sig_sound, v_sig_kick, v_sig);
 }
 
 /**
@@ -1431,34 +1435,35 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   const float a_inv2 = cosmo->a2_inv;
   p->density.div_v *= h_inv_dim_plus_one * rho_inv * a_inv2;
   p->density.div_v += cosmo->H * hydro_dimension;
-/**
-}
+  /**
+  }
 
- * @brief Prepare a particle for the gradient calculation.
- *
- * This function is called after the density loop and before the gradient loop.
- *
- * We use it to set the physical timestep for the particle and to copy the
- * actual velocities, which we need to boost our interfaces during the flux
- * calculation. We also initialize the variables used for the time step
- * calculation.
- *
- * @param p The particle to act upon.
- * @param xp The extended particle data to act upon.
- * @param cosmo The cosmological model.
- * @param hydro_props Hydrodynamic properties.
- * @param pressure_floor The properties of the pressure floor.
-__attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
-    struct part *restrict p, struct xpart *restrict xp,
-    const struct cosmology *cosmo, const struct hydro_props *hydro_props,
-    const struct pressure_floor_props *pressure_floor) {
+   * @brief Prepare a particle for the gradient calculation.
+   *
+   * This function is called after the density loop and before the gradient
+  loop.
+   *
+   * We use it to set the physical timestep for the particle and to copy the
+   * actual velocities, which we need to boost our interfaces during the flux
+   * calculation. We also initialize the variables used for the time step
+   * calculation.
+   *
+   * @param p The particle to act upon.
+   * @param xp The extended particle data to act upon.
+   * @param cosmo The cosmological model.
+   * @param hydro_props Hydrodynamic properties.
+   * @param pressure_floor The properties of the pressure floor.
+  __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
+      struct part *restrict p, struct xpart *restrict xp,
+      const struct cosmology *cosmo, const struct hydro_props *hydro_props,
+      const struct pressure_floor_props *pressure_floor) {
 
-  const float h = p->h;
-  const float h_inv = 1.0f / h;                       
-  const float h_inv_dim = pow_dimension(h_inv);       
-  const float h_inv_dim_plus_one = h_inv_dim * h_inv; 
- */
-  
+    const float h = p->h;
+    const float h_inv = 1.0f / h;
+    const float h_inv_dim = pow_dimension(h_inv);
+    const float h_inv_dim_plus_one = h_inv_dim * h_inv;
+   */
+
   /* Need this for correct dh/dt */
   p->gradients.wcount = p->density.wcount;
 
@@ -1592,7 +1597,6 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
       }
     }
   }
-  
 
   /* Finish matrix and volume computations for FVPM Radiative Transfer */
   fvpm_compute_volume_and_matrix(p, h_inv_dim);

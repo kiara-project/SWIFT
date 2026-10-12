@@ -29,10 +29,10 @@
 
 #include "adaptive_softening_iact.h"
 #include "adiabatic_index.h"
+#include "fvpm_geometry.h"
 #include "hydro_parameters.h"
 #include "minmax.h"
 #include "signal_velocity.h"
-#include "fvpm_geometry.h"
 
 /**
  * @brief Density interaction between two particles.
@@ -469,8 +469,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
          * the paper indices. */
         pi->gradients.velocity_tensor[k][i] += dv[k] * dx[i] * faci;
 
-        const hydro_real_t dv_grad_ki = pi->gradients.velocity_tensor_aux[k][i] -
-                                        pj->gradients.velocity_tensor_aux[k][i];
+        const hydro_real_t dv_grad_ki =
+            pi->gradients.velocity_tensor_aux[k][i] -
+            pj->gradients.velocity_tensor_aux[k][i];
 
         /* Equation 19 indices:
          * Index i: velocity direction

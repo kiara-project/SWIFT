@@ -124,7 +124,8 @@ struct black_holes_props {
   /*! Where do we distinguish between cold gas for torque accretion? */
   float cold_gas_temperature_cut;
 
-  /*! Inverse of number of dynamical times over which gas is accreted from accretion disk */
+  /*! Inverse of number of dynamical times over which gas is accreted from
+   * accretion disk */
   float inverse_dynamical_time_factor;
 
   /*! Max dynamical time over which gas is accreted from accretion disk */
@@ -209,7 +210,8 @@ struct black_holes_props {
   /*! eps_f for the quasar mode */
   float quasar_coupling;
 
-  /*! A multiplicative factor for delaying cooling on a particle in quasar mode */
+  /*! A multiplicative factor for delaying cooling on a particle in quasar mode
+   */
   float quasar_cooling_shutoff_factor;
 
   /*! The disk wind efficiency from Benson & Babul 2009 */
@@ -579,7 +581,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:environment_temperature_cut_K", 1.0e5f);
 
   bp->cold_gas_temperature_cut = parser_get_opt_param_float(
-      params, "ObsidianAGN:cold_gas_temperature_cut_K", bp->environment_temperature_cut);
+      params, "ObsidianAGN:cold_gas_temperature_cut_K",
+      bp->environment_temperature_cut);
 
   bp->environment_temperature_cut *= T_K_to_int;
   bp->cold_gas_temperature_cut *= T_K_to_int;
@@ -588,8 +591,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:dynamical_time_factor", 0.f);
   if (bp->inverse_dynamical_time_factor > 0.f) {
     bp->inverse_dynamical_time_factor = 1.f / bp->inverse_dynamical_time_factor;
-  }
-  else {
+  } else {
     bp->inverse_dynamical_time_factor = -1.f;
   }
 
@@ -797,11 +799,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:lum_thresh_always_jet_1e45_erg_s", 0.f);
   if (bp->lum_thresh_always_jet == 0.f) {
     bp->lum_thresh_always_jet = FLT_MAX;
-  }
-  else {
+  } else {
     bp->lum_thresh_always_jet *=
-      1.e45 * units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
-      units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+        1.e45 * units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
+        units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
   }
 
   /* We need to keep epsilon_r continuous over all M_dot,BH/M_dot,Edd */
@@ -810,8 +811,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->adaf_coupling =
       parser_get_param_float(params, "ObsidianAGN:adaf_coupling");
-  bp->adaf_max_coupling =
-      parser_get_opt_param_float(params, "ObsidianAGN:adaf_max_coupling", bp->adaf_coupling);
+  bp->adaf_max_coupling = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_max_coupling", bp->adaf_coupling);
   bp->adaf_z_scaling =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_z_scaling", 0.f);
   if (bp->adaf_z_scaling > 0. &&
@@ -1016,7 +1017,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:adaf_cooling_shutoff_factor", 0.f);
 
   bp->quasar_cooling_shutoff_factor = parser_get_opt_param_float(
-      params, "ObsidianAGN:quasar_cooling_shutoff_factor", bp->adaf_cooling_shutoff_factor);
+      params, "ObsidianAGN:quasar_cooling_shutoff_factor",
+      bp->adaf_cooling_shutoff_factor);
 
   /* Always use nibbling in Obsidian */
   bp->use_nibbling = 1;
@@ -1100,8 +1102,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->correct_bh_potential_for_repositioning =
       parser_get_param_int(params, "ObsidianAGN:with_potential_correction");
 
-  bp->reposition_central_only =
-      parser_get_opt_param_int(params, "ObsidianAGN:reposition_central_only", 0);
+  bp->reposition_central_only = parser_get_opt_param_int(
+      params, "ObsidianAGN:reposition_central_only", 0);
 
   /* Merger parameters ------------------------------------- */
 
@@ -1182,11 +1184,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     message("Black holes relative tolerance in h: %.5f (+/- %.4f neighbours).",
             bp->h_tolerance, bp->delta_neighbours);
 
-    message("Black hole model is Obsidian (Rennehan+24, with modifications for KIARA)");
+    message(
+        "Black hole model is Obsidian (Rennehan+24, with modifications for "
+        "KIARA)");
     message("Black hole torque accretion efficiency is %g",
             bp->torque_accretion_norm);
-    message("Black hole Bondi accretion alpha is %g",
-            bp->bondi_alpha);
+    message("Black hole Bondi accretion alpha is %g", bp->bondi_alpha);
     message("Black hole Bondi accretion BH mass cap is %g Msun",
             bp->bondi_BH_mass_cap * bp->mass_to_solar_mass);
     message("Black hole jet velocity is %g km/s",
@@ -1224,8 +1227,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     message("Black hole slim disk recouple factor is %g", f_slim_disk_recouple);
     message("Black hole ADAF mass loading (energy) is %g",
             bp->adaf_wind_mass_loading);
-    message("Black hole ADAF f_accretion is %g (at z=0)",
-            bp->adaf_f_accretion);
+    message("Black hole ADAF f_accretion is %g (at z=0)", bp->adaf_f_accretion);
     message("Black hole ADAF v_wind is %g km/s (thermally dumped)",
             bp->adaf_wind_speed / bp->kms_to_internal);
     if (bp->adaf_energy_ramp_width > 0.f)
