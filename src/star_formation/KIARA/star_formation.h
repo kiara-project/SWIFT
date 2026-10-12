@@ -106,7 +106,8 @@ struct star_formation {
   /*! Which H2 model are we using? */
   enum star_formation_H2_model H2_model;
 
-  /*! Scaling factor for the clumping factor in the KMT H2 model */
+  /*! Clumping factor <n^2>/<n>^2 at the resolved scale in the KMT H2 model
+   * (~30 at ~1 kpc resolution, lower at higher resolution; >= 1) */
   float clumping_factor_scaling;
 
   /*! Convert g/cm^2 to Msun/pc^2 */
@@ -312,7 +313,8 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
       float gas_Z = 0.f;
       float chi = 0.f;
       float s = 0.f;
-      float clumping_factor = 30.f;
+      /* Clumping factor <n^2>/<n>^2 at the resolved scale (>= 1) */
+      float clumping_factor = starform->clumping_factor_scaling;
       float gas_gradrho_mag = 0.f;
 
       gas_Z = p->chemistry_data.metal_mass_fraction_total;
@@ -333,9 +335,6 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
           gas_sigma *=
               starform->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
 
-          /* Lower clumping factor with higher resolution
-            (CF = 30 @ ~1 kpc resolution) */
-          clumping_factor *= starform->clumping_factor_scaling;
           if (clumping_factor < 1.f) {
             clumping_factor = 1.f;
           }
@@ -347,8 +346,9 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
               (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
         }
       }
+      /* KMT: f_H2 = 1 - (3/4) s / (1 + s/4) for s < 2, and 0 above */
       if (s > 0.f) {
-        H2_fraction = 1.f - 0.75f * (s / (1.f + 0.25f * s));
+        H2_fraction = (s < 2.f) ? 1.f - 0.75f * (s / (1.f + 0.25f * s)) : 0.f;
       }
    }
 
@@ -458,10 +458,12 @@ INLINE static void star_formation_compute_SFR_wn07(
   /* Store dense gas fraction, corrected for sSFR dependence of SF efficiency */
   p->sf_data.dense_gas_fraction = fmin(f_c * epsc / 0.01, 1.f);
 
-  /* This is the SFR density from eq. 17, except use actual
-   * density rho_V not estimated density rho_c. 3pi/32=0.294524.
-   */
-  const double rhosfr = epsc * sqrt(0.294524 * phys_const->const_newton_G * rho_V) * f_c;
+  /* This is the SFR density from eq. 17, except use actual density rho_V
+   * not estimated density rho_c, per free-fall time
+   * 1/t_ff = sqrt(32 G rho / (3 pi)) as in the other SF models (the rho_V
+   * prefactor is applied below). */
+  const double rhosfr =
+      epsc * starform->lognormal.ff_const_inv * sqrt(rho_V) * f_c;
 
   /* multiply by dense gas effective volume to get SFR (rho_V appears in both
    * this eqn and previous one so it is cancelled out for efficiency) */
@@ -515,8 +517,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
    * threshold density for star formation rhocrit.  sigma comes from WN07 model.
    */
   const double rho_0 = starform->lognormal.rho0;
-  /* Mass-averaged density for cold phase */
-  const double sigma = sqrt(log(2. * rho_V / rho_0));
+  /* Width of the lognormal with mean density rho_V, as in WN07 */
+  const double sigma = sqrt(2. * log(rho_V / rho_0));
   const double z_num =
       log(starform->lognormal.rhocrit / rho_0) - (sigma * sigma);
   const double z_den = sqrt(2.) * sigma;
@@ -528,12 +530,11 @@ INLINE static void star_formation_compute_SFR_lognormal(
   /* Store dense gas fraction */
   p->sf_data.dense_gas_fraction = f_c;
 
-  const double rho_phys = hydro_get_physical_density(p, cosmo);
-
   /* Calculate the SFR per gas mass, using lognormal mass fraction above
-   * rhocrit as efficiency
+   * rhocrit as efficiency, with the free-fall time at the same (subgrid)
+   * density as the lognormal
    */
-  const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_phys);
+  const double sSFR = f_c * starform->lognormal.ff_const_inv * sqrt(rho_V);
 
   const double mass = H2_frac * p->cooling_data.subgrid_fcold * hydro_get_mass(p);
 
@@ -558,6 +559,10 @@ INLINE static void star_formation_compute_SFR(
     struct part *p, struct xpart *xp, const struct star_formation *starform,
     const struct phys_const *phys_const, const struct hydro_props *hydro_props,
     const struct cosmology *cosmo, const double dt_star) {
+
+  /* A non-positive SFR stores (minus) the scale-factor when the particle
+   * was last star-forming; keep that record below if no SFR results. */
+  const float SFR_old = p->sf_data.SFR;
 
   /* Abort early if time-step size is 0 */
   if (dt_star == 0.) {
@@ -588,6 +593,13 @@ INLINE static void star_formation_compute_SFR(
     default:
       error("Invalid SF model in star formation!!!");
       break;
+  }
+
+  /* Eligible gas can still get no SFR (e.g. below rho_0 or without H2):
+   * treat it as not star-forming rather than erasing the record of when
+   * it last was (KIARA runs are cosmological, so this is a scale-factor) */
+  if (!(p->sf_data.SFR > 0.f)) {
+    p->sf_data.SFR = (SFR_old > 0.f) ? -cosmo->a : min(SFR_old, 0.f);
   }
 }
 
@@ -743,6 +755,25 @@ INLINE static void star_formation_copy_properties(
   /* Store the chemistry struct in the star particle */
   sp->chemistry_data = p->chemistry_data;
 
+#if COOLING_GRACKLE_MODE >= 2
+  /* The gas metal fractions are gas-phase only (X + Y + Z + D = 1): the star
+   * forms from all of the gas, so add the metals locked in dust back in */
+  if (p->cooling_data.dust_mass > 0.f) {
+    const float D = p->cooling_data.dust_mass / hydro_get_mass(p);
+    float Z_total = 0.f;
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      if (elem != chemistry_element_H) {
+        sp->chemistry_data.metal_mass_fraction[elem] +=
+            D * p->cooling_data.dust_mass_fraction[elem];
+      }
+      if (elem != chemistry_element_H && elem != chemistry_element_He) {
+        Z_total += sp->chemistry_data.metal_mass_fraction[elem];
+      }
+    }
+    sp->chemistry_data.metal_mass_fraction_total = Z_total;
+  }
+#endif
+
   /* Store the tracers data */
   sp->tracers_data = xp->tracers_data;
 
@@ -757,8 +788,7 @@ INLINE static void star_formation_copy_properties(
   sp->feedback_data.N_launched = 0;
   sp->feedback_data.mass_to_launch = 0.f;
   sp->feedback_data.total_mass_kicked = 0.f;
-  sp->feedback_data.wind_velocity = 0.f;
-  sp->feedback_data.eta_suppression_factor = 1.f;*/
+  sp->feedback_data.wind_velocity = 0.f;*/
   sp->last_enrichment_time = sp->birth_time;
   sp->count_since_last_enrichment = 0;
 
@@ -771,17 +801,21 @@ INLINE static void star_formation_copy_properties(
   if (1) {
 
     const float max_displacement = 0.1;
+    /* Use streams other than random_number_star_formation: a converted
+     * star keeps the gas ID, so that stream would give the same number as
+     * the draw that formed the star (r < prob, i.e. delta_x ~ -1). These
+     * enrichment streams are not used by the KIARA model. */
     const double delta_x =
         2.f * random_unit_interval(sp->id, e->ti_current,
-                                   (enum random_number_type)0) -
+                                   random_number_enrichment_1) -
         1.f;
     const double delta_y =
         2.f * random_unit_interval(sp->id, e->ti_current,
-                                   (enum random_number_type)1) -
+                                   random_number_enrichment_2) -
         1.f;
     const double delta_z =
         2.f * random_unit_interval(sp->id, e->ti_current,
-                                   (enum random_number_type)2) -
+                                   random_number_enrichment_3) -
         1.f;
 
     /* Update the displacement */
@@ -868,8 +902,8 @@ INLINE static void starformation_init_backend(
     error("Invalid H2 model in SF params %s", H2_model);
   }
 
-  /* Read the ISM subgrid clumping factor value at the resolved scale
-   * (KMT model only)
+  /* Read the ISM subgrid clumping factor <n^2>/<n>^2 at the resolved
+   * scale (KMT model only)
    */
   starform->clumping_factor_scaling = parser_get_opt_param_double(
       parameter_file, "KIARAStarFormation:clumping_factor_scaling", 30.f);

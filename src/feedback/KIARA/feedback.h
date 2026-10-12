@@ -32,6 +32,8 @@
 #include "timestep_sync_part.h"
 #include "units.h"
 
+#include <stdint.h>
+#include <string.h>
 #include <strings.h>
 
 double feedback_get_lum_from_star_particle(
@@ -51,6 +53,21 @@ double feedback_get_turnover_mass(const struct feedback_props *fb_props,
                                   const double t, const double z);
 void feedback_prepare_interpolation_tables(
     const struct feedback_props *fb_props);
+
+/**
+ * @brief Check that a double is finite (not NaN or inf) from its bits.
+ *
+ * isnan()/isfinite() are folded to constants under -ffast-math
+ * (-ffinite-math-only), so test the exponent bits directly instead.
+ *
+ * @param x The value to check.
+ */
+__attribute__((always_inline)) INLINE static int feedback_double_is_finite(
+    const double x) {
+  uint64_t bits;
+  memcpy(&bits, &x, sizeof(bits));
+  return ((bits >> 52) & 0x7ff) != 0x7ff;
+}
 
 /**
  * @brief Recouple wind particles.
@@ -105,11 +122,12 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
       dt_part = get_timestep(p->time_bin, e->time_base);
     }
 
-    /* Decrement cooling shutoff time */
+    /* Decrement cooling shutoff time. Its expiry only turns cooling back
+     * on: a particle that is also decoupled (e.g. a BH wind) stays
+     * decoupled until its own recoupling criteria below are met. */
     if (p->feedback_data.cooling_shutoff_delay_time > 0.f) {
       p->feedback_data.cooling_shutoff_delay_time -= dt_part;
       if (p->feedback_data.cooling_shutoff_delay_time < 0.f) {
-        feedback_recouple_set_flags(p, cosmo);
         p->feedback_data.cooling_shutoff_delay_time = 0.f;
       }
     }
@@ -243,8 +261,6 @@ __attribute__((always_inline)) INLINE static int stars_dm_loop_is_active(
 __attribute__((always_inline)) INLINE static void feedback_init_spart(
     struct spart *sp) {
 
-  /* Default to not suppression the mass loading in the winds */
-  sp->feedback_data.eta_suppression_factor = 1.f;
   sp->feedback_data.kernel_wt_sum = 0.f;
   sp->feedback_data.wind_wt_sum = 0.f;
   sp->feedback_data.ngb_mass = 0.f;
@@ -324,15 +340,16 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_spart(
     struct spart *sp, const struct feedback_props *feedback_props) {
 
   feedback_init_spart(sp);
+#if COOLING_GRACKLE_MODE >= 2
   sp->feedback_data.SNe_ThisTimeStep = 0.;
   sp->feedback_data.SNe_Total = 0.;
+#endif
   sp->feedback_data.firehose_radius_stream = 0.f;
   sp->feedback_data.mass_to_launch = 0.f;
   sp->feedback_data.total_mass_kicked = 0.f;
   sp->feedback_data.wind_velocity = 0.f;
   sp->feedback_data.physical_energy_reservoir = 0.;
   sp->feedback_data.N_launched = 0;
-  sp->feedback_data.eta_suppression_factor = 1.f;
 }
 
 /**
@@ -355,6 +372,9 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
   p->feedback_data.mass_limiter_count = 0;
   p->feedback_data.heating_limiter_count = 0;
   for (int i = 0; i < 3; i++) p->feedback_data.wind_direction[i] = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+  p->feedback_data.SNe_ThisTimeStep = 0.f;
+#endif
 }
 
 /**
@@ -489,13 +509,15 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     ejecta_metal_mass[elem] = 0.;
   }
 
+  /* Age at the end of the enrichment step: the ejecta are those of the
+   * stars that die over [age - dt, age] */
+  const double star_age_end_step = star_age_beg_step + dt;
+
   feedback_get_ejecta_from_star_particle(
-      sp, star_age_beg_step, feedback_props, dt, &N_SNe, &ejecta_energy,
+      sp, star_age_end_step, feedback_props, dt, &N_SNe, &ejecta_energy,
       &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
 
-  ejecta_mass *= 0.5f;  // fudge factor to get stellar mass loss rate correct.  unclear why?
-
-  if (isnan(ejecta_mass)) {
+  if (!feedback_double_is_finite(ejecta_mass)) {
     for (elem = 0; elem < chem5_element_count; elem++) {
       message("ejecta_metal_mass[%d]=%g", elem, ejecta_metal_mass[elem]);
     }
@@ -540,13 +562,13 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   const float FIRE_eta_upper_slope = feedback_props->FIRE_eta_upper_slope;
   const float FIRE_eta_lower_slope_EOR =
       feedback_props->FIRE_eta_lower_slope;
-  const float wind_velocity_suppression_redshift =
-      feedback_props->wind_velocity_suppression_redshift;
+  const float wind_eta_suppression_redshift =
+      feedback_props->wind_eta_suppression_redshift;
 
   float eta = feedback_mass_loading_factor(
       cosmo, M_star, M_star_min, FIRE_eta_norm, FIRE_eta_break,
       FIRE_eta_lower_slope, FIRE_eta_upper_slope, FIRE_eta_lower_slope_EOR,
-      wind_velocity_suppression_redshift);
+      wind_eta_suppression_redshift);
 
   /* velocity in internal units which is a^2*comoving, or a*physical */
   float v_internal = feedback_compute_kick_velocity(M_star, sp->id, cosmo,
@@ -563,10 +585,14 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     const float h_phys = kernel_gamma * sp->h * cosmo->a;
     const float v_phys = v_internal * cosmo->a_inv;
 
-    /* p0 is momentum per unit mass in km/s from early feedback sources */
+    /* p0 is momentum per unit mass in km/s from early feedback sources.
+     * The momentum is deposited over this step, [age_beg, age_end], up to
+     * t_fb. */
     const float p0 = h_phys * eps_term * M_PI * tfb_inv;
-    const float t_prev = fmax(star_age_beg_step - dt, 0.f);
-    const float term1 = pow(star_age_beg_step * tfb_inv, alpha_power);
+    const float t_prev = fmax(star_age_beg_step, 0.f);
+    const float t_end = fmin(star_age_end_step,
+                             feedback_props->early_stellar_feedback_tfb);
+    const float term1 = pow(t_end * tfb_inv, alpha_power);
     const float term2 = pow(t_prev * tfb_inv, alpha_power);
     const double delta_p = alpha * p0 * sp->mass * (term1 - term2);
     sp->feedback_data.physical_energy_reservoir += 0.5 * delta_p * v_phys;
@@ -584,40 +610,46 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
    * Compute the mass loading and energy reservoirs for the stellar feedback.
    * Mass loading will be limited by the physical energy available from chem5
    * directly at each step. Later, when computing the probability to kick
-   * a particle, the mass_to_launch will be limited by eta_suppression_factor.
+   * a particle, the mass_to_launch will be limited by
+   * max_frac_of_kernel_to_launch.
    */
+  /* Boost wind speed and/or mass loading based on metallicity, which
+   * governs photon energy output. Done before setting the total wind mass,
+   * so that the eta boost applies to it. */
+  float Z_fac = 1.f;
+  const int vwind_boost_flag = feedback_props->metal_dependent_vwind;
+  if (vwind_boost_flag != kiara_metal_boosting_off) {
+    Z_fac = 2.61634f;
+    const float Z_met = sp->chemistry_data.metal_mass_fraction_total;
+    if (Z_met > 1.e-9f) {
+      Z_fac =
+          powf(10.f, -0.0029f * powf(log10f(Z_met) + 9.f, 2.5f) + 0.417694f);
+    }
+
+    Z_fac = max(Z_fac, 1.f);
+  }
+
+  /* The wind energy scales as eta * v^2, so the energy available is boosted
+   * by Z_fac for each of the two that is boosted */
+  float energy_Z_fac = Z_fac;
+  switch (vwind_boost_flag) {
+    case kiara_metal_boosting_vwind:
+      v_internal *= sqrtf(Z_fac);
+      break;
+    case kiara_metal_boosting_eta:
+      eta *= Z_fac;
+      break;
+    case kiara_metal_boosting_both:
+      v_internal *= sqrtf(Z_fac);
+      eta *= Z_fac;
+      energy_Z_fac = Z_fac * Z_fac;
+      break;
+  }
+
   const float wind_mass = eta * sp->mass_init;
   const float total_mass_kicked = sp->feedback_data.total_mass_kicked;
 
   if (total_mass_kicked < wind_mass) {
-
-    /* Boost wind speed based on metallicity which governs
-     * photon energy output */
-    float Z_fac = 1.f;
-    const int vwind_boost_flag = feedback_props->metal_dependent_vwind;
-    if (vwind_boost_flag != kiara_metal_boosting_off) {
-      Z_fac = 2.61634f;
-      const float Z_met = sp->chemistry_data.metal_mass_fraction_total;
-      if (Z_met > 1.e-9f) {
-        Z_fac =
-            powf(10.f, -0.0029f * powf(log10f(Z_met) + 9.f, 2.5f) + 0.417694f);
-      }
-
-      Z_fac = max(Z_fac, 1.f);
-    }
-
-    switch (vwind_boost_flag) {
-      case kiara_metal_boosting_vwind:
-        v_internal *= sqrtf(Z_fac);
-        break;
-      case kiara_metal_boosting_eta:
-        eta *= Z_fac;
-        break;
-      case kiara_metal_boosting_both:
-        v_internal *= sqrtf(Z_fac);
-        eta *= Z_fac;
-        break;
-    }
 
     /* ------ SNII Energy and Wind Launch Setup ------ */
 
@@ -625,7 +657,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     const double E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
 
     /* Apply energy multiplier and metallicity scaling */
-    const float energy_boost = feedback_props->SNII_energy_multiplier * Z_fac;
+    const float energy_boost =
+        feedback_props->SNII_energy_multiplier * energy_Z_fac;
 
     /* Add to physical energy reservoir */
     sp->feedback_data.physical_energy_reservoir += E_SNII_phys * energy_boost;
@@ -653,60 +686,28 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
 #ifdef KIARA_DEBUG_CHECKS
     message(
-        "ETA: z=%g id=%lld age=%g Eres=%g dE=%g NSNe=%g NSNtot=%g eta=%g "
-        "max=%g tot=%g mlaunch=%g Ntot=%d",
+        "ETA: z=%g id=%lld age=%g Eres=%g dE=%g NSNe=%g eta=%g "
+        "eta_max_step=%g eta_kicked=%g mlaunch=%g Ntot=%d",
         cosmo->z, sp->id, star_age_beg_step * feedback_props->time_to_Myr,
         sp->feedback_data.physical_energy_reservoir *
             feedback_props->energy_to_cgs,
-        1.e51 * N_SNe * scaling, N_SNe,
-        sp->mass_init * feedback_props->mass_to_solar_mass / 80.f,
-        /* 1 SNII for ~80 Mo for Kroupa/Chabrier IMF */
-        mass_to_launch / sp->mass_init, eta_max_this_timestep, eta,
+        E_SNII_phys * energy_boost * feedback_props->energy_to_cgs, N_SNe, eta,
+        wind_mass_max / sp->mass_init, total_mass_kicked / sp->mass_init,
         sp->feedback_data.mass_to_launch, sp->feedback_data.N_launched);
 #endif
 
-    /* Set stream radius for firehose particles kicked by this star */
-
-    /* This is the physical initial density */
-    const double stream_init_density = 0.1; /* n_H units CGS */
-    const double rho_volumefilling_phys =
-        stream_init_density / feedback_props->rho_to_n_cgs;
-    float galaxy_stellar_mass_Msun = M_star;
-    const float min_gal_mass = feedback_props->minimum_galaxy_stellar_mass;
-    if (galaxy_stellar_mass_Msun < min_gal_mass) {
-      galaxy_stellar_mass_Msun = min_gal_mass;
-    }
-    galaxy_stellar_mass_Msun *= feedback_props->mass_to_solar_mass;
-
-    /* stream size = 2 * comoving effective size of disk galaxies
-     * (Ward+2024 CEERS) */
-    const float redge_obs = 2.f * 7.1f * pow(cosmo->a, 0.63f) *
-                            pow(galaxy_stellar_mass_Msun / 5.e10, 0.16f);
-
-    /* Convert to internal units */
-    sp->feedback_data.firehose_radius_stream =
-        cosmo->a_inv * redge_obs / feedback_props->length_to_kpc;
-
-    if (sp->galaxy_data.stellar_mass > 0.f &&
-        sp->galaxy_data.specific_sfr > 0.f && eta > 0.f &&
-        sp->feedback_data.wind_velocity != 0.f) {
-
-      const float v_phys = fabs(sp->feedback_data.wind_velocity) * cosmo->a_inv;
-      const float m_dot_wind_sfr =
-          eta * sp->galaxy_data.specific_sfr * sp->galaxy_data.stellar_mass;
-      const float specific_m_dot_wind_vel =
-          M_PI * rho_volumefilling_phys * v_phys;
-
-      /* Put into comoving units */
-      const float redge_est =
-          sqrtf(m_dot_wind_sfr / specific_m_dot_wind_vel) * cosmo->a_inv;
-
-      sp->feedback_data.firehose_radius_stream = fmin(redge_est, redge_obs);
-    }
-
-    /* Stream cannot be smaller than the smoothing length */
-    sp->feedback_data.firehose_radius_stream =
-        fmax(sp->feedback_data.firehose_radius_stream, kernel_gamma * sp->h);
+    /* Set stream radius for firehose particles kicked by this star, from
+     * the galaxy's wind mass outflow rate eta * SFR */
+    const double m_dot_wind =
+        (sp->galaxy_data.specific_sfr > 0.f && eta > 0.f)
+            ? eta * sp->galaxy_data.specific_sfr * sp->galaxy_data.stellar_mass
+            : 0.;
+    sp->feedback_data.firehose_radius_stream = firehose_initial_stream_radius(
+        sp->galaxy_data.stellar_mass,
+        feedback_props->minimum_galaxy_stellar_mass,
+        feedback_props->mass_to_solar_mass, feedback_props->length_to_kpc,
+        feedback_props->rho_to_n_cgs, m_dot_wind,
+        fabsf(sp->feedback_data.wind_velocity) * cosmo->a_inv, sp->h, cosmo);
   }
 
   /* Check that ejecta or metal masses are not <0 */
@@ -715,46 +716,43 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     ejecta_unprocessed = 0.f;
   }
 
-  /* D. Rennehan: Do some magic that I still don't understand
-   */
-  double dum = 0.;
-  int flag_negative = 0;
-  /* Here we can loop over Swift metals because metal_mass_fraction
-   * would be zero for the unique Chem5 metals anyway, and would
-   * not activate the condition.
-   */
+  /* Add the unprocessed ejecta, which carry the star's own composition, to
+   * the processed (net) yields. We can loop over the Swift elements only,
+   * because the star has none of the other Chem5 elements. */
   for (elem = 0; elem < chemistry_element_count; elem++) {
-    dum = ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction[elem];
     const int elem_conv = feedback_props->element_index_conversions[elem];
-    ejecta_metal_mass[elem_conv] += dum;
-    if (ejecta_metal_mass[elem_conv] < 0.) {
-      warning("EJECTA METAL MASS<0: z=%g sid=%lld elem=%d %d Z*=%g ej=%g Zej=%g, setting to 0", cosmo->z, sp->id, elem, elem_conv, sp->chemistry_data.metal_mass_fraction[elem], ejecta_unprocessed, ejecta_metal_mass[elem_conv]);
-      ejecta_metal_mass[elem_conv] = 0.;
-      flag_negative = 1;
-      /* Do not break here, we need the zeroed elements where negative */
-    }
+    ejecta_metal_mass[elem_conv] +=
+        ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction[elem];
   }
 
-  /* Check for any remaining that have negative mass after adding unprocessed */
-  for (elem = 0; elem < chem5_element_count; elem++) {
+  /* Net yields can be negative (e.g. destruction of H, or of C and O by
+   * hot-bottom burning, in AGB stars). For stars with almost none of an
+   * element (e.g. nearly metal-free stars) the destruction can exceed what
+   * the star had: clamp such elements at zero, and add the clamped mass to
+   * the ejecta so that they remain the sum of the element masses. Only
+   * warn when this is not negligible. */
+  double clamped_mass = 0., clamped_metal_mass = 0.;
+  for (elem = chem5_element_H; elem < chem5_element_count; elem++) {
     if (ejecta_metal_mass[elem] < 0.) {
+      clamped_mass -= ejecta_metal_mass[elem];
+      if (elem >= chem5_element_C) clamped_metal_mass -= ejecta_metal_mass[elem];
       ejecta_metal_mass[elem] = 0.;
-      flag_negative = 1;
     }
   }
 
-  /* If ANY element ended up negative we recompute everything */
-  if (flag_negative) {
-    ejecta_mass = 0.;
-    ejecta_metal_mass[chem5_element_Z] = 0.;
-    for (elem = chem5_element_H; elem < chem5_element_Zn; elem++) {
-      ejecta_mass += ejecta_metal_mass[elem];
+  if (clamped_mass > 0.) {
+    if (clamped_mass > 1.e-6 * ejecta_mass) {
+      warning(
+          "Negative net ejecta of some elements clamped: z=%g sid=%lld "
+          "Z*=%g clamped/ejecta=%g",
+          cosmo->z, sp->id, sp->chemistry_data.metal_mass_fraction_total,
+          (ejecta_mass > 0.) ? clamped_mass / ejecta_mass : -1.);
     }
-
-    for (elem = chem5_element_C; elem < chem5_element_Zn; elem++) {
-      ejecta_metal_mass[chem5_element_Z] += ejecta_metal_mass[elem];
-    }
+    ejecta_mass += clamped_mass;
+    ejecta_metal_mass[chem5_element_Z] += clamped_metal_mass;
   }
+  ejecta_metal_mass[chem5_element_Z] =
+      max(ejecta_metal_mass[chem5_element_Z], 0.);
 
   /* Now we loop over the Swift metals and set the proper values using the
      conversion map */
@@ -771,6 +769,29 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     feedback_dust_production_condensation(sp, star_age_beg_step, feedback_props);
   }
 #endif
+
+  /* Limit the ejecta so that no gas neighbour can grow by more than
+   * max_mass_increase_factor. Neighbour j receives a fraction
+   * m_j w_j / kernel_wt_sum, with w_j <= W(0), so this holds for all of them
+   * if ejecta <= (factor - 1) kernel_wt_sum / W(0). Whatever is not ejected
+   * stays in the star, so mass is conserved (the per-particle limiter in
+   * the enrichment loop is then only a backstop, e.g. for gas enriched by
+   * several stars in one step). */
+  const double max_ejecta_mass = (feedback_props->max_mass_increase_factor -
+                                  1.) *
+                                 sp->feedback_data.kernel_wt_sum / kernel_root;
+  if (ejecta_mass > max_ejecta_mass) {
+    const double ejecta_scale =
+        (ejecta_mass > 0.) ? max_ejecta_mass / ejecta_mass : 0.;
+    ejecta_mass *= ejecta_scale;
+    sp->feedback_data.total_metal_mass *= ejecta_scale;
+    for (elem = 0; elem < chemistry_element_count; elem++) {
+      sp->feedback_data.metal_mass[elem] *= ejecta_scale;
+#if COOLING_GRACKLE_MODE >= 2
+      sp->feedback_data.delta_dust_mass[elem] *= ejecta_scale;
+#endif
+    }
+  }
 
   /* Compute the total mass to distribute */
   sp->feedback_data.mass = ejecta_mass;
@@ -811,12 +832,14 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
  * @param with_cosmology Are we running with cosmology on?
  * @param ti_current The current time (in integer)
  * @param time_base The time base.
+ * @param old_time_bin The star's time bin for the step that just finished
  */
 __attribute__((always_inline)) INLINE static void feedback_will_do_feedback(
     struct spart *sp, const struct feedback_props *feedback_props,
     const int with_cosmology, const struct cosmology *cosmo, const double time,
     const struct unit_system *us, const struct phys_const *phys_const,
-    const integertime_t ti_current, const double time_base) {
+    const integertime_t ti_current, const double time_base, 
+    const timebin_t old_time_bin) {
 
   /* Special case for new-born stars */
   if (with_cosmology) {

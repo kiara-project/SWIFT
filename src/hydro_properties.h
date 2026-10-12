@@ -161,4 +161,9 @@ void hydro_props_struct_restore(const struct hydro_props *p, FILE *stream);
 /* Setup for tests */
 void hydro_props_init_no_hydro(struct hydro_props *p);
 
+struct cosmology;
+void hydro_props_set_initial_temperature_from_CMB(
+    struct hydro_props *p, const struct phys_const *phys_const,
+    const struct cosmology *cosmo, const int with_cosmology);
+
 #endif /* SWIFT_HYDRO_PROPERTIES */

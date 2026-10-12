@@ -402,7 +402,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   float rho = hydro_get_physical_density(p, cosmo);
   if (p->cooling_data.subgrid_temp > 0. &&
            p->cooling_data.subgrid_fcold > 1.e-6) {
-    rho = cooling_get_subgrid_density(p, xp) * p->cooling_data.subgrid_fcold;
+    rho = cooling_get_subgrid_density(p, xp);
   }
   rt_tchem_get_species_densities(p, rho, rt_species);
 

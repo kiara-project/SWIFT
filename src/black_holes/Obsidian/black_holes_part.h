@@ -78,6 +78,19 @@ struct bpart {
 #ifdef WITH_FOF_GALAXIES
   /*! Struct for host galaxy information */
   struct fof_galaxy_data galaxy_data;
+
+  /*! ID of the most massive BH of the FoF galaxy this (secondary) BH sits
+   * in, whose dynamical-friction merger clock is running (0 if none) */
+  long long df_primary_id;
+
+  /*! Time at which the dynamical-friction clock started */
+  double df_t_start;
+
+  /*! Dynamical-friction time to sink onto df_primary_id */
+  float df_merger_time;
+
+  /*! Satellite mass (former galaxy stars + BH) in the dynamical-friction time */
+  float df_sat_mass;
 #endif
 
   /*! Union for the formation time and formation scale factor */
@@ -181,6 +194,10 @@ struct bpart {
   /*! The real angular momentum of the gas in the kernel */
   float angular_momentum_gas[3];
 
+  /*! Gas angular momentum in the kernel from the previous step, used to
+   * classify corotating gas in the density loop (not reset each step) */
+  float angular_momentum_gas_prev[3];
+
   /*! Circular velocity of the gas around the black hole at the smoothing
    * radius (calculated as j_gas / h_BH, where j is specific ang. mom.) */
   float circular_velocity_gas[3];
@@ -243,6 +260,9 @@ struct bpart {
 
   /*! The radiative luminosity of the black hole */
   float radiative_luminosity;
+
+  /*! Kinetic power of the launched jet this step (internal units) */
+  float jet_power;
 
   /*! How much energy has been given away in this timestep? */
   float delta_energy_this_timestep;

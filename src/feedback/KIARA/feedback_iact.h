@@ -33,14 +33,19 @@
 /**
  * @brief Set direction of stellar feedback kick
  *
+ * Random numbers are seeded with the gas particle's ID, so that each particle
+ * kicked by a star in a given step gets its own direction (or sign).
+ *
  * @param si Star particle.
  * @param pj Gas particle being kicked.
+ * @param dx Comoving vector separating the particles (si - pj), with the
+ * periodic wrapping already applied.
  * @param ti_current Current integer time value (for random numbers).
- * @param dir_flag Flag to choose direction: 0=rendom, 1=L_gas, 2=L_BH.
+ * @param dir_flag Flag to choose direction: 0=random, 1=v x a, 2=outwards.
  * @param dir Direction of kick (returned).
  */
 __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
-    const struct spart *si, const struct part *pj,
+    const struct spart *si, const struct part *pj, const float dx[3],
     const integertime_t ti_current, const int dir_flag, float *dir) {
 
   float kick_dir = 1.f;
@@ -50,9 +55,9 @@ __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
     /* Isotropic */
     case 0: {
       const double random_for_theta = random_unit_interval(
-          si->id, ti_current, random_number_isotropic_SNII_feedback_ray_theta);
+          pj->id, ti_current, random_number_isotropic_SNII_feedback_ray_theta);
       const double random_for_phi = random_unit_interval(
-          si->id, ti_current, random_number_isotropic_SNII_feedback_ray_phi);
+          pj->id, ti_current, random_number_isotropic_SNII_feedback_ray_phi);
 
       const float theta = acosf(2.f * random_for_theta - 1.f);
       const float phi = 2.f * M_PI * random_for_phi;
@@ -72,16 +77,16 @@ __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
       dir[2] = pj->gpart->a_grav[0] * pj->gpart->v_full[1] -
                pj->gpart->a_grav[1] * pj->gpart->v_full[0];
 
-      random_number = random_unit_interval(si->id, ti_current,
-                                           random_number_stellar_feedback_1);
+      random_number = random_unit_interval(
+          pj->id, ti_current, random_number_isotropic_SNII_feedback_ray_theta);
       kick_dir = (random_number > 0.5) ? 1.f : -1.f;
       break;
     }
     /* Outwards from star */
     case 2:
-      dir[0] = pj->x[0] - si->x[0];
-      dir[1] = pj->x[1] - si->x[1];
-      dir[2] = pj->x[2] - si->x[2];
+      dir[0] = -dx[0];
+      dir[1] = -dx[1];
+      dir[2] = -dx[2];
       break;
 
     default:
@@ -222,9 +227,6 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
   /* Total mass to launch for this star particle */
   float mass_to_launch = si->feedback_data.mass_to_launch;
 
-  /* Suppress based on the input parameter file */
-  mass_to_launch *= si->feedback_data.eta_suppression_factor;
-
   /* Estimated number of particles to kick out of the kernel */
   const float mass_frac_to_launch = mass_to_launch / ngb_mass;
 
@@ -307,6 +309,7 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
  * @brief Kick and sometimes heat gas particle near a star,
  * if star has enough mass and energy for an ejection event.
  *
+ * @param dx Comoving vector separating the particles (si - pj).
  * @param si First (star) particle (not updated).
  * @param pj Second (gas) particle.
  * @param xpj Extra particle data
@@ -316,9 +319,9 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
  * generator
  */
 __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
-    const struct spart *si, struct part *pj, struct xpart *xpj,
-    const struct cosmology *cosmo, const struct feedback_props *fb_props,
-    const integertime_t ti_current) {
+    const float dx[3], const struct spart *si, struct part *pj,
+    struct xpart *xpj, const struct cosmology *cosmo,
+    const struct feedback_props *fb_props, const integertime_t ti_current) {
 
   if (pj->feedback_data.kick_id == si->id) {
 
@@ -341,7 +344,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     float dir[3] = {0.f, 0.f, 0.f};
     const int dir_flag = fb_props->kick_direction_flag;
     const float dirsign =
-        feedback_set_kick_direction(si, pj, ti_current, dir_flag, dir);
+        feedback_set_kick_direction(si, pj, dx, ti_current, dir_flag, dir);
 
     float norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
 
@@ -354,12 +357,15 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
           "= (%g, %g, %g); vw=%g. Randomizing direction.",
           cosmo->z, si->id, pj->id, dir[0], dir[1], dir[2],
           fabs(wind_velocity * cosmo->a_inv));
-      dir[0] = random_unit_interval(pj->id, ti_current,
-                                    random_number_stellar_feedback_1);
-      dir[1] = random_unit_interval(pj->id, ti_current,
-                                    random_number_stellar_feedback_2);
-      dir[2] = random_unit_interval(pj->id, ti_current,
-                                    random_number_stellar_feedback_3);
+      dir[0] = 2. * random_unit_interval(pj->id, ti_current,
+                                         random_number_stellar_feedback_1) -
+               1.;
+      dir[1] = 2. * random_unit_interval(pj->id, ti_current,
+                                         random_number_stellar_feedback_2) -
+               1.;
+      dir[2] = 2. * random_unit_interval(pj->id, ti_current,
+                                         random_number_stellar_feedback_3) -
+               1.;
       norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
     }
 
@@ -647,40 +653,36 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       if (pj->cooling_data.subgrid_temp > 0.f &&
           pj->cooling_data.subgrid_fcold > 0.f) {
 
-        /* 0.8125 is mu for a fully neutral gas with XH=0.75;
+        /* 0.8125 is 1/mu for a fully neutral gas with XH=0.75;
          * approximate but good enough */
-        const double u_cold_phys =
-            0.8125 * pj->cooling_data.subgrid_temp * fb_props->temp_to_u_factor;
+        const double u_cold_phys = 0.8125 * pj->cooling_data.subgrid_temp *
+                                   fb_props->temp_to_u_factor_mu1;
 
-        const double delta_u_ISM_phys = current_u_phys - u_cold_phys;
-        double f_evap = 0.;
-
+        /* The particle's u is the mass-weighted mix of the two phases,
+         * u = f_c u_cold + (1 - f_c) u_warm, so recover u_warm from it.
+         * Turning a mass fraction df of cold gas into warm gas costs
+         * df (u_warm - u_cold) per unit particle mass. */
+        const double f_c = pj->cooling_data.subgrid_fcold;
+        const double u_warm_phys =
+            (f_c < 1.) ? (current_u_phys - f_c * u_cold_phys) / (1. - f_c)
+                       : current_u_phys;
+        const double delta_u_ISM_phys = u_warm_phys - u_cold_phys;
         const double du_phys = new_u_phys - current_u_phys;
 
-        /* Use extra heat to move off of the ISM */
-        if (du_phys > 0. && delta_u_ISM_phys >= 0.) {
+        /* Use the extra heat to evaporate cold gas, at most all of it. The
+         * heat stays in the particle (new_u_phys), which is the mixture
+         * energy after the evaporation. */
+        if (du_phys > 0.) {
           const double u_phys_tol =
               fb_props->SNIa_add_heat_to_ISM_tolerance * current_u_phys;
 
+          double f_evap = f_c;
           if (delta_u_ISM_phys > u_phys_tol) {
-            f_evap = du_phys / delta_u_ISM_phys;
-            f_evap = min(f_evap, 1.0);
-          } else {
-            f_evap = 1.0;
+            f_evap = min(du_phys / delta_u_ISM_phys, f_c);
           }
 
-          /* Clip values in case of overflow */
           if (f_evap > 0.) {
-            pj->cooling_data.subgrid_fcold *= 1. - f_evap;
-
-            const double u_remaining_phys = du_phys - f_evap * delta_u_ISM_phys;
-            new_u_phys = current_u_phys + max(u_remaining_phys, 0.);
-
-            /* Limit internal energy increase here as well */
-            if (new_u_phys > max_new_u_phys) {
-              new_u_phys = max_new_u_phys;
-              pj->feedback_data.heating_limiter_count++;
-            }
+            pj->cooling_data.subgrid_fcold -= f_evap;
 
             if (pj->cooling_data.subgrid_fcold <= 0.f) {
               pj->cooling_data.subgrid_temp = 0.f;
@@ -720,26 +722,7 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     }
   }
 
-  /* Make sure that X + Y + Z = 1 */
-  const float Y_He =
-      pj->chemistry_data.metal_mass_fraction[chemistry_element_He];
-  const float Z = pj->chemistry_data.metal_mass_fraction_total;
-  const float X_H = 1.f - Y_He - Z;
-
-  if (X_H < 0.f || X_H > 1.f) {
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      warning("\telem[%d] is %g", elem,
-              pj->chemistry_data.metal_mass_fraction[elem]);
-    }
-
-    error(
-        "Hydrogen fraction exeeds unity or is negative for"
-        " particle id=%lld due to stellar feedback.",
-        pj->id);
-  }
-
-  pj->chemistry_data.metal_mass_fraction[chemistry_element_H] = X_H;
-
+#if COOLING_GRACKLE_MODE >= 2
   /* Compute kernel-smoothed contribution to number of SNe going off
    * this timestep */
   pj->feedback_data.SNe_ThisTimeStep +=
@@ -797,6 +780,34 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       pj->cooling_data.dust_mass_fraction[elem] = 0.f;
     }
   }
+
+#endif
+
+  /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only). Done after the
+   * dust ejecta above so that the updated dust mass is used. */
+  const float Y_He =
+      pj->chemistry_data.metal_mass_fraction[chemistry_element_He];
+  const float Z = pj->chemistry_data.metal_mass_fraction_total;
+#if COOLING_GRACKLE_MODE >= 2
+  const float D = pj->cooling_data.dust_mass * new_mass_inv;
+#else
+  const float D = 0.f;
+#endif
+  const float X_H = 1.f - Y_He - Z - D;
+
+  if (X_H < 0.f || X_H > 1.f) {
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      warning("\telem[%d] is %g", elem,
+              pj->chemistry_data.metal_mass_fraction[elem]);
+    }
+
+    error(
+        "Hydrogen fraction exeeds unity or is negative for"
+        " particle id=%lld due to stellar feedback (dust fraction %g).",
+        pj->id, D);
+  }
+
+  pj->chemistry_data.metal_mass_fraction[chemistry_element_H] = X_H;
 }
 
 /**
@@ -830,7 +841,7 @@ runner_iact_nonsym_feedback_apply(
       r2, dx, hi, hj, si, pj, xpj, cosmo, hydro_props, fb_props, ti_current);
 
   /* Do kinetic wind feedback */
-  feedback_kick_gas_around_star(si, pj, xpj, cosmo, fb_props, ti_current);
+  feedback_kick_gas_around_star(dx, si, pj, xpj, cosmo, fb_props, ti_current);
 
 #if COOLING_GRACKLE_MODE >= 2
   /* NOT USED: Compute G0 contribution from star to the gas particle in Habing

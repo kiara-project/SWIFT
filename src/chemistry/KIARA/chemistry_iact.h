@@ -24,6 +24,8 @@
  * @brief Smooth metal interaction functions following the KIARA model.
  */
 
+#include "cosmology.h"
+#include "timeline.h"
 #include "timestep_sync_part.h"
 
 #include <assert.h>
@@ -49,7 +51,10 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
    * are in the stream. */
   const int decoupled_i = pi->decoupled;
   const int decoupled_j = pj->decoupled;
-  if (decoupled_i && decoupled_j) return;
+
+  /* Exactly one of the pair must be in the stream. Neither is the common
+   * case, so return before doing any work. */
+  if ((decoupled_i != 0) == (decoupled_j != 0)) return;
 
   const float r = sqrtf(r2);
   const float eint_i = hydro_get_drifted_comoving_internal_energy(pi);
@@ -76,6 +81,13 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
     chi->u_ambient += mj * eint_j * wi;
     chi->rho_ambient += mj * wi;
     chi->w_ambient += wi;
+    for (int k = 0; k < 3; k++) chi->v_ambient[k] += mj * pj->v[k] * wi;
+
+    /* The ambient particle sums the kernel weight of its stream neighbours,
+     * to share its per-step mixing limit among them */
+    float wj;
+    kernel_eval(r / hj, &wj);
+    pj->chemistry_data.w_ambient += wj;
   }
 
   if (!decoupled_i && decoupled_j) {
@@ -98,6 +110,12 @@ __attribute__((always_inline)) INLINE static void firehose_compute_ambient_sym(
     chj->u_ambient += mi * eint_i * wj;
     chj->rho_ambient += mi * wj;
     chj->w_ambient += wj;
+    for (int k = 0; k < 3; k++) chj->v_ambient[k] += mi * pi->v[k] * wj;
+
+    /* Stream-neighbour weight of the ambient particle */
+    float wi;
+    kernel_eval(r / hi, &wi);
+    pi->chemistry_data.w_ambient += wi;
   }
 }
 
@@ -125,10 +143,19 @@ firehose_compute_ambient_nonsym(const float r2, const float dx[3],
   const int decoupled_i = pi->decoupled;
   const int decoupled_j = pj->decoupled;
 
-  /* A wind particle cannot be in the ambient medium */
-  if (!decoupled_i || decoupled_j) return;
+  /* Exactly one of the pair must be in the stream */
+  if ((decoupled_i != 0) == (decoupled_j != 0)) return;
 
   struct chemistry_part_data *chi = &pi->chemistry_data;
+
+  /* An ambient particle only sums the kernel weight of its stream
+   * neighbours, to share its per-step mixing limit among them */
+  if (!decoupled_i) {
+    float wi;
+    kernel_eval(sqrtf(r2) / hi, &wi);
+    chi->w_ambient += wi;
+    return;
+  }
 
   /* Do accumulation of ambient quantities */
   const float eint_j = hydro_get_drifted_comoving_internal_energy(pj);
@@ -155,6 +182,7 @@ firehose_compute_ambient_nonsym(const float r2, const float dx[3],
   chi->u_ambient += mj * eint_j * wi;
   chi->rho_ambient += mj * wi;
   chi->w_ambient += wi;
+  for (int k = 0; k < 3; k++) chi->v_ambient[k] += mj * pj->v[k] * wi;
 }
 
 /**
@@ -306,19 +334,27 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
  * @param pi Wind particle.
  * @param pj Ambient particle.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current Current integer time for seeding random number generator
+ * @param ti_current Current integer time.
  * @param cd #chemistry_global_data containing chemistry information.
  * @param v2 velocity difference squared between i and j.
+ * @param w_frac (return) the stream's kernel weight of this neighbour as a
+ * fraction of the summed weight over all its ambient neighbours.
+ * @param w_frac_amb (return) the ambient particle's kernel weight of the
+ * stream as a fraction of its summed weight over all stream neighbours.
+ * @param cosmo The #cosmology.
+ * @param with_cosmology Are we running with cosmology?
  *
  */
 __attribute__((always_inline)) INLINE static float
 firehose_compute_mass_exchange(const float r2, const float dx[3],
                                const float hi, const float hj,
                                const struct part *pi, const struct part *pj,
-                               const float time_base,
+                               const double time_base,
                                const integertime_t ti_current,
                                const struct chemistry_global_data *cd,
-                               float *v2, const struct cosmology *cosmo) {
+                               float *v2, float *w_frac, float *w_frac_amb,
+                               const struct cosmology *cosmo,
+                               const int with_cosmology) {
 
   const int i_stream = pi->decoupled;
   const int j_stream = pj->decoupled;
@@ -328,11 +364,24 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   if (i_stream && j_stream) return 0.f;
   if (!i_stream && !j_stream) return 0.f;
 
-  const double dt_i = get_timestep(pi->time_bin, time_base);
-  const double dt_j = get_timestep(pj->time_bin, time_base);
-
   /* Must be a timestep for both */
-  if (dt_i <= 0. || dt_j <= 0.) return 0.f;
+  if (pi->time_bin <= 0 || pj->time_bin <= 0) return 0.f;
+
+  /* The exchange is only done when both particles are active (symmetric
+   * force-loop interaction), i.e. once per step of whichever has the longer
+   * time-step, so integrate over that step. Use the physical time over the
+   * step that just ended, as in chemistry_end_force (with cosmology the
+   * integer time-line is in ln(a), not time). */
+  const timebin_t bin_max = max(pi->time_bin, pj->time_bin);
+  double dt;
+  if (with_cosmology) {
+    const integertime_t ti_step = get_integer_timestep(bin_max);
+    const integertime_t ti_begin =
+        get_integer_time_begin(ti_current - 1, bin_max);
+    dt = cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+  } else {
+    dt = get_timestep(bin_max, time_base);
+  }
 
   /* For stream particle, make sure the stream radius > 0 */
   if (i_stream && pi->chemistry_data.radius_stream <= 0.f) return 0.f;
@@ -369,15 +418,15 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   float mi;
   float wi;
   float sum_wi;
+  float w_amb;
+  float sum_w_amb;
   float chi;
   float c_stream;
   float c_amb;
   float radius_stream;
   float mixing_layer_time;
-  double dt = 0.;
 
   if (i_stream) {
-    dt = dt_i;
     mi = hydro_get_mass(pi);
     const float h_inv = 1. / hi;
     const float ui = r * h_inv;
@@ -386,6 +435,10 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
     /* Normalization of the ambient medium */
     sum_wi = pi->chemistry_data.w_ambient;
 
+    /* Ambient particle's weight of the stream, and its normalization */
+    kernel_eval(r / hj, &w_amb);
+    sum_w_amb = pj->chemistry_data.w_ambient;
+
     /* Compute thermal energy ratio for stream and ambient */
     const float eint_i = hydro_get_drifted_comoving_internal_energy(pi);
     chi = pi->chemistry_data.u_ambient / eint_i;
@@ -393,10 +446,7 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
     c_amb = sqrtf(pi->chemistry_data.u_ambient * gamma_gamma_minus_1);
     radius_stream = pi->chemistry_data.radius_stream;
     mixing_layer_time = mixing_layer_time_i;
-  }
-
-  if (j_stream) { /* j must be the stream here */
-    dt = dt_j;
+  } else { /* j must be the stream here */
     mi = hydro_get_mass(pj);
     const float h_inv = 1. / hj;
     const float ui = r * h_inv;
@@ -404,6 +454,10 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
 
     /* Normalization of the ambient medium */
     sum_wi = pj->chemistry_data.w_ambient;
+
+    /* Ambient particle's weight of the stream, and its normalization */
+    kernel_eval(r / hi, &w_amb);
+    sum_w_amb = pi->chemistry_data.w_ambient;
 
     /* Compute thermal energy ratio for stream and ambient */
     const float eint_j = hydro_get_drifted_comoving_internal_energy(pj);
@@ -415,7 +469,11 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   }
 
   /* This should never happen. */
-  if (dt == 0.) return 0.f;
+  if (dt <= 0.) return 0.f;
+
+  /* Both particles must have seen each other in the density loop */
+  if (sum_wi <= 0.f || sum_w_amb <= 0.f || wi <= 0.f || w_amb <= 0.f)
+    return 0.f;
 
   double dm = 0.;
   double t_cool_mix = 1.e10 * dt;
@@ -444,13 +502,19 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
   double delta_shear = 0.;
   if (t_shear < t_cool_mix) delta_shear = (1. - exp(-dt / t_shear));
 
-  dm = mi * (delta_growth - delta_shear) * (wi / sum_wi);
+  *w_frac = wi / sum_wi;
+  *w_frac_amb = w_amb / sum_w_amb;
+  dm = mi * (delta_growth - delta_shear) * (*w_frac);
 
-  /* If stream is growing, don't mix */
-  if (dm > 0.f) dm = 0.f;
+  /* Both regimes exchange mass between the stream and the ambient gas: when
+   * shear dominates (dm < 0) stream gas is mixed into the ambient medium, and
+   * when the mixing layer cools fast enough for the stream to grow (dm > 0)
+   * ambient gas is entrained onto it. Either way the exchange (of |dm|, see
+   * firehose_evolve_particle_sym) shares momentum, so the stream decelerates
+   * towards the ambient velocity and eventually recouples. */
 
 #ifdef FIREHOSE_DEBUG_CHECKS
-  if (dm < 0.f && i_stream && pj->cooling_data.subgrid_temp > 0.f) {
+  if (dm != 0.f && i_stream && pj->cooling_data.subgrid_temp > 0.f) {
     message(
         "FIREHOSE: z=%g %lld %lld m=%g nHamb=%g rhoamb/rhoi=%g rhoamb/rhoj=%g"
         " Tamb=%g Tj/Tamb=%g cstr/camb=%g M=%g r=%g grow=%g shear=%g tshear=%g"
@@ -461,7 +525,9 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
         pi->chemistry_data.rho_ambient / pj->rho,
         pi->chemistry_data.u_ambient * cosmo->a_factor_internal_energy /
             cd->temp_to_u_factor,
-        eint_j / pi->chemistry_data.u_ambient, c_stream / c_amb, Mach,
+        hydro_get_drifted_comoving_internal_energy(pj) /
+            pi->chemistry_data.u_ambient,
+        c_stream / c_amb, Mach,
         radius_stream * cd->length_to_kpc * cosmo->a, delta_growth, delta_shear,
         t_shear, pi->cooling_data.mixing_layer_cool_time, dm / pi->mass);
   }
@@ -483,16 +549,17 @@ firehose_compute_mass_exchange(const float r2, const float dx[3],
  * @param pi Wind particle.
  * @param pj Ambient particle.
  * @param time_base The time base used to convert integer to float time.
- * @param ti_current Current integer time for seeding random number generator.
+ * @param ti_current Current integer time.
  * @param cd #chemistry_global_data containing chemistry information.
+ * @param cosmo The #cosmology.
+ * @param with_cosmology Are we running with cosmology?
  *
  */
 __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     const float r2, const float dx[3], const float hi, const float hj,
-    struct part *pi, struct part *pj, 
-    const float time_base, const integertime_t ti_current,
-    const struct chemistry_global_data *cd,
-    const struct cosmology *cosmo) {
+    struct part *pi, struct part *pj, const double time_base,
+    const integertime_t ti_current, const struct chemistry_global_data *cd,
+    const struct cosmology *cosmo, const int with_cosmology) {
 
   /* Both particles must be within each others smoothing lengths */
   const float Hi = kernel_gamma * hi;
@@ -515,19 +582,32 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 
   /* Compute the amount of mass mixed between stream particle and ambient gas */
   float v2 = 0.f;
-  const float dm = firehose_compute_mass_exchange(r2, dx, hi, hj, pi, pj, 
-                                                  time_base, ti_current,
-                                                  cd, &v2, cosmo);
+  float w_frac = 0.f;
+  float w_frac_amb = 0.f;
+  const float dm = firehose_compute_mass_exchange(
+      r2, dx, hi, hj, pi, pj, time_base, ti_current, cd, &v2, &w_frac,
+      &w_frac_amb, cosmo, with_cosmology);
   float delta_m = fabs(dm);
   if (delta_m <= 0.f) return;
 
-  /* Limit mass exchange to some fraction of particles' mass */
+  /* Limit mass exchange to some fraction of particles' mass per step.
+   * Each particle shares its limit among its neighbours of the other phase
+   * by kernel weight (the weights sum to 1), so its total mixing over the
+   * step is at most max_fmix of its mass, whether it is the stream or the
+   * ambient gas. The new velocity and composition of each particle are
+   * then convex combinations with at most a fraction max_fmix from the
+   * other phase, which bounds the change independently of the frame (the
+   * kinetic energy lost in the pair frame goes into heat). The
+   * same delta_m is used for both particles, so the exchange stays
+   * conservative. */
   const float mi = hydro_get_mass(pi);
   const float mj = hydro_get_mass(pj);
+  const float m_stream = i_stream ? mi : mj;
+  const float m_ambient = i_stream ? mj : mi;
 
   const float max_fmix_this_step = cd->firehose_max_fmix_per_step;
-  if (delta_m > max_fmix_this_step * mi) delta_m = max_fmix_this_step * mi;
-  if (delta_m > max_fmix_this_step * mj) delta_m = max_fmix_this_step * mj;
+  delta_m = min(delta_m, max_fmix_this_step * m_stream * w_frac);
+  delta_m = min(delta_m, max_fmix_this_step * m_ambient * w_frac_amb);
 
   /* Track amount of gas mixed in stream particle */
   if (i_stream) chi->exchanged_mass += delta_m;
@@ -554,9 +634,11 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   const float pi_dust_mass = pi->cooling_data.dust_mass;
   const float pj_dust_mass = pj->cooling_data.dust_mass;
 
+  /* Each particle keeps (m - delta_m)/m of its own dust and receives the
+   * dust carried by the delta_m of gas from the other particle */
   const float dust_wt_ii = pii_weight * pi_dust_mass;
-  const float dust_wt_ij = pij_weight * pi_dust_mass;
-  const float dust_wt_ji = pji_weight * pj_dust_mass;
+  const float dust_wt_ij = pji_weight * pj_dust_mass; /* j -> i */
+  const float dust_wt_ji = pij_weight * pi_dust_mass; /* i -> j */
   const float dust_wt_jj = pjj_weight * pj_dust_mass;
 
   const float new_pi_dust_mass = dust_wt_ii + dust_wt_ij;
@@ -627,8 +709,11 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     new_v2 += dv_i * dv_i;
   }
 
-  /* 4) Split excess energy between stream and ambient particle */
-  float delta_KE = 0.5f * delta_m * (v2 - new_v2);
+  /* 4) Split excess energy between stream and ambient particle.
+   * The kinetic energy dissipated by the momentum-conserving exchange is
+   * 0.5 * mu * (dv^2 - dv'^2), with mu the reduced mass of the pair. */
+  const float mu_pair = mi * mj / (mi + mj);
+  float delta_KE = 0.5f * mu_pair * (v2 - new_v2);
   const float min_KE = min(mi * new_pi_u, mj * new_pj_u);
 
   /* Limit to minimum of the two particles */
@@ -644,8 +729,8 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   chi->du += new_pi_u - old_pi_u;
   chj->du += new_pj_u - old_pj_u;
 
-  /* Impose maximal viscosity */
-  hydro_diffusive_feedback_reset(pj);
+  /* Impose maximal viscosity on the ambient particle */
+  hydro_diffusive_feedback_reset(i_stream ? pj : pi);
 
 #ifdef FIREHOSE_DEBUG_CHECKS
   message(
@@ -654,6 +739,54 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
       pi->id, pj->id, i_stream, j_stream, new_pi_u, new_pj_u, old_pi_u,
       old_pj_u, delta_KE, new_v2, v2);
 #endif
+}
+
+/**
+ * @brief Pair coefficient for metal diffusion, following Eq. 2.14 of
+ * Monaghan, Huppert, & Worster (2006):
+ *
+ *   dZ_i/dt = sum_j m_j * coef_ij * (Z_i - Z_j),
+ *   coef_ij = 4 D_i D_j / (D_i + D_j) / (rho_i rho_j) * <(1/r) dW/dr>,
+ *
+ * where <(1/r) dW/dr> is the average over the kernels of i and j, so coef_ij
+ * is symmetric and metal mass is conserved pairwise. Returned with the
+ * kernel term in comoving units (h and r comoving); the conversion to
+ * physical units is applied in chemistry_end_force.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param cosmo The #cosmology.
+ */
+__attribute__((always_inline)) INLINE static float
+runner_iact_diffusion_pair_coefficient(const float r2, const float hi,
+                                       const float hj,
+                                       const struct part *restrict pi,
+                                       const struct part *restrict pj,
+                                       const struct cosmology *cosmo) {
+
+  const float Di = pi->chemistry_data.diffusion_coefficient;
+  const float Dj = pj->chemistry_data.diffusion_coefficient;
+  const float rhoi = hydro_get_physical_density(pi, cosmo);
+  const float rhoj = hydro_get_physical_density(pj, cosmo);
+
+  const float r = sqrtf(r2);
+  const float r_inv = r > 0.f ? 1.f / r : 0.f;
+
+  /* Kernel term (1/r) dW/dr for each particle, including the h factors */
+  const float hi_inv = 1.f / hi;
+  const float hj_inv = 1.f / hj;
+  float wi, dwi_dx, wj, dwj_dx;
+  kernel_deval(r * hi_inv, &wi, &dwi_dx);
+  kernel_deval(r * hj_inv, &wj, &dwj_dx);
+  const float dWi_r = dwi_dx * pow_dimension_plus_one(hi_inv) * r_inv;
+  const float dWj_r = dwj_dx * pow_dimension_plus_one(hj_inv) * r_inv;
+  const float dW_r = 0.5f * (dWi_r + dWj_r);
+
+  const float D_ij = 4.f * Di * Dj / (Di + Dj);
+  return D_ij * dW_r / (rhoi * rhoj);
 }
 
 /**
@@ -677,7 +810,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, struct part *restrict pj, const float a,
-    const float H, const float time_base, const integertime_t t_current,
+    const float H, const double time_base, const integertime_t t_current,
     const struct cosmology *cosmo, const int with_cosmology,
     const struct chemistry_global_data *cd) {
 
@@ -685,7 +818,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     if (cd->use_firehose_wind_model) {
       /* If in wind mode, do firehose wind diffusion */
       firehose_evolve_particle_sym(r2, dx, hi, hj, pi, pj, time_base,
-                                   t_current, cd, cosmo);
+                                   t_current, cd, cosmo, with_cosmology);
     }
 
     return;
@@ -697,55 +830,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
   /* No need to diffuse if both particles are not diffusing. */
   if (chj->diffusion_coefficient > 0.f && chi->diffusion_coefficient > 0.f) {
 
-    /* Get mass */
     const float mj = hydro_get_mass(pj);
     const float mi = hydro_get_mass(pi);
-    const float rhoj = hydro_get_physical_density(pj, cosmo);
-    const float rhoi = hydro_get_physical_density(pi, cosmo);
 
-    float wi, wj, dwi_dx, dwj_dx;
+    /* Pair flux factor (harmonic mean of D, symmetrised kernel term) */
+    const float coef = runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj,
+                                                              cosmo);
+    const float coef_i = coef * mj;
+    const float coef_j = coef * mi;
 
-    /* Get r */
-    const float r = sqrtf(r2);
-
-    /* part j */
-    /* Get the kernel for hj */
-    const float hj_inv = 1.0f / hj;
-
-    /* Compute the kernel function for pj */
-    const float xj = r * hj_inv;
-    kernel_deval(xj, &wj, &dwj_dx);
-
-    /* part i */
-    /* Get the kernel for hi */
-    const float hi_inv = 1.0f / hi;
-
-    /* Compute the kernel function for pi */
-    const float xi = r * hi_inv;
-    kernel_deval(xi, &wi, &dwi_dx);
-
-    /* Get 1/r */
-    const float r_inv = r > 0.f ? 1.f / r : 0.f;
-
-    const float wi_dr = dwi_dx * r_inv;
-    const float wj_dr = dwj_dx * r_inv;
-
-    const float mj_dw_r = mj * wi_dr;
-    const float mi_dw_r = mi * wj_dr;
-
-    const float rhoij_inv = 1.f / (rhoi * rhoj);
-
-    /**
-     * Compute the diffusion following Eq. 2.14
-     * from Monaghan, Huppert, & Worster (2006).
-     */
-    float coef = 4.f * chi->diffusion_coefficient * chj->diffusion_coefficient;
-    coef /= chi->diffusion_coefficient + chj->diffusion_coefficient;
-
-    const float coef_i = coef * mj_dw_r * rhoij_inv;
-    const float coef_j = coef * mi_dw_r * rhoij_inv;
-
-    /* Compute the time derivative of metals due to diffusion */
+    /* Compute the time derivative of metals due to diffusion. The pair term
+     * is symmetric, so mi dZi/dt = -mj dZj/dt and metal mass is conserved. */
     const float dZ_ij_tot =
         chi->metal_mass_fraction_total - chj->metal_mass_fraction_total;
     chi->dZ_dt_total += coef_i * dZ_ij_tot;
@@ -757,6 +852,22 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
       chi->dZ_dt[elem] += coef_i * dZ_ij;
       chj->dZ_dt[elem] -= coef_j * dZ_ij;
     }
+
+#if COOLING_GRACKLE_MODE >= 2
+    /* Diffuse dust as a passive scalar per element (dust mass in the element
+     * per unit gas mass), with the same coefficient as the metals */
+    const float Di = pi->cooling_data.dust_mass / mi;
+    const float Dj = pj->cooling_data.dust_mass / mj;
+    if (Di > 0.f || Dj > 0.f) {
+      for (int elem = chemistry_element_C; elem < chemistry_element_count;
+           elem++) {
+        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[elem] -
+                             Dj * pj->cooling_data.dust_mass_fraction[elem];
+        chi->dZ_dust_dt[elem] += coef_i * dZd_ij;
+        chj->dZ_dust_dt[elem] -= coef_j * dZd_ij;
+      }
+    }
+#endif
   }
 }
 
@@ -782,7 +893,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
     const float r2, const float dx[3], const float hi, const float hj,
     struct part *restrict pi, const struct part *restrict pj, const float a,
-    const float H, const float time_base, const integertime_t t_current,
+    const float H, const double time_base, const integertime_t t_current,
     const struct cosmology *cosmo, const int with_cosmology,
     const struct chemistry_global_data *cd) {
 
@@ -792,42 +903,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
   struct chemistry_part_data *chi = &pi->chemistry_data;
   const struct chemistry_part_data *chj = &pj->chemistry_data;
 
-  if (chj->diffusion_coefficient > 0 && chi->diffusion_coefficient > 0) {
+  if (chj->diffusion_coefficient > 0.f && chi->diffusion_coefficient > 0.f) {
 
-    /* Get mass */
     const float mj = hydro_get_mass(pj);
-    const float rhoj = hydro_get_physical_density(pj, cosmo);
-    const float rhoi = hydro_get_physical_density(pi, cosmo);
 
-    float wi, dwi_dx;
-
-    /* Get r */
-    const float r = sqrtf(r2);
-
-    /* part i */
-    /* Get the kernel for hi */
-    const float hi_inv = 1.0f / hi;
-
-    /* Compute the kernel function for pi */
-    const float xi = r * hi_inv;
-    kernel_deval(xi, &wi, &dwi_dx);
-
-    /* Get 1/r */
-    const float r_inv = 1.f / sqrtf(r2);
-    const float wi_dr = dwi_dx * r_inv;
-
-    const float mj_dw_r = mj * wi_dr;
-
-    const float rhoij_inv = 1.f / (rhoi * rhoj);
-
-    /**
-     * Compute the diffusion following Eq. 2.14
-     * from Monaghan, Huppert, & Worster (2006).
-     */
-    float coef = 4.f * chi->diffusion_coefficient * chj->diffusion_coefficient;
-    coef /= chi->diffusion_coefficient + chj->diffusion_coefficient;
-
-    const float coef_i = coef * mj_dw_r * rhoij_inv;
+    /* Same pair term as the symmetric case, so the flux matches */
+    const float coef = runner_iact_diffusion_pair_coefficient(r2, hi, hj, pi, pj,
+                                                              cosmo);
+    const float coef_i = coef * mj;
 
     /* Compute the time derivative */
     const float dZ_ij_tot =
@@ -839,6 +922,19 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
           chi->metal_mass_fraction[elem] - chj->metal_mass_fraction[elem];
       chi->dZ_dt[elem] += coef_i * dZ_ij;
     }
+
+#if COOLING_GRACKLE_MODE >= 2
+    const float Di = pi->cooling_data.dust_mass / hydro_get_mass(pi);
+    const float Dj = pj->cooling_data.dust_mass / mj;
+    if (Di > 0.f || Dj > 0.f) {
+      for (int elem = chemistry_element_C; elem < chemistry_element_count;
+           elem++) {
+        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[elem] -
+                             Dj * pj->cooling_data.dust_mass_fraction[elem];
+        chi->dZ_dust_dt[elem] += coef_i * dZd_ij;
+      }
+    }
+#endif
   }
 }
 

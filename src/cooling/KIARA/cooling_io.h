@@ -115,18 +115,29 @@ INLINE static void convert_part_T(const struct engine *e, const struct part *p,
                                   const struct xpart *xp, float *ret) {
 
   const float u = hydro_get_physical_internal_energy(p, xp, e->cosmology);
-  const float ne = xp->cooling_data.e_frac;
-  *ret = cooling_convert_u_to_temp(u, ne, e->cooling_func, p, xp);
+  *ret = cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
 }
 
-INLINE static void convert_part_G0(const struct engine *e, const struct part *p,
-                                   const struct xpart *xp, float *ret) {
+INLINE static void convert_part_cooling_time(const struct engine *e,
+                                             const struct part *p,
+                                             const struct xpart *xp,
+                                             float *ret) {
 
-  const float mstar = p->galaxy_data.stellar_mass;
-  const float ssfr = p->galaxy_data.specific_sfr;
-  const float rho = p->cooling_data.subgrid_dens;
-  const float dt = get_timestep(p->time_bin, e->time_base);
-  *ret = cooling_compute_G0(p, xp, rho, 1.e4, e->cooling_func, mstar, ssfr, dt);
+  /* Firehose stream particles: the mixing-layer cooling time computed
+   * during the last cooling step */
+  if (p->chemistry_data.radius_stream > 0.f &&
+      p->chemistry_data.rho_ambient > 0.f) {
+    *ret = p->cooling_data.mixing_layer_cool_time;
+    return;
+  }
+
+  /* Everyone else: the particle's own cooling time, computed only here
+   * (cooling_time() renormalizes the species in xp, so use a copy) */
+  struct xpart xp_temp = *xp;
+  *ret = cooling_time(e->physical_constants, e->internal_units,
+                      e->hydro_properties, e->cosmology, e->cooling_func, p,
+                      &xp_temp, p->rho,
+                      hydro_get_comoving_internal_energy(p, xp));
 }
 
 /**
@@ -163,7 +174,7 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
 
   list[num] = io_make_output_field_convert_part(
       "HeIMasses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts, xparts,
-      convert_part_HeII_mass, "HeI masses.");
+      convert_part_HeI_mass, "HeI masses.");
   num++;
 
   list[num] = io_make_output_field_convert_part(
@@ -177,9 +188,9 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
   num++;
 
   list[num] = io_make_output_field_convert_part(
-      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, -3.f,
-      parts, xparts, convert_part_e_density, "Electron number densities"
-      "in units of the hydrogen density.");
+      "ElectronNumberDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      parts, xparts, convert_part_e_density, "Electron number densities "
+      "times the proton mass, in units of the gas mass density.");
   num++;
 
   list[num] = io_make_output_field_convert_part(
@@ -190,15 +201,14 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
 #if COOLING_GRACKLE_MODE >= 2
   list[num] = io_make_output_field(
       "SubgridTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, parts,
-      cooling_data.subgrid_temp, "Temperatures of the cold phase"
-      				 "of the subgrid ISM gas particles.");
+      cooling_data.subgrid_temp, "Temperatures of the cold phase "
+                                 "of the subgrid ISM gas particles.");
   num++;
 
-  list[num] =
-      io_make_output_field("SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY,
-                           -3.f, parts, cooling_data.subgrid_dens,
-                           "Mass densities in physical units of the "
-			   "subgrid ISM gas particles.");
+  list[num] = io_make_physical_output_field(
+      "SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f, parts,
+      cooling_data.subgrid_dens, /*can convert to comoving=*/1,
+      "Mass densities in physical units of the subgrid ISM gas particles.");
   num++;
 
   list[num] = io_make_output_field(
@@ -225,16 +235,19 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
                            "Dust temperatures in subgrid ISM dust model.");
   num++;
 
-  list[num] = io_make_output_field(
-      "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts,
-      cooling_data.mixing_layer_cool_time,
-      "Cooling times for the gas particle. If it's currently a firehose wind"
-      "particle (decoupling_delay_time>0), this is the mixing layer cooling time.");
+  list[num] = io_make_output_field_convert_part(
+      "CoolingTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, parts, xparts,
+      convert_part_cooling_time,
+      "Cooling times of the gas particles (negative if cooling). For firehose "
+      "stream particles (non-zero stream radius), this is instead the mixing "
+      "layer cooling time.");
   num++;
 
-  list[num] = io_make_output_field_convert_part(
-    "InterstellarRadiation", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
-    convert_part_G0, "The interstellar radiation field strength in Habing units. ");
+  list[num] = io_make_output_field(
+      "InterstellarRadiation", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      cooling_data.G0,
+      "The interstellar radiation field strength in Habing units, as "
+      "passed to Grackle in the last cooling step.");
   num++;
 
 #endif
@@ -267,7 +280,7 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
       parser_get_param_int(parameter_file, "KIARACooling:with_metal_cooling");
 
   cooling->provide_volumetric_heating_rates = parser_get_opt_param_int(
-      parameter_file, "KIARACooling:provide_volumetric_heating_rates", -1);
+      parameter_file, "KIARACooling:provide_volumetric_heating_rates", 0);
 
   cooling->provide_specific_heating_rates = parser_get_opt_param_int(
       parameter_file, "KIARACooling:provide_specific_heating_rates", 1);
@@ -306,6 +319,14 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   message("WARNING: Dust evol not implemented in SIMBA; use KIARA instead.");
   cooling->use_grackle_dust_evol = 0;
 #endif
+
+  /* The SN rate that stellar feedback deposits on the gas is used (and
+   * decays) here, so its smoothing time is read with the cooling */
+  cooling->SNe_smoothing_time =
+      parser_get_opt_param_double(parameter_file,
+                                  "KIARAFeedback:SNe_smoothing_time_in_Myr",
+                                  0.) *
+      phys_const->const_year * 1e6;
 
   /* These are dust parameters for KIARA's dust model (MODE>=2); irrelevant
    * otherwise */

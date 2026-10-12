@@ -250,63 +250,114 @@ INLINE static double cooling_get_electron_pressure(
 }
 
 /**
+ * @brief Return 1/mu, the number of particles per proton mass, from the
+ * grackle species mass fractions (electrons stored as n_e * m_H / rho).
+ *
+ * @param xp #xpart data.
+ */
+INLINE static float cooling_get_inverse_mu(const struct xpart *xp) {
+
+  float mu_inv = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac;
+  mu_inv += 0.25f * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac +
+                     xp->cooling_data.HeIII_frac);
+#if COOLING_GRACKLE_MODE >= 2
+  mu_inv += xp->cooling_data.HM_frac;
+  mu_inv += 0.5f * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+#endif
+  mu_inv += xp->cooling_data.e_frac;
+  return mu_inv;
+}
+
+/**
  * @brief Return the specific thermal energy (physical) for a given
  * temperature.
  *
  * @param temperature Particle temperature in K
- * @param ne Electron number density relative to H atom density
+ * @param ne Electron number density relative to H atom density (unused;
+ * the electron fraction is taken from xp)
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
+ * @param xp #xpart data.
  */
 INLINE static double cooling_convert_temp_to_u(
     const double temperature, const double ne,
     const struct cooling_function_data *cooling, const struct part *p,
     const struct xpart *xp) {
 
-  float mu = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-  mu = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
-  mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
-  mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
-  mu += xp->cooling_data.e_frac;
-#else
-  const float X_H =
-      chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
-  const float yhelium = (1. - X_H) / (4. * X_H);
-  const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
-#endif
-
-  return temperature * cooling->temp_to_u_factor / mu;
+  return temperature * cooling->temp_to_u_factor * cooling_get_inverse_mu(xp);
 }
 
 /**
  * @brief Return the temperature for a given physical specific energy
  *
  * @param u Physical specific energy
- * @param ne Electron number density relative to H atom density
+ * @param ne Electron number density relative to H atom density (unused;
+ * the electron fraction is taken from xp)
  * @param cooling #cooling_function_data struct.
  * @param p #part data.
+ * @param xp #xpart data.
  */
 INLINE static double cooling_convert_u_to_temp(
     const double u, const double ne,
     const struct cooling_function_data *cooling, const struct part *p,
     const struct xpart *xp) {
 
-  float mu = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-  mu = xp->cooling_data.HI_frac + xp->cooling_data.HII_frac + xp->cooling_data.HM_frac;
-  mu += 0.25 * (xp->cooling_data.HeI_frac + xp->cooling_data.HeII_frac + xp->cooling_data.HeIII_frac);
-  mu += 0.5 * (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
-  mu += xp->cooling_data.e_frac;
-  mu = 1. / mu;
-#else
-  const float X_H =
-      chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
-  const float yhelium = (1. - X_H) / (4. * X_H);
-  const float mu = (1. + yhelium) / (1. + ne + 4. * yhelium);
-#endif
+  return u / (cooling->temp_to_u_factor * cooling_get_inverse_mu(xp));
+}
 
-  return u * mu / cooling->temp_to_u_factor;
+/**
+ * @brief Return 1/mu for the warm phase of the subgrid ISM.
+ *
+ * The stored species describe only the cold phase (that is what grackle
+ * evolves), so the warm phase on the EoS is assumed to be neutral atomic
+ * gas of the particle's composition: 1/mu = X_H + Y/4 (metals neglected).
+ *
+ * @param p #part data.
+ */
+INLINE static float cooling_get_warm_ISM_inverse_mu(const struct part *p) {
+
+  const float *const Z = chemistry_get_metal_mass_fraction_for_cooling(p);
+  return Z[chemistry_element_H] + 0.25f * Z[chemistry_element_He];
+}
+
+/**
+ * @brief Return the specific thermal energy (physical) of the warm subgrid
+ * ISM phase for a given temperature (neutral atomic gas).
+ *
+ * @param temperature Warm-phase temperature in K
+ * @param cooling #cooling_function_data struct.
+ * @param p #part data.
+ */
+INLINE static double cooling_convert_warm_ISM_temp_to_u(
+    const double temperature, const struct cooling_function_data *cooling,
+    const struct part *p) {
+
+  return temperature * cooling->temp_to_u_factor *
+         cooling_get_warm_ISM_inverse_mu(p);
+}
+
+/**
+ * @brief Return the temperature of the overall particle for a given physical
+ * specific energy.
+ *
+ * Outside the subgrid ISM this uses the particle's own species. In subgrid
+ * mode u = f_cold u_cold + (1 - f_cold) u_warm is dominated by the warm phase
+ * (T_cold << T_warm), so the warm-phase mu is used rather than the cold-phase
+ * species.
+ *
+ * @param u Physical specific energy
+ * @param cooling #cooling_function_data struct.
+ * @param p #part data.
+ * @param xp #xpart data.
+ */
+INLINE static double cooling_convert_u_to_particle_temp(
+    const double u, const struct cooling_function_data *cooling,
+    const struct part *p, const struct xpart *xp) {
+
+  const float mu_inv = (p->cooling_data.subgrid_temp > 0.f)
+                           ? cooling_get_warm_ISM_inverse_mu(p)
+                           : cooling_get_inverse_mu(xp);
+  return u / (cooling->temp_to_u_factor * mu_inv);
 }
 
 /**
@@ -337,24 +388,27 @@ INLINE static double cooling_compute_cold_ISM_fraction(
  * @brief Compute the subgrid density based on pressure equilibrium in a 2-phase
  * ISM model
  *
- * We set the subgrid density based on pressure equilibrium with overall
- * particle. The pressure is set by 1-cold_ISM_frac of the mass in the warm
- * phase.
+ * This is the density of the cold clouds. Both phases are ideal gases with
+ * the same gamma, so P = (gamma-1) rho u and pressure equilibrium is
+ * rho_c u_c = rho_w u_w (which accounts for the different mean molecular
+ * weights of the two phases). The particle's u is the mass-weighted mix,
+ * u = f u_c + (1 - f) u_w, and the phases fill its volume,
+ * 1/rho = f/rho_c + (1 - f)/rho_w. Together these give exactly
+ *   rho_c = rho u / u_c,
+ * independently of the cold mass fraction f.
  *
  * @param rho SPH (non-subgrid) physical particle density.
- * @param n_H SPH (non-subgrid) physical particle H number density.
- * @param temp SPH (non-subgrid) particle temperature.
- * @param subgrid_temp Subgrid particle temperature.
+ * @param u SPH (non-subgrid) physical particle specific internal energy (the
+ * two-phase mix).
+ * @param u_subgrid Specific internal energy of the cold phase at the subgrid
+ * temperature (from the cold-phase species).
  * @param cooling #cooling_function_data struct.
  */
 INLINE static double cooling_compute_subgrid_density(
-    const double rho, const double n_H, const double temp,
-    const double subgrid_temp, const struct cooling_function_data *cooling) {
+    const double rho, const double u, const double u_subgrid,
+    const struct cooling_function_data *cooling) {
 
-  const double ism_frac = cooling_compute_cold_ISM_fraction(
-      n_H * cooling->subgrid_threshold_n_H_inv, cooling);
-  double subgrid_dens =
-      (1.f - ism_frac) * rho * temp / (ism_frac * subgrid_temp);
+  double subgrid_dens = rho * u / u_subgrid;
 
   /* Cap at max value which should be something vaguely like GMC densities */
   subgrid_dens = fmin(subgrid_dens, cooling->max_subgrid_density);
@@ -394,6 +448,54 @@ __attribute__((always_inline)) INLINE static float warm_ISM_temperature(
     }
   }
   return temperature;
+}
+
+__attribute__((always_inline)) INLINE static float
+cooling_KMT_H2_fraction(const struct part *restrict p,
+			const struct cosmology *cosmo,
+                        const struct cooling_function_data *cooling) {
+
+  /* No H2 outside of ISM */
+  if (p->cooling_data.subgrid_temp == 0.) return 0.f;
+
+  float H2_fraction = 1.f;
+  double gas_sigma = 0.f;
+  float gas_Z = 0.f;
+  float chi = 0.f;
+  float s = 0.f;
+  float clumping_factor = 30.f;
+  float gas_gradrho_mag = 0.f;
+
+  gas_Z = p->chemistry_data.metal_mass_fraction_total;
+  gas_Z /= 0.0134;
+  if (gas_Z < 0.01f) {
+    gas_Z = 0.01f;
+  }
+
+  gas_gradrho_mag = sqrtf(p->rho_gradient[0] * p->rho_gradient[0] +
+                          p->rho_gradient[1] * p->rho_gradient[1] +
+                          p->rho_gradient[2] * p->rho_gradient[2]);
+
+  if (gas_gradrho_mag > 0) {
+    const float subgrid_dens_comoving = p->cooling_data.subgrid_dens * 
+        cosmo->a * cosmo->a * cosmo->a;
+    gas_sigma = (subgrid_dens_comoving * p->rho) / gas_gradrho_mag;
+
+    /* surface density must be in Msun/pc^2 */
+    gas_sigma *=
+        cooling->surface_rho_to_Msun_per_parsec2 * cosmo->a2_inv;
+
+    /* chi ~ 1/R ~ 1/clump from KG11 eq. 3 */
+    chi = 0.756f * (1.f + 3.1f * powf(gas_Z, 0.365f)) *
+          (30.f / clumping_factor);
+    s = logf(1.f + 0.6f * chi + 0.01f * chi * chi) /
+        (0.0396f * powf(clumping_factor, 2.f / 3.f) * gas_Z * gas_sigma);
+  }
+  if (s > 0.f) {
+    H2_fraction = 1.f - 0.75f * (s / (1.f + 0.25f * s));
+  }
+
+  return H2_fraction;
 }
 
 /**
@@ -463,15 +565,13 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
     const struct part *restrict p, const struct xpart *restrict xp,  
     const float rho, const float T_warm, const struct cooling_function_data *cooling) {
 
-  /* No ISRF when not in subgrid ISM mode */
+  /* No ISRF when not in subgrid ISM mode. Also guard the logs/sqrt below
+   * (built with -ffast-math, so infs/NaNs are not handled reliably) */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
+  if (p->cooling_data.subgrid_dens <= 0.f || T_warm <= 10.f) return 0.f;
 
   float t_ff = cooling->ff_const / sqrt(p->cooling_data.subgrid_dens);
   float t_ff_Myr = t_ff * cooling->time_to_Myr; // * 1.e-3;
-  float t_ff_Gyr = t_ff * cooling->time_to_Myr * 1.e-3;
-
-  const float pot = fabs(gravity_get_comoving_potential(p->gpart) / cooling->units.a_value);
-  const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
 
   const float Z = max(chemistry_get_total_metal_mass_fraction_for_cooling(p), 1.e-6) * 74.627;  // to solar
   //const float logT = log10(p->cooling_data.subgrid_temp);
@@ -522,6 +622,11 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 
   const float G0 = powf(10.f, log_G0);
 
+#ifdef KIARA_G0_DEBUG
+  const float t_ff_Gyr = t_ff_Myr * 1.e-3;
+  const float pot = fabs(gravity_get_comoving_potential(p->gpart) /
+                         cooling->units.a_value);
+  const float pot_kms2 = max(pot * cooling->potential_to_kms2, 100.f);
   if (p->id % 100000 == 0) {
     message("G0: id=%lld z=%g M*=%g SFR=%g tff=%g vpot=%g T=%g nH=%g Td=%g terms=%g %g %g G0=%g",
             p->id,
@@ -536,6 +641,7 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 	    log10(t_ff_Gyr), log10(logT - 0.793), log10(pow(logT+ne-0.855, 2.03)),
             G0);
   }
+#endif
 
   return G0;
 }

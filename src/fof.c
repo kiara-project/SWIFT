@@ -185,6 +185,16 @@ void fof_init(struct fof_props *props, struct swift_params *params,
     props->seed_halo_mass *= phys_const->const_solar_mass;
   }
 
+#ifdef WITH_FOF_GALAXIES
+  /* Thresholds defining the galaxy (ISM) gas */
+  props->cold_gas_T_threshold = parser_get_opt_param_double(
+      params, "FOF:cold_gas_temperature_threshold", 1.e5);
+  props->cold_gas_n_H_threshold =
+      parser_get_opt_param_double(params, "FOF:cold_gas_n_H_threshold_cgs",
+                                  0.13) /
+      units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+#endif
+
   /* Read what particle types we want to run FOF on */
   parser_get_param_int_array(params, "FOF:linking_types", swift_type_count,
                              props->fof_linking_types);
@@ -2510,6 +2520,265 @@ void fof_find_foreign_links_mapper(void *map_data, int num_elements,
 #endif
 }
 
+#ifdef WITH_FOF_GALAXIES
+/**
+ * @brief Is this gas particle part of its galaxy's (ISM) gas?
+ *
+ * Galaxy gas is cold and dense (it need not be star-forming); decoupled
+ * winds are outflows, not ISM.
+ *
+ * @param props The properties of the FOF scheme.
+ * @param e The #engine.
+ * @param p The gas #part.
+ * @param xp The #xpart.
+ */
+static int fof_gas_is_galaxy_gas(const struct fof_props *props,
+                                 const struct engine *e, const struct part *p,
+                                 const struct xpart *xp) {
+
+  if (p->decoupled) return 0;
+
+  const struct cosmology *cosmo = e->cosmology;
+  const double X_H = chemistry_get_metal_mass_fraction_for_star_formation(
+      p)[chemistry_element_H];
+  const double n_H = hydro_get_physical_density(p, cosmo) * X_H /
+                     e->physical_constants->const_proton_mass;
+  if (n_H < props->cold_gas_n_H_threshold) return 0;
+
+  const double u = hydro_get_physical_internal_energy(p, xp, cosmo);
+  const double T = cooling_convert_u_to_particle_temp(u, e->cooling_func, p, xp);
+  return T < props->cold_gas_T_threshold;
+}
+
+/**
+ * @brief Set the host-galaxy properties carried by a particle.
+ *
+ * @param s The #space.
+ * @param gp The #gpart of the particle.
+ * @param stellar_mass The galaxy stellar mass.
+ * @param gas_mass The galaxy (ISM) gas mass.
+ * @param sfr The galaxy star formation rate.
+ */
+static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
+                                const float stellar_mass, const float gas_mass,
+                                const float sfr) {
+
+  struct fof_galaxy_data *gd = NULL;
+  if (gp->type == swift_type_gas) {
+    gd = &s->parts[-gp->id_or_neg_offset].galaxy_data;
+  } else if (gp->type == swift_type_stars) {
+    gd = &s->sparts[-gp->id_or_neg_offset].galaxy_data;
+  } else if (gp->type == swift_type_black_hole) {
+    gd = &s->bparts[-gp->id_or_neg_offset].galaxy_data;
+  } else {
+    return;
+  }
+
+  gd->stellar_mass = stellar_mass;
+  gd->gas_mass = gas_mass;
+  gd->specific_sfr = (stellar_mass > 0.f) ? sfr / stellar_mass : 0.f;
+}
+#endif
+
+#if defined(BLACK_HOLES_OBSIDIAN) && defined(WITH_FOF_GALAXIES)
+/**
+ * @brief Chandrasekhar dynamical-friction time of a satellite of mass m_sat
+ * at physical radius r in a host of mass M_host (0 if undefined).
+ */
+static double fof_bh_df_time(const double r, const double m_sat,
+                             const double M_host, const double G,
+                             const double factor) {
+
+  if (r <= 0. || m_sat <= 0. || M_host <= 0.) return 0.;
+  const double v_c = sqrt(G * M_host / r);
+  const double log_Lambda = log(1. + M_host / m_sat);
+  return factor * 1.17 * r * r * v_c / (G * m_sat * log_Lambda);
+}
+
+/**
+ * @brief Sink secondary BHs onto the most massive BH of their FoF galaxy
+ * after a dynamical-friction time.
+ *
+ * At the first FoF call where a BH shares a galaxy with a more massive BH
+ * (the primary), a clock is started with the Chandrasekhar time for a
+ * satellite of mass m_sat (its former galaxy's stellar mass plus its own
+ * mass) at the current separation r in the host of mass M_host:
+ *   t_df = f * 1.17 r^2 v_c / (G m_sat ln(1 + M_host / m_sat)),
+ * v_c = sqrt(G M_host / r). Once t_df has elapsed, the separation from the
+ * primary and the relative velocity are both shrunk by a fraction f_sink
+ * (the separation not below 0.01 softening lengths) and the clock is
+ * restarted with t_df at the new separation. With f_sink = 1 the secondary
+ * is put next to the primary with its velocity, and the usual BH-BH
+ * swallowing merges the pair. The clock is reset whenever the BH is not in
+ * a galaxy with a more massive BH, or the primary changes.
+ *
+ * Must be called before the host-galaxy data are updated in this FoF call.
+ *
+ * @param props The properties of the FOF scheme.
+ * @param s The #space we act on.
+ * @param group_mass The (global) mass of each group.
+ * @param allow_moves Can BHs be moved (i.e. is a rebuild coming)?
+ */
+static void fof_bh_dynamical_friction(const struct fof_props *props,
+                                      const struct space *s,
+                                      const double *group_mass,
+                                      const int allow_moves) {
+
+  const struct engine *e = s->e;
+  const struct black_holes_props *bh_props = e->black_holes_properties;
+  const float factor = bh_props->df_merger_time_factor;
+  const double f_sink = bh_props->df_sink_fraction;
+  if (factor <= 0.f || f_sink <= 0.) return;
+
+  const size_t num_groups = props->num_groups;
+  const size_t group_id_default = props->group_id_default;
+  const double G = e->physical_constants->const_newton_G;
+  const double a = e->cosmology->a;
+  const double time = e->time;
+  const int periodic = s->periodic;
+  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
+  struct bpart *bparts = s->bparts;
+  const size_t nr_bparts = s->nr_bparts;
+
+  float *prim_mass = NULL;
+  long long *prim_id = NULL;
+  double *prim_xv = NULL;
+  if (swift_memalign("fof_bh_df_mass", (void **)&prim_mass, 32,
+                     num_groups * sizeof(float)) != 0 ||
+      swift_memalign("fof_bh_df_id", (void **)&prim_id, 32,
+                     num_groups * sizeof(long long)) != 0 ||
+      swift_memalign("fof_bh_df_xv", (void **)&prim_xv, 32,
+                     num_groups * 6 * sizeof(double)) != 0)
+    error("Unable to allocate memory for the BH dynamical friction");
+  for (size_t i = 0; i < num_groups; ++i) {
+    prim_mass[i] = 0.f;
+    prim_id[i] = LLONG_MAX;
+  }
+  bzero(prim_xv, num_groups * 6 * sizeof(double));
+
+  /* Most massive BH of each group (lowest ID among equals) */
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    const struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) continue;
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    prim_mass[index] = fmaxf(prim_mass[index], bp->subgrid_mass);
+  }
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, prim_mass, num_groups, MPI_FLOAT, MPI_MAX,
+                MPI_COMM_WORLD);
+#endif
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    const struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) continue;
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    if (bp->subgrid_mass == prim_mass[index] && bp->id < prim_id[index])
+      prim_id[index] = bp->id;
+  }
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, prim_id, num_groups, MPI_LONG_LONG, MPI_MIN,
+                MPI_COMM_WORLD);
+#endif
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    const struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) continue;
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    if (bp->id != prim_id[index]) continue;
+    for (int j = 0; j < 3; j++) {
+      prim_xv[index * 6 + j] = bp->x[j];
+      prim_xv[index * 6 + 3 + j] = bp->v[j];
+    }
+  }
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, prim_xv, 6 * num_groups, MPI_DOUBLE, MPI_SUM,
+                MPI_COMM_WORLD);
+#endif
+
+  /* Run the clocks and sink the BHs whose time is up */
+  int counts[2] = {0, 0}; /* clocks started, BHs sunk */
+  for (size_t k = 0; k < nr_bparts; ++k) {
+    struct bpart *bp = &bparts[k];
+    if (bp->time_bin >= time_bin_inhibited || bp->gpart == NULL) continue;
+    if (bp->gpart->fof_data.group_id == group_id_default) {
+      bp->df_primary_id = 0;
+      continue;
+    }
+    const size_t index = bp->gpart->fof_data.group_id - 1;
+    if (bp->id == prim_id[index]) {
+      bp->df_primary_id = 0;
+      continue;
+    }
+
+    /* Separation from the primary (nearest periodic image) */
+    double dx[3];
+    for (int j = 0; j < 3; j++) {
+      dx[j] = bp->x[j] - prim_xv[index * 6 + j];
+      if (periodic) dx[j] = nearest(dx[j], dim[j]);
+    }
+    const double r = sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
+
+    if (bp->df_primary_id != prim_id[index]) {
+
+      /* Start the clock */
+      bp->df_primary_id = prim_id[index];
+      bp->df_sat_mass = bp->galaxy_data.stellar_mass + bp->subgrid_mass;
+      bp->df_t_start = time;
+      bp->df_merger_time = fof_bh_df_time(a * r, bp->df_sat_mass,
+                                          group_mass[index], G, factor);
+      counts[0]++;
+    }
+
+    if (!allow_moves || time - bp->df_t_start < bp->df_merger_time) continue;
+
+    /* Time is up: shrink the separation (keeping it non-zero) and the
+     * relative velocity by f_sink */
+    const double r_min = 0.01 * bp->gpart->epsilon;
+    if (r <= r_min) continue;
+    const double shrink = fmax(1. - f_sink, r_min / r);
+
+#ifdef OBSIDIAN_DEBUG_CHECKS
+    message("BH_DF_SINK: z=%g bid=%lld onto bid=%lld r=%g->%g kpc t_df=%g Myr "
+            "MBH=%g msat=%g",
+            e->cosmology->z, bp->id, prim_id[index],
+            a * r * e->internal_units->UnitLength_in_cgs / 3.0857e21,
+            a * r * shrink * e->internal_units->UnitLength_in_cgs / 3.0857e21,
+            bp->df_merger_time * bh_props->time_to_Myr,
+            bp->subgrid_mass * bh_props->mass_to_solar_mass,
+            bp->df_sat_mass * bh_props->mass_to_solar_mass);
+#endif
+    for (int j = 0; j < 3; j++) {
+      const double delta = (shrink - 1.) * dx[j];
+      bp->x[j] += delta;
+      bp->gpart->x[j] += delta;
+      bp->x_diff[j] -= delta;
+      const double v_prim = prim_xv[index * 6 + 3 + j];
+      bp->v[j] = v_prim + shrink * (bp->v[j] - v_prim);
+      bp->gpart->v_full[j] = bp->v[j];
+    }
+
+    /* Restart the clock at the new separation */
+    bp->df_t_start = time;
+    bp->df_merger_time = fof_bh_df_time(a * r * shrink, bp->df_sat_mass,
+                                        group_mass[index], G, factor);
+    counts[1]++;
+  }
+
+#ifdef WITH_MPI
+  MPI_Allreduce(MPI_IN_PLACE, counts, 2, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+#endif
+  if (engine_rank == 0 && (counts[0] > 0 || counts[1] > 0))
+    message("BH dynamical friction: %d clock(s) started, %d BH(s) sunk "
+            "towards their primary",
+            counts[0], counts[1]);
+
+  swift_free("fof_bh_df_mass", prim_mass);
+  swift_free("fof_bh_df_id", prim_id);
+  swift_free("fof_bh_df_xv", prim_xv);
+}
+#endif
+
 /**
  * @brief Compute the group properties for all groups.
  *
@@ -2531,7 +2800,8 @@ void fof_find_foreign_links_mapper(void *map_data, int num_elements,
  */
 void fof_calc_group_mass(struct fof_props *props, const struct space *s,
                          int *restrict number_of_local_seeds,
-                         int *restrict number_of_global_seeds) {
+                         int *restrict number_of_global_seeds,
+                         const int allow_bh_moves) {
 
   const size_t nr_gparts = s->nr_gparts;
   const struct gpart *gparts = s->gparts;
@@ -2632,20 +2902,27 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
       const size_t gas_index = -gparts[i].id_or_neg_offset;
       const float rho_com = hydro_get_comoving_density(&parts[gas_index]);
       const float sfr = star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
-#ifdef WITH_FOF_GALAXIES
-      /* In Kiara, include only SF gas in the galaxy */
-      if (sfr > 0.f) {
-#endif
 #ifdef SWIFT_DEBUG_CHECKS
-        if (rho_com == 0.f) {
-          error("Found a particle with 0-density! id=%lld", parts[gas_index].id);
-        }
+      if (rho_com == 0.f) {
+        error("Found a particle with 0-density! id=%lld", parts[gas_index].id);
+      }
 #endif
+#ifdef WITH_FOF_GALAXIES
+      /* In Kiara, the galaxy SFR (and the densest gas, for BH seeding) come
+       * from the star-forming gas, and the galaxy gas mass from its cold,
+       * dense ISM gas, which need not be forming stars */
+      if (sfr > 0.f) {
         max_part_density[index] = fmaxf(rho_com, max_part_density[index]);
         star_formation_rate[index] += sfr;
-        gas_mass[index] += gparts[i].mass;
-#ifdef WITH_FOF_GALAXIES
       }
+      if (fof_gas_is_galaxy_gas(props, s->e, &parts[gas_index],
+                                &xparts[gas_index])) {
+        gas_mass[index] += gparts[i].mass;
+      }
+#else
+      max_part_density[index] = fmaxf(rho_com, max_part_density[index]);
+      star_formation_rate[index] += sfr;
+      gas_mass[index] += gparts[i].mass;
 #endif
     }
 
@@ -2677,6 +2954,13 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
                 MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, star_formation_rate, props->num_groups, MPI_FLOAT,
                 MPI_SUM, MPI_COMM_WORLD);
+#endif
+
+#if defined(BLACK_HOLES_OBSIDIAN) && defined(WITH_FOF_GALAXIES)
+  /* Uses the BHs' host-galaxy data from the previous call */
+  fof_bh_dynamical_friction(props, s, group_mass, allow_bh_moves);
+#else
+  (void)allow_bh_moves;
 #endif
 
   *number_of_local_seeds = 0;
@@ -2792,7 +3076,13 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
   for (size_t i = 0; i < nr_gparts; i++) {
 
     /* Ignore particles not in groups */
-    if (gparts[i].fof_data.group_id == group_id_default) continue;
+    if (gparts[i].fof_data.group_id == group_id_default) {
+#ifdef WITH_FOF_GALAXIES
+      /* Not in a galaxy: clear any host-galaxy data from earlier calls */
+      fof_set_galaxy_data(s, &gparts[i], 0.f, 0.f, 0.f);
+#endif
+      continue;
+    }
 
     /* Entry into the global list of group properties */
     const size_t index = gparts[i].fof_data.group_id - 1;
@@ -2832,29 +3122,10 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     }
 
 #ifdef WITH_FOF_GALAXIES
-    /* Get a handle on the gpart. */
-    const struct gpart *restrict gp = &gparts[i];
-
-    /* Load FoF data into particles of various types */
-    if (gp->type == swift_type_gas) {
-      struct part *restrict p = &(s->parts[-gp->id_or_neg_offset]);
-      p->galaxy_data.stellar_mass = stellar_mass[index];
-      p->galaxy_data.gas_mass = gas_mass[index];
-      if (stellar_mass[index] > 0.f) p->galaxy_data.specific_sfr =
-          star_formation_rate[index] / stellar_mass[index];
-    } else if (gp->type == swift_type_stars) {
-      struct spart *restrict sp = &(s->sparts[-gp->id_or_neg_offset]);
-      sp->galaxy_data.stellar_mass = stellar_mass[index];
-      sp->galaxy_data.gas_mass = gas_mass[index];
-      if (stellar_mass[index] > 0.f) sp->galaxy_data.specific_sfr =
-          star_formation_rate[index] / stellar_mass[index];
-    } else if (gp->type == swift_type_black_hole) {
-      struct bpart *restrict bp = &(s->bparts[-gp->id_or_neg_offset]);
-      bp->galaxy_data.stellar_mass = stellar_mass[index];
-      bp->galaxy_data.gas_mass = gas_mass[index];
-      if (stellar_mass[index] > 0.f) bp->galaxy_data.specific_sfr =
-          star_formation_rate[index] / stellar_mass[index];
-    }
+    /* Load the host-galaxy data into particles of various types (the sSFR
+     * is zero in a galaxy without stars) */
+    fof_set_galaxy_data(s, &gparts[i], stellar_mass[index], gas_mass[index],
+                        star_formation_rate[index]);
 #endif
   }
 
@@ -4120,8 +4391,10 @@ void fof_compute_group_props(struct fof_props *props,
 
   /* Now, compute all things */
   int number_of_local_seeds = 0, number_of_global_seeds = 0;
+  /* BHs can only be moved if a rebuild follows, i.e. when seeding */
   fof_calc_group_mass(props, s, &number_of_local_seeds,
-                      &number_of_global_seeds);
+                      &number_of_global_seeds,
+                      /*allow_bh_moves=*/seed_black_holes);
 
   if (verbose)
     message("Computing group properties took: %.3f %s.",

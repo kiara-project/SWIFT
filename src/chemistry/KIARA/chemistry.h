@@ -56,6 +56,7 @@ firehose_init_ambient_quantities(struct part *restrict p,
   cpd->w_ambient = 0.f;
   cpd->rho_ambient = 0.f;
   cpd->u_ambient = 0.f;
+  for (int k = 0; k < 3; k++) cpd->v_ambient[k] = 0.f;
 }
 
 __attribute__((always_inline)) INLINE static void logger_windprops_printprops(
@@ -82,8 +83,8 @@ __attribute__((always_inline)) INLINE static void logger_windprops_printprops(
       hydro_get_drifted_comoving_internal_energy(pi) * u_convert,
       pi->rho * rho_convert, pi->chemistry_data.radius_stream * length_convert,
       pi->chemistry_data.metal_mass_fraction_total,
-      pi->chemistry_data.decoupling_delay_time * cd->time_to_Myr,
-      pi->chemistry_data.number_of_times_decoupled,
+      pi->feedback_data.decoupling_delay_time * cd->time_to_Myr,
+      pi->feedback_data.number_of_times_decoupled,
       pi->chemistry_data.rho_ambient * cd->rho_to_n_cgs * cosmo->a3_inv,
       pi->chemistry_data.u_ambient * cosmo->a_factor_internal_energy /
           cd->temp_to_u_factor,
@@ -131,10 +132,13 @@ firehose_end_ambient_quantities(struct part *restrict p,
     p->chemistry_data.rho_ambient *= h_inv_dim;
 
     if (p->chemistry_data.rho_ambient > 0.f) {
-      p->chemistry_data.u_ambient *= h_inv_dim / p->chemistry_data.rho_ambient;
+      const float norm = h_inv_dim / p->chemistry_data.rho_ambient;
+      p->chemistry_data.u_ambient *= norm;
+      for (int k = 0; k < 3; k++) p->chemistry_data.v_ambient[k] *= norm;
     } else {
       p->chemistry_data.rho_ambient = hydro_get_comoving_density(p);
       p->chemistry_data.u_ambient = u_floor;
+      for (int k = 0; k < 3; k++) p->chemistry_data.v_ambient[k] = p->v[k];
     }
 
 #ifdef FIREHOSE_DEBUG_CHECKS
@@ -147,6 +151,7 @@ firehose_end_ambient_quantities(struct part *restrict p,
     /* Set them to reasonable values for non-wind, just in case */
     p->chemistry_data.rho_ambient = hydro_get_comoving_density(p);
     p->chemistry_data.u_ambient = hydro_get_drifted_comoving_internal_energy(p);
+    for (int k = 0; k < 3; k++) p->chemistry_data.v_ambient[k] = p->v[k];
   }
 
   /* Limit ambient density to the user settings */
@@ -223,6 +228,9 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
     cpd->dZ_dt[elem] = 0.f;
     cpd->dm_Z[elem] = 0.f;
     cpd->dm_dust_Z[elem] = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+    cpd->dZ_dust_dt[elem] = 0.f;
+#endif
   }
 
 #if COOLING_GRACKLE_MODE >= 2
@@ -315,15 +323,7 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
     /* Never set D for wind, or ISM particles */
     if (!(p->decoupled) && !(p->cooling_data.subgrid_temp > 0.f)) {
 
-      /* Rennehan: Limit to maximum resolvable velocity scale */
-      const float v_phys =
-          sqrtf(p->v[0] * p->v[0] + p->v[1] * p->v[1] + p->v[2] * p->v[2]) *
-          cosmo->a_inv;
       const float h_phys = cosmo->a * p->h * kernel_gamma;
-      const float vel_norm_phys_max = 0.5f * v_phys / h_phys;
-      if (velocity_gradient_norm > vel_norm_phys_max) {
-        velocity_gradient_norm = vel_norm_phys_max;
-      }
 
       /* Compute the diffusion coefficient in physical coordinates.
        * The norm is already in physical coordinates.
@@ -334,19 +334,35 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
       const float D_phys = rho_phys * smag_length_scale * smag_length_scale *
                            velocity_gradient_norm;
 
-      cpd->diffusion_coefficient = D_phys;
+      /* Cap D so that the diffusion time-step beta rho h^2 / D is no shorter
+       * than the minimum time-step. Otherwise the floor in
+       * chemistry_timestep would make the explicit update unstable. Capping
+       * D (rather than limiting the update) keeps the pairwise fluxes
+       * symmetric, so metal mass stays conserved. */
+      float D_capped = D_phys;
+      if (cd->time_step_min > 0.f) {
+        const float D_max = cd->diffusion_beta * rho_phys * h_phys * h_phys /
+                            cd->time_step_min;
+        D_capped = min(D_capped, D_max);
+      }
+
+      cpd->diffusion_coefficient = D_capped;
 
       /* Turn off diffusion in underdense IGM */
       if (rho_phys < cosmo->mean_density_Omega_b) {
-        //message("Setting D to ~0: id=%lld rhobar=%g rho=%g h=%g", p->id, cosmo->mean_density_Omega_b * cd->rho_to_n_cgs, rho_phys * cd->rho_to_n_cgs, h_phys * cd->length_to_kpc);
-        cpd->diffusion_coefficient = 1.e-10;
+        /* Exactly 0 (rather than a tiny value) so these particles skip the
+         * diffusion pair calculations entirely */
+        cpd->diffusion_coefficient = 0.f;
       }
     }
   } /* end Smagorinsky diffusion */
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* Finish SFR density calculation */
-  cpd->local_sfr_density *= h_inv_dim;
+  /* Finish SFR density calculation, adding the particle's own SFR. The
+   * kernel sum uses comoving h, so convert to the physical density that the
+   * G0 calculation expects. */
+  cpd->local_sfr_density += kernel_root * max(0.f, p->sf_data.SFR);
+  cpd->local_sfr_density *= h_inv_dim * cosmo->a3_inv;
 #endif
 
   if (cd->use_firehose_wind_model) {
@@ -384,11 +400,16 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
   cpd->dZ_dt_total = 0.f;
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     cpd->dZ_dt[elem] = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+    cpd->dZ_dust_dt[elem] = 0.f;
+#endif
   }
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* If there is no nearby SF, set to zero */
-  cpd->local_sfr_density = 0.f;
+  /* No neighbours, so only the particle's own SFR contributes */
+  const float h_inv = 1.0f / p->h;
+  cpd->local_sfr_density = kernel_root * max(0.f, p->sf_data.SFR) *
+                           pow_dimension(h_inv) * cosmo->a3_inv;
 #endif
 }
 
@@ -517,11 +538,12 @@ static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
     error("time_step_min must be > 0");
   }
 
+  /* No longer used (see chemistry_struct.h); read for compatibility */
   data->max_fractional_Z_transfer = parser_get_opt_param_float(
       parameter_file, "KIARAChemistry:max_fractional_Z_transfer", 0.25f);
   if (data->max_fractional_Z_transfer < 0.f ||
       data->max_fractional_Z_transfer > 1.f) {
-    error("diffusion_beta must be >= 0 and <= 1");
+    error("max_fractional_Z_transfer must be >= 0 and <= 1");
   }
 
   /* Are we using the firehose wind model? */
@@ -684,6 +706,10 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
   if (!cd->use_firehose_wind_model) return 0.f;
 
   float rs = r_stream;
+
+  /* Recouple once the wind has slowed to subsonic relative to the ambient
+   * gas, with a similar internal energy. This applies to all decoupled
+   * particles (also BH-driven winds, which are not firehose streams). */
   const double u = hydro_get_drifted_comoving_internal_energy(p);
   const double u_max = max(u, p->chemistry_data.u_ambient);
   const double u_diff = fabs(u - p->chemistry_data.u_ambient) / u_max;
@@ -691,13 +717,70 @@ firehose_recoupling_criterion(struct part *p, const float Mach,
       u_diff < cd->firehose_recoupling_u_factor)
     rs = -1.f;
 
-  const float exchanged_mass_frac =
-      p->chemistry_data.exchanged_mass / hydro_get_mass(p);
-
-  if (exchanged_mass_frac > cd->firehose_recoupling_fmix) rs = -1.f;
-  if (r_stream == 0.f) rs = -1.f;
+  /* A firehose stream (r_stream > 0) also recouples once it has mixed
+   * enough mass */
+  if (r_stream > 0.f) {
+    const float exchanged_mass_frac =
+        p->chemistry_data.exchanged_mass / hydro_get_mass(p);
+    if (exchanged_mass_frac > cd->firehose_recoupling_fmix) rs = -1.f;
+  }
 
   return rs;
+}
+
+/**
+ * @brief Initial radius of a firehose stream launched by a galaxy's winds.
+ *
+ * The stream is the smaller of the radius at which the wind mass flux
+ * mdot = pi R^2 rho v fills a volume at n_H = 0.1 cm^-3, and twice the
+ * observed effective radius of disk galaxies of that stellar mass (Ward+2024
+ * CEERS); it is never smaller than the launching particle's kernel. Used for
+ * both stellar- and BH-driven winds.
+ *
+ * @param galaxy_stellar_mass Host galaxy stellar mass (internal units).
+ * @param minimum_galaxy_stellar_mass Floor on the galaxy stellar mass.
+ * @param mass_to_solar_mass Internal mass to Msun.
+ * @param length_to_kpc Internal length to kpc.
+ * @param rho_to_n_cgs Internal density to n_H in cm^-3.
+ * @param m_dot_wind Wind mass outflow rate (internal units), <= 0 if unknown.
+ * @param v_wind_phys Physical wind speed (internal units).
+ * @param h_launch Comoving smoothing length of the launching particle.
+ * @param cosmo The #cosmology.
+ * @return The comoving stream radius.
+ */
+__attribute__((always_inline)) INLINE static float
+firehose_initial_stream_radius(const float galaxy_stellar_mass,
+                               const float minimum_galaxy_stellar_mass,
+                               const double mass_to_solar_mass,
+                               const double length_to_kpc,
+                               const double rho_to_n_cgs,
+                               const double m_dot_wind, const float v_wind_phys,
+                               const float h_launch,
+                               const struct cosmology *cosmo) {
+
+  /* Twice the effective radius of disk galaxies, physical kpc, converted to
+   * internal comoving units */
+  const float galaxy_stellar_mass_Msun =
+      fmaxf(galaxy_stellar_mass, minimum_galaxy_stellar_mass) *
+      mass_to_solar_mass;
+  const float redge_obs_kpc = 2.f * 7.1f * powf(cosmo->a, 0.63f) *
+                              powf(galaxy_stellar_mass_Msun / 5.e10f, 0.16f);
+  const float redge_obs = cosmo->a_inv * redge_obs_kpc / length_to_kpc;
+
+  float r_stream = redge_obs;
+
+  /* Radius for the wind mass flux to fill a volume-filling density */
+  if (galaxy_stellar_mass > 0.f && m_dot_wind > 0. && v_wind_phys > 0.f) {
+    const double stream_init_density = 0.1; /* n_H, cgs */
+    const double rho_volumefilling_phys = stream_init_density / rho_to_n_cgs;
+    const float redge_est =
+        sqrt(m_dot_wind / (M_PI * rho_volumefilling_phys * v_wind_phys)) *
+        cosmo->a_inv;
+    r_stream = fminf(redge_est, redge_obs);
+  }
+
+  /* Stream cannot be smaller than the smoothing length */
+  return fmaxf(r_stream, kernel_gamma * h_launch);
 }
 
 /**
@@ -749,340 +832,225 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
 
   struct chemistry_part_data *ch = &p->chemistry_data;
 
-  const float h_inv = 1.f / p->h;
-  const float h_inv_dim = pow_dimension(h_inv); /* 1/h^d */
-  /* Missing factors in iact. */
-  const float factor = h_inv_dim * h_inv;
-
   if (cd->use_firehose_wind_model && ch->dm > 0.f) {
     struct cooling_part_data *co = &p->cooling_data;
 
     const float m = hydro_get_mass(p);
-    const float v =
-          sqrtf(p->v[0] * p->v[0] + p->v[1] * p->v[1] +
-                p->v[2] * p->v[2]);
-    const float dv = sqrtf(ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] +
-                           ch->dv[2] * ch->dv[2]);
-    float dv_phys = dv * cosmo->a_inv;
 
-    /* Use this to limit energy change in v^2 and u */
-    float alpha = 1.f;
+    /* The per-step mixing cap (applied pairwise in the force loop) already
+     * bounds the velocity change to a fraction of the relative velocity of
+     * the two phases, so no further (frame-dependent) limit on the kinetic
+     * energy is needed. Always apply the exchange, so that it stays
+     * conservative between the pair. */
+    const float dv2 = ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] +
+                      ch->dv[2] * ch->dv[2];
+    const float dv_phys = sqrtf(dv2) * cosmo->a_inv;
 
-    if (dv >= FIREHOSE_EPSILON_TOLERANCE * v) {
-      const float v_new[3] = {p->v[0] + ch->dv[0],
-                              p->v[1] + ch->dv[1],
-                              p->v[2] + ch->dv[2]};
-      const float v_new_norm = sqrtf(v_new[0] * v_new[0] + v_new[1] * v_new[1] +
-                                     v_new[2] * v_new[2]);
-
-      /* Apply a kinetic energy limiter */
-      const double v2 = v * v;
-      double dv2 = dv * dv;
-      const double v_new2 = v_new_norm * v_new_norm;
-      const double KE_ratio = (v > 0.) ? v_new2 / v2 : 1.;
-      const int KE_low_flag = (KE_ratio < FIREHOSE_COOLLIM);
-      const int KE_high_flag = (KE_ratio > FIREHOSE_HEATLIM);
-      const int KE_out_of_bounds = KE_low_flag || KE_high_flag;
-
-      if (KE_out_of_bounds && dv2 > 0.) {
-        /* Solve the same scaling equation, just with a different target */
-        const float target_KE_factor =
-            (KE_low_flag) ? FIREHOSE_COOLLIM : FIREHOSE_HEATLIM;
-
-        const float v_dot_dv = p->v[0] * ch->dv[0] +
-                               p->v[1] * ch->dv[1] +
-                               p->v[2] * ch->dv[2];
-
-        /* How to scale all components equally? Solve quadratic:
-         * v^2 + 2 * alpha * v * dv + alpha^2 * dv^2 = target_KE_factor * v^2
-         *
-         * Or equivalently:
-         *  A * alpha^2 + B * alpha + C = 0
-         *
-         * where A = 1
-         *       B = 2 * (v * dv) / (dv^2))
-         *       C = (v / dv)^2 * (1 - target_KE_factor)
-         */
-        const float B = 2.f * v_dot_dv / dv2;
-        const float C = (v2 / dv2) * (1.f - target_KE_factor);
-        const float discriminant = B * B - 4.f * C;
-        /* For logging */
-        const double u_drift = hydro_get_drifted_comoving_internal_energy(p);
-
-        if (discriminant >= 0.) {
-          const float alpha1 = (-B - sqrtf(discriminant)) / 2.f;
-          const float alpha2 = (-B + sqrtf(discriminant)) / 2.f;
-
-          /* Minimize alpha1 and alpha2 between (0, 1) */
-          if (alpha1 > 0.f && alpha1 < 1.f) alpha = alpha1;
-          if (alpha2 < alpha && alpha2 > 0.f) alpha = alpha2;
-
-          /* If there is predicted to be no change, just cancel the operation */
-          if (alpha == 1.f) alpha = 0.f;
-
-          ch->dv[0] *= alpha;
-          ch->dv[1] *= alpha;
-          ch->dv[2] *= alpha;
-
-          message(
-              "FIREHOSE_KE_LIMIT p=%lld alpha=%.4g KE_ratio=%.4g v=%.4g "
-              "dv=%g m=%g dm=%g u=%g du=%g "
-              "dv[0]=%g dv[1]=%g dv[2]=%g "
-              "v[0]=%g v[1]=%g v[2]=%g",
-              p->id, alpha, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du,
-              ch->dv[0], ch->dv[1], ch->dv[2], p->v[0], p->v[1], p->v[2]);
-        } else {
-          ch->dv[0] = 0.f;
-          ch->dv[1] = 0.f;
-          ch->dv[2] = 0.f;
-
-          message(
-              "FIREHOSE_KE_LIMIT p=%lld alpha=INVALID KE_ratio=%.4g v=%.4g "
-              "dv=%g m=%g dm=%g u=%g du=%g "
-              "dv[0]=%g dv[1]=%g dv[2]=%g "
-              "v[0]=%g v[1]=%g v[2]=%g",
-              p->id, KE_ratio, v, dv, m, ch->dm, u_drift, ch->du, 
-              ch->dv[0], ch->dv[1], ch->dv[2], p->v[0], p->v[1], p->v[2]);
-        }
-
-        /* Recompute the new updated limited values to set v_sig */
-        dv2 = ch->dv[0] * ch->dv[0] + ch->dv[1] * ch->dv[1] +
-              ch->dv[2] * ch->dv[2];
-        dv_phys = sqrtf(dv2) * cosmo->a_inv;
-      }
-    } else {
-      /* Cancel everything if the kick is so small it doesn't matter */
-      dv_phys = 0.f;
-    }
-
-    /* Make sure there were also no problems with the KE of the particle.
-     * Skip all exchanges if there was! */
-    if (dv_phys > 0.f) {
-
+    if (dv_phys > 0.f)
       hydro_set_v_sig_based_on_velocity_kick(p, cosmo, dv_phys);
 
-      p->v[0] += ch->dv[0];
-      p->v[1] += ch->dv[1];
-      p->v[2] += ch->dv[2];
+    p->v[0] += ch->dv[0];
+    p->v[1] += ch->dv[1];
+    p->v[2] += ch->dv[2];
 
-      /* Grab the comoving internal energy at last kick */
-      const double u = hydro_get_drifted_comoving_internal_energy(p);
+    /* Grab the comoving internal energy at last kick */
+    const double u = hydro_get_drifted_comoving_internal_energy(p);
 
-      /* Reset du based on previously calculated alpha limiter */
-      ch->du *= alpha * alpha;
+    double u_new = u + ch->du;
+    const double u_floor =
+        cd->firehose_u_floor / cosmo->a_factor_internal_energy;
+    if (u_new < u_floor) {
+      u_new = u_floor;
+      ch->du = u_new - u;
+    }
 
-      double u_new = u + ch->du;
-      const double u_floor =
-          cd->firehose_u_floor / cosmo->a_factor_internal_energy;
-      if (u_new < u_floor) {
-        u_new = u_floor;
-        ch->du = u_new - u;
-      }
+    /* Ignore small changes to the internal energy */
+    const double u_eps = fabs(ch->du) / u;
 
-      /* Ignore small changes to the internal energy */
-      const double u_eps = fabs(ch->du) / u;
-
-      if (u_eps > FIREHOSE_EPSILON_TOLERANCE) {
+    if (u_eps > FIREHOSE_EPSILON_TOLERANCE) {
 #ifdef FIREHOSE_DEBUG_CHECKS
-        if (!isfinite(u) || !isfinite(ch->du)) {
-          message("FIREHOSE_BAD p=%lld u=%g du=%g dv_phys=%g m=%g dm=%g", p->id,
-                  u, ch->du, dv_phys, m, ch->dm);
-        }
+      if (!isfinite(u) || !isfinite(ch->du)) {
+        message("FIREHOSE_BAD p=%lld u=%g du=%g dv_phys=%g m=%g dm=%g", p->id,
+                u, ch->du, dv_phys, m, ch->dm);
+      }
 #endif
 
-        const double energy_frac = (u > 0.) ? u_new / u : 1.;
-        if (energy_frac > FIREHOSE_HEATLIM) u_new = FIREHOSE_HEATLIM * u;
-        if (energy_frac < FIREHOSE_COOLLIM) u_new = FIREHOSE_COOLLIM * u;
+      const double energy_frac = (u > 0.) ? u_new / u : 1.;
+      if (energy_frac > FIREHOSE_HEATLIM) u_new = FIREHOSE_HEATLIM * u;
+      if (energy_frac < FIREHOSE_COOLLIM) u_new = FIREHOSE_COOLLIM * u;
 
-        /* If it's in subgrid ISM mode, use additional heat to
-         * lower ISM cold fraction */
-        const int firehose_add_heat_to_ISM =
-            (p->cooling_data.subgrid_temp > 0.f &&
-             p->cooling_data.subgrid_fcold > 0.f && ch->du > 0.);
+      /* If it's in subgrid ISM mode, use additional heat to
+       * lower ISM cold fraction */
+      const int firehose_add_heat_to_ISM =
+          (p->cooling_data.subgrid_temp > 0.f &&
+           p->cooling_data.subgrid_fcold > 0.f && ch->du > 0.);
 
-        if (firehose_add_heat_to_ISM) {
+      if (firehose_add_heat_to_ISM) {
 
-          /* 0.8125 is mu for a fully neutral gas with XH=0.75;
-           * approximate but good enough */
-          const double T_conv =
-              cd->temp_to_u_factor / cosmo->a_factor_internal_energy;
-          const double u_cold = 0.8125 * p->cooling_data.subgrid_temp * T_conv;
+        /* 0.8125 is 1/mu for a fully neutral gas with XH=0.75;
+         * approximate but good enough */
+        const double T_conv =
+            cd->temp_to_u_factor / cosmo->a_factor_internal_energy;
+        const double u_cold = 0.8125 * p->cooling_data.subgrid_temp * T_conv;
 
-          const double delta_u = u - u_cold;
-          double f_evap = 0.;
+        /* The particle's u is the mass-weighted mix of the two phases,
+         * u = f_c u_cold + (1 - f_c) u_warm, so recover u_warm from it.
+         * Turning a mass fraction df of cold gas into warm gas costs
+         * df (u_warm - u_cold) per unit particle mass. */
+        const double f_c = p->cooling_data.subgrid_fcold;
+        const double u_warm =
+            (f_c < 1.) ? (u - f_c * u_cold) / (1. - f_c) : u;
+        const double delta_u = u_warm - u_cold;
 
-          if (delta_u > FIREHOSE_EPSILON_TOLERANCE * u) {
-            f_evap = ch->du / delta_u;
-            f_evap = min(f_evap, 1.0);
-          } else {
-            f_evap = 1.0;
-          }
-
-          /* Clip values in case of overflow */
-          if (f_evap > 0.) {
-
-            p->cooling_data.subgrid_fcold *= 1. - f_evap;
-
-            /* Make sure any extra heat goes into the particle */
-            const double u_remaining = ch->du - f_evap * delta_u;
-            u_new = u + max(u_remaining, 0.);
-
-            if (p->cooling_data.subgrid_fcold <= 0.f) {
-              p->cooling_data.subgrid_temp = 0.f;
-              p->cooling_data.subgrid_dens =
-                  hydro_get_physical_density(p, cosmo);
-              p->cooling_data.subgrid_fcold = 0.f;
-            }
-          }
+        /* Fraction of the particle mass evaporated, at most all the cold
+         * gas. The heat stays in the particle (u_new = u + du), which is
+         * exactly the mixture energy after the evaporation, plus any
+         * heat left over once all the cold gas is gone. */
+        double f_evap = f_c;
+        if (delta_u > FIREHOSE_EPSILON_TOLERANCE * u) {
+          f_evap = min(ch->du / delta_u, f_c);
         }
 
-        double u_phys = u_new * cosmo->a_factor_internal_energy;
+        if (f_evap > 0.) {
+          p->cooling_data.subgrid_fcold -= f_evap;
 
-        hydro_set_physical_internal_energy(p, xp, cosmo, u_phys);
-        hydro_set_drifted_physical_internal_energy(p, cosmo, NULL, u_phys);
-      } else {
-        ch->du = 0.;
-      }
-
-      /* Check dust change */
-      float dust_eps = 0.f;
-
-      /* Check dust change */
-      if (co->dust_mass > 0.f) {
-        dust_eps = fabs(ch->dm_dust) / co->dust_mass;
-      }
-
-      float new_dust_mass = co->dust_mass;
-      if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) new_dust_mass += ch->dm_dust;
-
-      ch->metal_mass_fraction_total = 0.f;
-      for (int elem = 0; elem < chemistry_element_count; ++elem) {
-        const float old_mass_Z = ch->metal_mass_fraction[elem] * m;
-        if (old_mass_Z > 0.f) {
-          const float Z_eps = fabs(ch->dm_Z[elem]) / old_mass_Z;
-
-          if (Z_eps >= FIREHOSE_EPSILON_TOLERANCE) {
-            ch->metal_mass_fraction[elem] = (old_mass_Z + ch->dm_Z[elem]) / m;
+          if (p->cooling_data.subgrid_fcold <= 0.f) {
+            p->cooling_data.subgrid_temp = 0.f;
+            p->cooling_data.subgrid_dens =
+                hydro_get_physical_density(p, cosmo);
+            p->cooling_data.subgrid_fcold = 0.f;
           }
         }
-
-        /* Recompute Z */
-        if (elem != chemistry_element_H && elem != chemistry_element_He) {
-          ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
-        }
-
-        if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
-          const float old_dust_mass_Z =
-              co->dust_mass_fraction[elem] * co->dust_mass;
-          co->dust_mass_fraction[elem] =
-              (old_dust_mass_Z + ch->dm_dust_Z[elem]) / new_dust_mass;
-        }
       }
 
-      /* Set the new dust mass from the exchange */
-      co->dust_mass = (new_dust_mass > 0.f) ? new_dust_mass : 0.f;
-      if (co->dust_mass <= 0.f) {
-        for (int elem = 0; elem < chemistry_element_count; ++elem) {
-          co->dust_mass_fraction[elem] = 0.f;
-        }
+      double u_phys = u_new * cosmo->a_factor_internal_energy;
 
-        co->dust_mass = 0.f;
+      hydro_set_physical_internal_energy(p, xp, cosmo, u_phys);
+      hydro_set_drifted_physical_internal_energy(p, cosmo, NULL, u_phys);
+    } else {
+      ch->du = 0.;
+    }
+
+    /* Check dust change (a dust-free particle can still receive dust) */
+    float dust_eps = 0.f;
+    if (co->dust_mass > 0.f) {
+      dust_eps = fabs(ch->dm_dust) / co->dust_mass;
+    } else if (ch->dm_dust > 0.f) {
+      dust_eps = 1.f;
+    }
+
+    float new_dust_mass = co->dust_mass;
+    if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) new_dust_mass += ch->dm_dust;
+
+    ch->metal_mass_fraction_total = 0.f;
+    for (int elem = 0; elem < chemistry_element_count; ++elem) {
+      const float old_mass_Z = ch->metal_mass_fraction[elem] * m;
+      /* An element-free particle can still receive that element */
+      const float Z_eps = (old_mass_Z > 0.f)
+                              ? fabs(ch->dm_Z[elem]) / old_mass_Z
+                              : ((ch->dm_Z[elem] > 0.f) ? 1.f : 0.f);
+      if (Z_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+        ch->metal_mass_fraction[elem] = (old_mass_Z + ch->dm_Z[elem]) / m;
       }
 
-      /* Make sure that X + Y + Z = 1 */
-      const float Y_He = ch->metal_mass_fraction[chemistry_element_He];
-      ch->metal_mass_fraction[chemistry_element_H] =
-          1.f - Y_He - ch->metal_mass_fraction_total;
-
-      /* Make sure H fraction does not go out of bounds */
-      if (ch->metal_mass_fraction[chemistry_element_H] > 1.f ||
-          ch->metal_mass_fraction[chemistry_element_H] < 0.f) {
-        for (int i = chemistry_element_H; i < chemistry_element_count; i++) {
-          warning("\telem[%d] is %g", i, ch->metal_mass_fraction[i]);
-        }
-
-        error(
-            "Hydrogen fraction exeeds unity or is negative for"
-            " particle id=%lld due to firehose exchange",
-            p->id);
+      /* Recompute Z */
+      if (elem != chemistry_element_H && elem != chemistry_element_He) {
+        ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
       }
 
-      /* Update stream radius for stream particle */
-      if (p->decoupled) {
-        const float stream_growth_factor = 1.f + ch->dm / hydro_get_mass(p);
-        ch->radius_stream *= sqrtf(stream_growth_factor);
-
-        const double c_s =
-            sqrt(ch->u_ambient * hydro_gamma * hydro_gamma_minus_one);
-        const float Mach = dv_phys / (cosmo->a_factor_sound_speed * c_s);
-        ch->radius_stream =
-            firehose_recoupling_criterion(p, Mach, ch->radius_stream, cd);
+      if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+        const float old_dust_mass_Z =
+            co->dust_mass_fraction[elem] * co->dust_mass;
+        co->dust_mass_fraction[elem] =
+            (old_dust_mass_Z + ch->dm_dust_Z[elem]) / new_dust_mass;
       }
     }
+
+    /* Set the new dust mass from the exchange */
+    co->dust_mass = (new_dust_mass > 0.f) ? new_dust_mass : 0.f;
+    if (co->dust_mass <= 0.f) {
+      for (int elem = 0; elem < chemistry_element_count; ++elem) {
+        co->dust_mass_fraction[elem] = 0.f;
+      }
+
+      co->dust_mass = 0.f;
+    }
+
+    /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
+    const float Y_He = ch->metal_mass_fraction[chemistry_element_He];
+    ch->metal_mass_fraction[chemistry_element_H] =
+        1.f - Y_He - ch->metal_mass_fraction_total - co->dust_mass / m;
+
+    /* Make sure H fraction does not go out of bounds */
+    if (ch->metal_mass_fraction[chemistry_element_H] > 1.f ||
+        ch->metal_mass_fraction[chemistry_element_H] < 0.f) {
+      for (int i = chemistry_element_H; i < chemistry_element_count; i++) {
+        warning("\telem[%d] is %g", i, ch->metal_mass_fraction[i]);
+      }
+
+      error(
+          "Hydrogen fraction exeeds unity or is negative for"
+          " particle id=%lld due to firehose exchange",
+          p->id);
+    }
+
+    /* Update stream radius for stream particle */
+    if (p->decoupled) {
+      const float stream_growth_factor = 1.f + ch->dm / hydro_get_mass(p);
+      ch->radius_stream *= sqrtf(stream_growth_factor);
+    }
+  }
+
+  /* Check whether the stream should recouple: it has slowed to subsonic
+   * relative to its surroundings with a similar energy, or has mixed enough
+   * mass. Do this every step, not only when mass was exchanged: a slow
+   * stream inside dense, rapidly cooling gas grows rather than mixes, and
+   * would otherwise stay decoupled (pressureless) and collapse. Only with
+   * ambient neighbours, otherwise v_ambient is the particle's own velocity. */
+  if (cd->use_firehose_wind_model && p->decoupled && ch->w_ambient > 0.f) {
+
+    /* Mach number of the stream relative to the ambient gas (physical) */
+    float v_rel2 = 0.f;
+    for (int k = 0; k < 3; k++) {
+      const float dv_k = p->v[k] - ch->v_ambient[k];
+      v_rel2 += dv_k * dv_k;
+    }
+    const float v_rel_phys = sqrtf(v_rel2) * cosmo->a_inv;
+    const double c_s =
+        sqrt(ch->u_ambient * hydro_gamma * hydro_gamma_minus_one);
+    const float Mach = v_rel_phys / (cosmo->a_factor_sound_speed * c_s);
+    ch->radius_stream =
+        firehose_recoupling_criterion(p, Mach, ch->radius_stream, cd);
   }
 
   /* Are we a decoupled wind? Skip diffusion. */
   if (p->decoupled) return;
 
-  /* Check if we are hypersonic*/
-  /* Reset dZ_dt and return? */
+  /* No diffusion fluxes unless this particle diffuses (pairs need D > 0 on
+   * both sides) */
+  if (ch->diffusion_coefficient <= 0.f) return;
+
+  /* The kernel term (1/r) dW/dr (h factors included in iact) was computed
+   * with comoving h and r, while D and rho are physical: convert it to
+   * physical with a^-(d+2) (= a^-5 in 3D). */
+  const float factor = cosmo->a3_inv * cosmo->a2_inv;
+
+  /* The diffusion time-step and the cap on D keep the explicit update
+   * stable, so only reject clearly unphysical results here. (A fractional
+   * limiter would break the pairwise symmetry and so metal conservation.) */
   bool reset_time_derivatives = false;
-
-  /* Add diffused metals to particle */
-  const float dZ_tot = ch->dZ_dt_total * dt * factor;
-  const float new_metal_mass_fraction_total =
-      ch->metal_mass_fraction_total + dZ_tot;
-  if (ch->metal_mass_fraction_total > 0.f) {
-    const float abs_fractional_change =
-        fabs(dZ_tot) / ch->metal_mass_fraction_total;
-    /* Check if dZ is bigger than 1/4 of the Z */
-    if (abs_fractional_change > cd->max_fractional_Z_transfer) {
-      reset_time_derivatives = true;
-    }
-  }
-
-  /* Handle edge case where diffusion leads to negative metallicity */
-  if (new_metal_mass_fraction_total < 0.f) {
-    warning(
-        "Metal diffusion led to negative metallicity!\n"
-        "\tpid=%lld\n\tdt=%g\n\tZ=%g\n\tdZ_dt=%g\n"
-        "\tdZtot=%g\n\tZnewtot=%g\n\tfactor=%g",
-        p->id, dt, ch->metal_mass_fraction_total, ch->dZ_dt_total, dZ_tot,
-        new_metal_mass_fraction_total, factor);
-    reset_time_derivatives = true;
-  }
-
-  /* Handle edge case where diffusion leads to super-unity metallicity */
-  if (new_metal_mass_fraction_total > 1.f) {
-    warning(
-        "Metal diffusion led to metal fractions above unity!\n"
-        "pid=%lld\n\tdt=%g\n\tZ=%g\n\tdZ_dt=%g\n"
-        "\tdZtot=%g\n\tZnewtot=%g\n\tfactor=%g",
-        p->id, dt, ch->metal_mass_fraction_total, ch->dZ_dt_total, dZ_tot,
-        new_metal_mass_fraction_total, factor);
-    reset_time_derivatives = true;
-  }
-
-  /* Add individual element contributions from diffusion */
+  float dZ[chemistry_element_count];
   for (int elem = 0; elem < chemistry_element_count; elem++) {
-    const float dZ = ch->dZ_dt[elem] * dt * factor;
-    const float new_metal_fraction_elem = ch->metal_mass_fraction[elem] + dZ;
-
-    if (ch->metal_mass_fraction[elem] > 0.f) {
-      const float abs_fractional_change =
-          fabs(dZ) / ch->metal_mass_fraction[elem];
-      if (abs_fractional_change > cd->max_fractional_Z_transfer) {
-        reset_time_derivatives = true;
-      }
-    }
+    dZ[elem] = ch->dZ_dt[elem] * dt * factor;
+    const float new_metal_fraction_elem = ch->metal_mass_fraction[elem] + dZ[elem];
 
     /* Make sure that the metallicity is 0 <= x <= 1 */
     if (new_metal_fraction_elem < 0.f) {
       warning(
           "Z[elem] < 0! pid=%lld, dt=%g, elem=%d, Z=%g, dZ_dt=%g, dZ=%g, "
-          "dZtot=%g Ztot=%g Zdust=%g.",
-          p->id, dt, elem, ch->metal_mass_fraction[elem], ch->dZ_dt[elem], dZ,
-          dZ_tot, ch->metal_mass_fraction_total,
+          "Ztot=%g Zdust=%g.",
+          p->id, dt, elem, ch->metal_mass_fraction[elem], ch->dZ_dt[elem],
+          dZ[elem], ch->metal_mass_fraction_total,
           p->cooling_data.dust_mass_fraction[elem]);
       reset_time_derivatives = true;
     }
@@ -1090,9 +1058,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     if (new_metal_fraction_elem > 1.f) {
       warning(
           "Z[elem] > 1! pid=%lld, dt=%g, elem=%d, Z=%g, dZ_dt=%g, "
-          "dZ=%g, dZtot=%g Ztot=%g.",
-          p->id, dt, elem, ch->metal_mass_fraction[elem], ch->dZ_dt[elem], dZ,
-          dZ_tot, ch->metal_mass_fraction_total);
+          "dZ=%g, Ztot=%g.",
+          p->id, dt, elem, ch->metal_mass_fraction[elem], ch->dZ_dt[elem],
+          dZ[elem], ch->metal_mass_fraction_total);
       reset_time_derivatives = true;
     }
   }
@@ -1102,41 +1070,61 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     ch->dZ_dt_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
       ch->dZ_dt[elem] = 0.f;
+#if COOLING_GRACKLE_MODE >= 2
+      ch->dZ_dust_dt[elem] = 0.f;
+#endif
     }
     return;
-  } else {
-#if COOLING_GRACKLE_MODE >= 2
-    if (ch->metal_mass_fraction_total > 0.f) {
-      /* Add diffused dust to particle, in proportion to added metals */
-      p->cooling_data.dust_mass *= 1.f + dZ_tot / ch->metal_mass_fraction_total;
-    }
-#endif
-
-    /* Reset the total metallicity Z */
-    ch->metal_mass_fraction_total = new_metal_mass_fraction_total;
-
-    /* Add individual element contributions from diffusion */
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      const float dZ = ch->dZ_dt[elem] * dt * factor;
-      const float new_metal_fraction_elem = ch->metal_mass_fraction[elem] + dZ;
-
-#if COOLING_GRACKLE_MODE >= 2
-      /* Add diffused dust to particle, in proportion to added metals */
-      if (ch->metal_mass_fraction[elem] > 0.f) {
-        p->cooling_data.dust_mass_fraction[elem] *=
-            1.f + dZ / ch->metal_mass_fraction[elem];
-      }
-#endif
-
-      /* Treating Z like a passive scalar */
-      ch->metal_mass_fraction[elem] = new_metal_fraction_elem;
-    }
   }
 
-  /* Make sure that X + Y + Z = 1 */
+  /* Treating Z like a passive scalar */
+  for (int elem = 0; elem < chemistry_element_count; elem++) {
+    ch->metal_mass_fraction[elem] += dZ[elem];
+  }
+
+  /* Total Z is the sum of the tracked metals (as in feedback and firehose) */
+  ch->metal_mass_fraction_total = 0.f;
+  for (int elem = chemistry_element_C; elem < chemistry_element_count; elem++) {
+    ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
+  }
+
+#if COOLING_GRACKLE_MODE >= 2
+  /* Diffuse dust per element as a passive scalar, then rebuild the total
+   * dust mass and the per-element fractions of it */
+  struct cooling_part_data *co = &p->cooling_data;
+  const float m = hydro_get_mass(p);
+  float new_dust_mass = 0.f;
+  float dust_mass_elem[chemistry_element_count];
+  for (int elem = chemistry_element_C; elem < chemistry_element_count; elem++) {
+    dust_mass_elem[elem] = co->dust_mass_fraction[elem] * co->dust_mass +
+                           ch->dZ_dust_dt[elem] * dt * factor * m;
+    if (dust_mass_elem[elem] < 0.f) dust_mass_elem[elem] = 0.f;
+    new_dust_mass += dust_mass_elem[elem];
+  }
+  if (new_dust_mass > 0.f) {
+    const float inv = 1.f / new_dust_mass;
+    co->dust_mass_fraction[chemistry_element_H] = 1.f; /* sum of fractions */
+    co->dust_mass_fraction[chemistry_element_He] = 0.f;
+    for (int elem = chemistry_element_C; elem < chemistry_element_count;
+         elem++) {
+      co->dust_mass_fraction[elem] = dust_mass_elem[elem] * inv;
+    }
+    co->dust_mass = new_dust_mass;
+  } else {
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      co->dust_mass_fraction[elem] = 0.f;
+    }
+    co->dust_mass = 0.f;
+  }
+#endif
+
+  /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
   const float Y_He = ch->metal_mass_fraction[chemistry_element_He];
-  ch->metal_mass_fraction[chemistry_element_H] =
-      1.f - Y_He - ch->metal_mass_fraction_total;
+  float X_H = 1.f - Y_He - ch->metal_mass_fraction_total;
+#if COOLING_GRACKLE_MODE >= 2
+  X_H -= p->cooling_data.dust_mass / hydro_get_mass(p);
+#endif
+  ch->metal_mass_fraction[chemistry_element_H] = X_H;
 
   /* Make sure H fraction does not go out of bounds */
   if (ch->metal_mass_fraction[chemistry_element_H] > 1.f ||
@@ -1196,6 +1184,25 @@ __attribute__((always_inline)) INLINE static float chemistry_timestep(
   }
 
   if (cd->use_firehose_wind_model) {
+    /* Decoupled winds have no hydro time-step: limit them to a Courant step
+     * on their speed relative to the ambient gas (plus their own sound
+     * speed), so that they do not cross many smoothing lengths, and so skip
+     * the recoupling checks and firehose mixing, in a single step. */
+    if (p->decoupled == 1) {
+      const struct chemistry_part_data *ch = &p->chemistry_data;
+      float dv2 = 0.f;
+      for (int k = 0; k < 3; k++) {
+        const float dv_k = p->v[k] - ch->v_ambient[k];
+        dv2 += dv_k * dv_k;
+      }
+      const float h = kernel_gamma * cosmo->a * p->h;
+      const float v_sig =
+          sqrtf(dv2) * cosmo->a_inv + hydro_get_physical_soundspeed(p, cosmo);
+      if (v_sig > 0.f) {
+        dt_chem = min(dt_chem, 2.f * hydro_props->CFL_condition * h / v_sig);
+      }
+    }
+
     /* About-to-recouple winds need the hydro time-step. */
     if (p->decoupled == 2) {
       const float CFL_condition = hydro_props->CFL_condition;
