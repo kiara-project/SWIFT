@@ -272,13 +272,11 @@ __attribute__((always_inline)) INLINE static void feedback_init_spart(
   sp->feedback_data.ngb_mass = 0.f;
   sp->feedback_data.wind_ngb_mass = 0.f;
 
-  /* Check reservoirs each time-step for out-of-bounds values */
+  /* Reset an overshot launch budget (it is recomputed from the total mass
+   * kicked). The energy reservoir keeps any deficit from the last kick, so
+   * that it is paid back by later SN energy before more winds launch. */
   if (sp->feedback_data.mass_to_launch < 0.f) {
     sp->feedback_data.mass_to_launch = 0.f;
-  }
-
-  if (sp->feedback_data.physical_energy_reservoir < 0.) {
-    sp->feedback_data.physical_energy_reservoir = 0.;
   }
 
 #ifdef SWIFT_STARS_DENSITY_CHECKS

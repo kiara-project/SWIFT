@@ -323,11 +323,10 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
         si->feedback_data.wind_velocity * si->feedback_data.wind_velocity;
     const double energy_phys = 0.5 * hydro_get_mass(pj) * v2 * cosmo->a2_inv;
 
-    /* Remove energy used to kick particle from the SNII energy reservoir */
+    /* Remove energy used to kick particle from the SNII energy reservoir.
+     * Kicks are of whole particles, so this can overdraw it: keep the
+     * deficit (no launches until later SN energy has paid it back). */
     si->feedback_data.physical_energy_reservoir -= energy_phys;
-    if (si->feedback_data.physical_energy_reservoir < 0.f) {
-      si->feedback_data.physical_energy_reservoir = 0.f;
-    }
 
     /* Keep track of how many particles launched */
     si->feedback_data.N_launched += 1;
