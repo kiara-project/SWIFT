@@ -400,27 +400,28 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
      * step. */
     /* Make sure mindt larger than 0 to avoid mindt=-1 case. */
 
-    /* Limit flux exchange to some fraction of particle's photon energy
-    const float max_frac = 0.5f;
-    const double Ei_old = rti->radiation[g].energy_density *
-    pi->geometry.volume; const double Ej_old = rtj->radiation[g].energy_density
-    * pj->geometry.volume; if (totflux[0] * mindt > max_frac * Ei_old) { const
-    float ratio = max_frac * Ei_old / (totflux[0] * mindt); totflux[0] *= ratio;
-      totflux[1] *= ratio;
-      totflux[2] *= ratio;
-      totflux[3] *= ratio;
-      warning("Limiting flux_i exchange: pid=%lld pjd=%lld Ei=%g Elim=%g
-    ratio=%g", pi->id, pj->id, Ei_old, totflux[0]*mindt, ratio);
+    /* Positivity: a particle may export at most the fraction |A_ij| / sum|A|
+     * (interface areas of its last transport step) of the radiation energy
+     * it holds through this interface, so that over all its interfaces it
+     * never exports more than it has. The exchanged energy is
+     * totflux * mindt / a (see rt_finalise_transport), and the same flux is
+     * applied to both particles, so the exchange stays conservative. */
+    if (mindt > 0.f && totflux[0] != 0.f) {
+      const struct part *restrict p_exp = (totflux[0] > 0.f) ? pi : pj;
+      const float area_sum = p_exp->rt_data.area_sum_last;
+      if (area_sum > 0.f) {
+        const float E_max = p_exp->rt_data.radiation[g].energy_density *
+                            p_exp->geometry.volume * Anorm / area_sum;
+        const float E_exch = fabsf(totflux[0]) * mindt / a;
+        if (E_exch > E_max) {
+          const float ratio = E_max / E_exch;
+          totflux[0] *= ratio;
+          totflux[1] *= ratio;
+          totflux[2] *= ratio;
+          totflux[3] *= ratio;
+        }
+      }
     }
-    if (totflux[0] * mindt > max_frac * Ej_old) {
-      const float ratio = max_frac * Ej_old / (totflux[0] * mindt);
-      totflux[0] *= ratio;
-      totflux[1] *= ratio;
-      totflux[2] *= ratio;
-      totflux[3] *= ratio;
-      warning("Limiting flux_j exchange: pid=%lld pjd=%lld Ei=%g Elim=%g
-    ratio=%g", pi->id, pj->id, Ej_old, totflux[0]*mindt, ratio);
-    }*/
 
     if (mindt > 0.f) {
       rti->flux[g].energy -= totflux[0] * mindt;
