@@ -29,6 +29,10 @@
 
 #include <float.h>
 
+/*! Maximal interface-area ratio sum|A_ij| R / V used in the RT time-step
+ * (3 for a sphere) */
+#define rt_area_ratio_max 10.f
+
 /**
  * @file src/rt/KIARA/rt.h
  * @brief Main header file for the KIARA M1 Closure radiative transfer scheme.
@@ -427,8 +431,18 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
    * of its volume. */
   float dt;
   if (p->rt_data.area_sum_last > 0.f) {
-    dt = rt_props->CFL_condition * cosmo->a * p->geometry.volume /
-         p->rt_data.area_sum_last * rt_params.reduced_speed_of_light_inverse;
+    /* Particles in very dense gas at the smoothing-length floor have many
+     * more neighbours than usual, and so interface areas up to ~100x those
+     * of a sphere (sum|A| R / V = 3). Cap the area used here at
+     * rt_area_ratio_max V / R, so that these few particles do not force
+     * tiny RT steps; their positivity is kept by the flux limiter in
+     * runner_iact_rt_flux_common. */
+    const float R = powf(p->geometry.volume / hydro_dimension_unit_sphere,
+                         hydro_dimension_inv);
+    const float area = fminf(p->rt_data.area_sum_last,
+                             rt_area_ratio_max * p->geometry.volume / R);
+    dt = rt_props->CFL_condition * cosmo->a * p->geometry.volume / area *
+         rt_params.reduced_speed_of_light_inverse;
   } else {
     const float psize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
                              hydro_dimension_inv);
