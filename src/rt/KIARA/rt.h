@@ -429,26 +429,31 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
    * with the (comoving) interface areas of its last transport step. Before
    * the first transport step, use 1/10 of the crossing time of the radius
    * of its volume. */
-  float dt;
+  /* Transport length: V / sum|A| from the interface areas of the last
+   * transport step (capped, see below), or 1/10 of the volume radius before
+   * the first one. It is floored at the gravitational softening: transport
+   * is not resolved below it (in the dense ISM the absorption is done by the
+   * cold-cloud covering fraction), and the flux limiter in
+   * runner_iact_rt_flux_common keeps particles smaller than that positive.
+   */
+  const float R = powf(p->geometry.volume / hydro_dimension_unit_sphere,
+                       hydro_dimension_inv);
+  float length;
   if (p->rt_data.area_sum_last > 0.f) {
     /* Particles in very dense gas at the smoothing-length floor have many
      * more neighbours than usual, and so interface areas up to ~100x those
-     * of a sphere (sum|A| R / V = 3). Cap the area used here at
-     * rt_area_ratio_max V / R, so that these few particles do not force
-     * tiny RT steps; their positivity is kept by the flux limiter in
-     * runner_iact_rt_flux_common. */
-    const float R = powf(p->geometry.volume / hydro_dimension_unit_sphere,
-                         hydro_dimension_inv);
+     * of a sphere (sum|A| R / V = 3): cap the area at
+     * rt_area_ratio_max V / R. */
     const float area = fminf(p->rt_data.area_sum_last,
                              rt_area_ratio_max * p->geometry.volume / R);
-    dt = rt_props->CFL_condition * cosmo->a * p->geometry.volume / area *
-         rt_params.reduced_speed_of_light_inverse;
+    length = p->geometry.volume / area;
   } else {
-    const float psize = powf(p->geometry.volume / hydro_dimension_unit_sphere,
-                             hydro_dimension_inv);
-    dt = 0.1f * rt_props->CFL_condition * cosmo->a * psize *
-         rt_params.reduced_speed_of_light_inverse;
+    length = 0.1f * R;
   }
+  length = fmaxf(length, grav_props->epsilon_baryon_cur);
+
+  const float dt = rt_props->CFL_condition * cosmo->a * length *
+                   rt_params.reduced_speed_of_light_inverse;
 
   if (rt_props->skip_thermochemistry) return dt;
 
