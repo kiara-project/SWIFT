@@ -24,6 +24,7 @@
  * @brief thermochemistry utilities and misc functions.
  * */
 
+#include "rt_getters.h"
 #include "rt_species.h"
 
 /**
@@ -268,7 +269,8 @@ rt_tchem_set_particle_radiation_field_for_test(
 
   const double flux_to_cgs =
       units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_FLUX_PER_UNIT_SURFACE);
-  const double cf = rt_params.reduced_speed_of_light_inverse / flux_to_cgs;
+  const double cf =
+      1. / (rt_part_get_reduced_speed_of_light(p) * flux_to_cgs);
 
   /* Note that we inject energy / time / surface, not identical to what */
   /* is in Iliev06 paper */

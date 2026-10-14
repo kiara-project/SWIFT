@@ -133,6 +133,10 @@ __attribute__((always_inline)) INLINE static void rt_slope_limit_quantity(
 __attribute__((always_inline)) INLINE static void rt_slope_limit_cell(
     struct part *p) {
 
+  /* NOTE: currently unused. The energy gradient is that of c E (see
+   * rt_part_get_transport_state_vector); the energy density limits and value
+   * below would need to be c E as well before re-enabling this. */
+
   const float maxr = p->limiter.maxr;
   struct rt_part_data *rtd = &p->rt_data;
 

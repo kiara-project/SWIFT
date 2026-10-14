@@ -383,6 +383,7 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
     /* Check for too high fluxes */
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
                               rtd->radiation[g].flux, /*e_old =*/0.f,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/0);
   }
 
@@ -454,8 +455,8 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   }
   length = fmaxf(length, grav_props->epsilon_baryon_cur);
 
-  const float dt = rt_props->CFL_condition * cosmo->a * length *
-                   rt_params.reduced_speed_of_light_inverse;
+  const float dt = rt_props->CFL_condition * cosmo->a * length /
+                   rt_part_get_reduced_speed_of_light(p);
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -556,6 +557,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_injection(
   for (int g = 0; g < RT_NGROUPS; g++) {
     rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                               p->rt_data.radiation[g].flux, /*e_old=*/0.f,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/3);
   }
 }
@@ -657,7 +659,9 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 
     const float e_before_check = rtd->radiation[g].energy_density;
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
-                              rtd->radiation[g].flux, e_old, /*callloc=*/4);
+                              rtd->radiation[g].flux, e_old,
+                              rt_part_get_reduced_speed_of_light(p),
+                              /*callloc=*/4);
     rtd->debug_dE[3] +=
         (rtd->radiation[g].energy_density - e_before_check) * p->geometry.volume;
   }

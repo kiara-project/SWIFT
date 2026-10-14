@@ -74,7 +74,8 @@ struct rt_part_data {
    *    first index: x, y, z coordinate of the flux.
    *    Second index: gradient along x, y, z direction. */
   struct {
-    /*! Gradient of the energy density */
+    /*! Gradient of c times the energy density (the transported quantity, see
+     * rt_part_get_transport_state_vector) */
     float energy_density[3];
     /*! Gradient of the flux components */
     float flux[3][3];

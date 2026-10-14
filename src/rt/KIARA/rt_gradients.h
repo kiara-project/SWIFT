@@ -240,8 +240,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
   for (int g = 0; g < RT_NGROUPS; g++) {
 
     float Ui[4], Uj[4];
-    rt_part_get_radiation_state_vector(pi, g, Ui);
-    rt_part_get_radiation_state_vector(pj, g, Uj);
+    rt_part_get_transport_state_vector(pi, g, Ui);
+    rt_part_get_transport_state_vector(pj, g, Uj);
     const float dU[4] = {Ui[0] - Uj[0], Ui[1] - Uj[1], Ui[2] - Uj[2],
                          Ui[3] - Uj[3]};
 
@@ -356,8 +356,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_nonsym_collect(
   for (int g = 0; g < RT_NGROUPS; g++) {
 
     float Ui[4], Uj[4];
-    rt_part_get_radiation_state_vector(pi, g, Ui);
-    rt_part_get_radiation_state_vector(pj, g, Uj);
+    rt_part_get_transport_state_vector(pi, g, Ui);
+    rt_part_get_transport_state_vector(pj, g, Uj);
     const float dU[4] = {Ui[0] - Uj[0], Ui[1] - Uj[1], Ui[2] - Uj[2],
                          Ui[3] - Uj[3]};
 
@@ -422,8 +422,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
     float Uj[4], int group, const float dx[3], const float r,
     const float xij_i[3]) {
 
-  rt_part_get_radiation_state_vector(pi, group, Ui);
-  rt_part_get_radiation_state_vector(pj, group, Uj);
+  rt_part_get_transport_state_vector(pi, group, Ui);
+  rt_part_get_transport_state_vector(pj, group, Uj);
   /* No need to check unphysical state here:
    * they haven't been touched since the call
    * to rt_injection_update_photon_density */
@@ -471,8 +471,10 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
   Uj[3] += dUj[3];
 
   /* Check and correct unphysical extrapolated states */
-  rt_check_unphysical_state(Ui, &Ui[1], /*e_old=*/0.f, /*callloc=*/1);
-  rt_check_unphysical_state(Uj, &Uj[1], /*e_old=*/0.f, /*callloc=*/1);
+  rt_check_unphysical_state(Ui, &Ui[1], /*e_old=*/0.f, /*c_red=*/1.f,
+                            /*callloc=*/1);
+  rt_check_unphysical_state(Uj, &Uj[1], /*e_old=*/0.f, /*c_red=*/1.f,
+                            /*callloc=*/1);
 }
 
 /**
@@ -488,7 +490,7 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
 __attribute__((always_inline)) INLINE static void rt_gradients_predict_drift(
     const struct part *restrict p, float U[4], int group, const float dx[3]) {
 
-  rt_part_get_radiation_state_vector(p, group, U);
+  rt_part_get_transport_state_vector(p, group, U);
   /* No need to check unphysical state here:
    * they haven't been touched since the call
    * to rt_injection_update_photon_density */
@@ -508,7 +510,11 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict_drift(
   U[3] += dU[3];
 
   /* Check and correct unphysical extrapolated states */
-  rt_check_unphysical_state(U, &U[1], /*e_old=*/0.f, /*callloc=*/1);
+  rt_check_unphysical_state(U, &U[1], /*e_old=*/0.f, /*c_red=*/1.f,
+                            /*callloc=*/1);
+
+  /* Back from c E to the energy density */
+  U[0] /= rt_part_get_reduced_speed_of_light(p);
 }
 
 #endif /* SWIFT_RT_GRADIENT_KIARA_H */

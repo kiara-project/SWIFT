@@ -23,6 +23,8 @@
 #if defined(RT_RIEMANN_SOLVER_GLF)
 #include "rt_riemann_GLF.h"
 #elif defined(RT_RIEMANN_SOLVER_HLL)
+#error "KIARA RT transports W = (c E, F) (variable reduced speed of light); \
+the HLL solver has not been converted, use GLF"
 #include "rt_riemann_HLL.h"
 #else
 #error "No valid choice of RT Riemann solver has been selected"

@@ -78,6 +78,57 @@ rt_part_get_radiation_state_vector(const struct part *restrict p, int group,
 }
 
 /**
+ * @brief Get the reduced speed of light of a particle (internal units).
+ *
+ * Uniform unless the variable reduced speed of light is enabled, in which case
+ * it grows as (h / varc_h_ref)^varc_alpha above the comoving smoothing length
+ * varc_h_ref. Low-density gas, where ionization fronts are fast, gets a high
+ * c. For varc_alpha = 1 the RT time step V / (c sum|A|) ~ h / c is roughly the
+ * same for all particles.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static float
+rt_part_get_reduced_speed_of_light(const struct part *restrict p) {
+
+  const float c_min = rt_params.reduced_speed_of_light;
+  if (rt_params.varc_h_ref_inv == 0.f) return c_min;
+  const float x = p->h * rt_params.varc_h_ref_inv;
+  if (x <= 1.f) return c_min;
+  const float c =
+      c_min * (rt_params.varc_alpha == 1.f ? x : powf(x, rt_params.varc_alpha));
+  return fminf(c, rt_params.reduced_speed_of_light_max);
+}
+
+/**
+ * @brief Get the 4-element state vector W = (c E, F) that is transported
+ * (reconstructed and passed to the Riemann solver) for a photon group.
+ *
+ * With a spatially varying reduced speed of light c, the transport solves
+ *   dE/dt + div F = 0,   dF/dt + c div(c P) = 0.
+ * In free streaming c E = |F| and c P are continuous where c changes, while E
+ * jumps by the ratio of the c's; reconstructing and upwinding E would reflect
+ * radiation at such jumps. In terms of W the hyperbolic fluxes, (F, c P), are
+ * independent of c, so the Riemann solver works with c = 1, and the flux it
+ * returns for F is multiplied by each particle's own c when applied. For a
+ * uniform c this is identical to transporting (E, F).
+ *
+ * @param p Particle.
+ * @param group Index of photon group
+ * @param W Pointer to the array in which the result needs to be stored
+ */
+__attribute__((always_inline)) INLINE static void
+rt_part_get_transport_state_vector(const struct part *restrict p, int group,
+                                   float W[4]) {
+
+  W[0] = rt_part_get_reduced_speed_of_light(p) *
+         p->rt_data.radiation[group].energy_density;
+  W[1] = p->rt_data.radiation[group].flux[0];
+  W[2] = p->rt_data.radiation[group].flux[1];
+  W[3] = p->rt_data.radiation[group].flux[2];
+}
+
+/**
  * @brief Get the gradients of energy density and fluxes for a given photon
  * group
  *
@@ -110,9 +161,10 @@ __attribute__((always_inline)) INLINE static void rt_part_get_gradients(
 }
 
 /**
- * @brief compute the pressure tensor for a given radiation state U
+ * @brief compute c times the pressure tensor for a given transport state W
  *
- * @param U the state (radiation energy density, radiation flux) to use
+ * @param U the transport state W = (c E, F) to use (see
+ * rt_part_get_transport_state_vector)
  * @param Fnorm the norm of the radiation flux
  * @param pressure_tensor (return) 3x3 array to write resulting Eddington
  * pressure tensor into
@@ -137,11 +189,10 @@ __attribute__((always_inline)) INLINE static void rt_get_pressure_tensor(
     return;
   }
 
-  /* f mustn't be > 1. This may happen because of the reduced speed of light.
-   * Energy density U[0] is nonzero at this point, or this function wouldn't
-   * have been called. */
-  const float f =
-      min(1.f, rt_params.reduced_speed_of_light_inverse * Fnorm / U[0]);
+  /* f = |F| / (c E) mustn't be > 1. This may happen because of the reduced
+   * speed of light. U[0] = c E is nonzero at this point, or this function
+   * wouldn't have been called. */
+  const float f = min(1.f, Fnorm / U[0]);
   const float f2 = f * f;
   const float rootterm = 4.f - 3.f * f2;
   const float chi = (3.f + 4.f * f2) / (5.f + 2.f * sqrtf(rootterm));
@@ -171,11 +222,11 @@ __attribute__((always_inline)) INLINE static void rt_get_pressure_tensor(
 #ifdef SWIFT_RT_DEBUG_CHECKS
   if (pressure_tensor[0][0] != pressure_tensor[0][0]) {
     message(
-        "Found NaNs in pressure tensor: 1/c %.3e |"
+        "Found NaNs in pressure tensor:"
         " |F| %.3e f %.3e f^2 %.3e root %.3e chi %.3e |"
         " n %.3e %.3e %.3e | U %.3e %.3e %.3e |"
         " temp %.3e %.3e",
-        rt_params.reduced_speed_of_light_inverse, Fnorm, f, f2, rootterm, chi,
+        Fnorm, f, f2, rootterm, chi,
         n[0], n[1], n[2], U[1], U[2], U[3], temp, temp2);
   }
 #endif
@@ -183,9 +234,9 @@ __attribute__((always_inline)) INLINE static void rt_get_pressure_tensor(
 
 /**
  * @brief compute the flux of the hyperbolic conservation law for a given
- * state U
+ * transport state W, with the F equation divided by c: (F, c P)
  *
- * @param U the state (radiation energy density, radiation flux) to use
+ * @param U the transport state W = (c E, F) to use
  * @param Fnorm the norm of the radiation flux
  * @param hypflux (return) resulting flux F(U) of the hyperbolic conservation
  * law
@@ -215,17 +266,15 @@ __attribute__((always_inline)) INLINE static void rt_get_hyperbolic_flux(
   float pressure_tensor[3][3];
   rt_get_pressure_tensor(U, Fnorm, pressure_tensor);
 
-  const float c_red = rt_params.reduced_speed_of_light;
-  const float c2 = c_red * c_red;
-  hypflux[1][0] = pressure_tensor[0][0] * c2;
-  hypflux[1][1] = pressure_tensor[0][1] * c2;
-  hypflux[1][2] = pressure_tensor[0][2] * c2;
-  hypflux[2][0] = pressure_tensor[1][0] * c2;
-  hypflux[2][1] = pressure_tensor[1][1] * c2;
-  hypflux[2][2] = pressure_tensor[1][2] * c2;
-  hypflux[3][0] = pressure_tensor[2][0] * c2;
-  hypflux[3][1] = pressure_tensor[2][1] * c2;
-  hypflux[3][2] = pressure_tensor[2][2] * c2;
+  hypflux[1][0] = pressure_tensor[0][0];
+  hypflux[1][1] = pressure_tensor[0][1];
+  hypflux[1][2] = pressure_tensor[0][2];
+  hypflux[2][0] = pressure_tensor[1][0];
+  hypflux[2][1] = pressure_tensor[1][1];
+  hypflux[2][2] = pressure_tensor[1][2];
+  hypflux[3][0] = pressure_tensor[2][0];
+  hypflux[3][1] = pressure_tensor[2][1];
+  hypflux[3][2] = pressure_tensor[2][2];
 }
 
 #endif

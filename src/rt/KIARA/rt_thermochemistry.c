@@ -169,7 +169,7 @@ INLINE void rt_do_thermochemistry(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_densities,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* TODO: currently manually add iact_rates in grackle data field here. */
   data.RT_heating_rate = &iact_rates[0];
@@ -247,7 +247,7 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, species_densities, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   gr_float species_densities_new[6];
   species_densities_new[0] = data.HI_density[0];
@@ -259,8 +259,7 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(absorption_rates_new, species_densities_new,
                           rt_props->average_photon_energy,
-                          rt_props->number_weighted_cross_sections, phys_const,
-                          us);
+                          rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* Now remove absorbed radiation */
   for (int g = 0; g < RT_NGROUPS; g++) {
@@ -277,6 +276,7 @@ INLINE void rt_do_thermochemistry(
 
     rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                               p->rt_data.radiation[g].flux, E_old,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/2);
   }
 
@@ -322,7 +322,7 @@ float rt_tchem_get_tchem_time(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_densities,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* load particle information from particle to grackle data */
   cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, 0., 0.,
@@ -424,7 +424,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   // printf("=== RT computed interaction rates ===\n");
   // printf("RT RT_heating_rate         = %e\n", iact_rates[0]);
@@ -559,7 +559,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
       const double C =
           fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
       const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
-      const double L = rt_params.reduced_speed_of_light * dt;
+      const double L = rt_part_get_reduced_speed_of_light(p) * dt;
       f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
     }
 
@@ -573,6 +573,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
       }
       rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                                 p->rt_data.radiation[g].flux, E_old,
+                                rt_part_get_reduced_speed_of_light(p),
                                 /*callloc=*/2);
     }
 
@@ -585,7 +586,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, rt_species, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* Set up absorption rate calculation at end of step */
   gr_float rt_species_new[6];
@@ -604,7 +605,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates_new, rt_species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* Now remove absorbed radiation, using average absorption */
   for (int g = 0; g < RT_NGROUPS; g++) {
@@ -621,6 +622,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
     rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                               p->rt_data.radiation[g].flux, E_old,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/2);
   }
 

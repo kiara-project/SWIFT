@@ -162,6 +162,15 @@ INLINE static void rt_convert_area_ratio(const struct engine *engine,
 }
 
 /**
+ * @brief Extract the (possibly variable) reduced speed of light of a particle.
+ */
+INLINE static void rt_convert_reduced_speed_of_light(
+    const struct engine *engine, const struct part *part,
+    const struct xpart *xpart, float *ret) {
+  ret[0] = rt_part_get_reduced_speed_of_light(part);
+}
+
+/**
  * @brief Creates additional output fields for the radiative
  * transfer data of hydro particles.
  *
@@ -192,6 +201,14 @@ INLINE static int rt_write_particles(const struct part *parts,
       "IonMassFractions", FLOAT, 5, UNIT_CONV_NO_UNITS, 0, parts,
       /*xparts=*/NULL, rt_convert_mass_fractions,
       "Mass fractions of all constituent species");
+
+  list[num_elements] = io_make_physical_output_field_convert_part(
+      "RTReducedLightspeed", FLOAT, 1, UNIT_CONV_VELOCITY, 0.f, parts,
+      /*xparts=*/NULL, /*convertible to comoving=*/0,
+      rt_convert_reduced_speed_of_light,
+      "Reduced speed of light used for the particle's radiation transport "
+      "and photon interaction rates (physical)");
+  num_elements++;
 
   /* DEBUG: photon energy budget */
   list[num_elements] = io_make_output_field(

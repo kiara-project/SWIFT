@@ -371,9 +371,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     if (mode == 1 || (rtj->flux_dt < 0.f)) rtj->area_sum += Anorm;
   }
 
+  /* The Riemann solver returns the F-equation flux divided by c (see
+   * rt_part_get_transport_state_vector): each particle applies its own c. */
+  const float ci = rt_part_get_reduced_speed_of_light(pi);
+  const float cj = rt_part_get_reduced_speed_of_light(pj);
+
   for (int g = 0; g < RT_NGROUPS; g++) {
 
-    /* radiation state to be used to compute the flux */
+    /* transport state W = (c E, F) to be used to compute the flux */
     float Ui[4], Uj[4];
     rt_gradients_predict(pi, pj, Ui, Uj, g, dx, r, xij_i);
 
@@ -425,14 +430,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
 
     if (mindt > 0.f) {
       rti->flux[g].energy -= totflux[0] * mindt;
-      rti->flux[g].flux[0] -= totflux[1] * mindt;
-      rti->flux[g].flux[1] -= totflux[2] * mindt;
-      rti->flux[g].flux[2] -= totflux[3] * mindt;
+      rti->flux[g].flux[0] -= ci * totflux[1] * mindt;
+      rti->flux[g].flux[1] -= ci * totflux[2] * mindt;
+      rti->flux[g].flux[2] -= ci * totflux[3] * mindt;
       if (mode == 1 || (rtj->flux_dt < 0.f)) {
         rtj->flux[g].energy += totflux[0] * mindt;
-        rtj->flux[g].flux[0] += totflux[1] * mindt;
-        rtj->flux[g].flux[1] += totflux[2] * mindt;
-        rtj->flux[g].flux[2] += totflux[3] * mindt;
+        rtj->flux[g].flux[0] += cj * totflux[1] * mindt;
+        rtj->flux[g].flux[1] += cj * totflux[2] * mindt;
+        rtj->flux[g].flux[2] += cj * totflux[3] * mindt;
       }
     }
     // if (g==0 && totflux[0] != 0. && (Ei > 1.e60 || Ej > 1.e60))
