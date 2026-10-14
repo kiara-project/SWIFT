@@ -53,9 +53,13 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
 }
 
 /**
- * @brief Checks if particle is ineligible for RT this interaction,
- * such as being decoupled or too far away. If so need to account for
- * change in volume/area for the energy density/flux.
+ * @brief Checks if particle is ineligible for RT this interaction, i.e.
+ * decoupled (in a wind) or with its cooling shut off.
+ *
+ * Note: all pairs within the kernel exchange radiation. The geometry
+ * (volumes, face areas) uses the full kernel, so excluding the outer pairs
+ * (e.g. r > h) slows the transport, to ~0.46 c_red for r > h with the
+ * Wendland C2 kernel.
  *
  * @param pi Particle i.
  * @param pj Particle j.
@@ -71,11 +75,6 @@ __attribute__((always_inline)) INLINE static int rt_check_ineligible(
   if (pi->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
   if (pj->decoupled > 0.f) ineligible = 1;
   if (pj->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
-
-  /* Ineligible if particles are too far apart */
-  // const float h_ave = 0.5 * (pi->h + pj->h);  // use average h to retain
-  // symmetry if (h_ave * h_ave < r2) ineligible = 1;
-  if (pi->h * pi->h < r2 && pj->h * pj->h < r2) ineligible = 1;
 
   return ineligible;
 }
