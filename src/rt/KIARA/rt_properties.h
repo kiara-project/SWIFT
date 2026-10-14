@@ -100,6 +100,10 @@ struct rt_props {
   /* Coupling with galaxy subgrid physics? */
   int rt_with_galaxy_subgrid;
 
+  /* DEBUG: measure the RT heating delivered by Grackle with a second solve
+   * without RT heating (doubles the thermochemistry cost) */
+  int debug_grackle_heat;
+
   /*! Subgrid ISM: cold clouds (subgrid temperature below this, in K) absorb
    * all radiation they cover; the warm medium between them is transparent */
   float ism_cold_cloud_temperature;
@@ -457,6 +461,9 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   /* Are we coupling with galaxy subgrid modules? */
   rtp->rt_with_galaxy_subgrid = parser_get_opt_param_int(
       params, "KIARART:rt_with_galaxy_subgrid", /* default = */ 0);
+
+  rtp->debug_grackle_heat = parser_get_opt_param_int(
+      params, "KIARART:debug_grackle_heat", /* default = */ 0);
 
   /* Are we re-doing thermochemistry? */
   rtp->max_tchem_recursion = parser_get_opt_param_int(

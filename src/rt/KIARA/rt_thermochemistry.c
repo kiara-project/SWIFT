@@ -452,6 +452,35 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     // message("RT rate at index %d: %.4g", i, iact_rates[i]);
   }
 
+  /* DEBUG: Grackle applies the RT heating rate per HI atom to its own,
+   * evolving HI density, so the heat it delivers need not match the heating
+   * rate times the start-of-step HI. Measure the delivered heat with a
+   * second solve on a copy of the particle without the RT heating rate, and
+   * the intended heat from the rate and the start-of-step HI. Grackle zeroes
+   * the rates in the subgrid ISM, so nothing is intended there. */
+  float u_no_rt_heat = 0.f;
+  if (rt_props->debug_grackle_heat) {
+    if (p->cooling_data.subgrid_temp == 0.f) {
+      /* iact_rates[0] is in erg / s per HI atom */
+      const double N_HI = p->rt_data.tchem.mass_fraction_HI *
+                          hydro_get_mass(p) / phys_const->const_proton_mass;
+      const double dt_cgs = dt * units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+      p->rt_data.debug_heat[1] +=
+          iact_rates[0] * N_HI * dt_cgs /
+          units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+    }
+
+    struct part p_copy = *p;
+    struct xpart xp_copy = *xp;
+    gr_float rates_no_heat[5];
+    for (int i = 0; i < 5; i++) rates_no_heat[i] = iact_rates[i];
+    rates_no_heat[0] = 0.;
+    cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
+                               cooling, &p_copy, &xp_copy, rates_no_heat, dt,
+                               dt_therm, /*set_u_directly=*/1);
+    u_no_rt_heat = hydro_get_physical_internal_energy(&p_copy, &xp_copy, cosmo);
+  }
+
   /* Output internal energy before cooling grackle calculation. */
   p->cooling_data.u_cooling_before =
       hydro_get_physical_internal_energy(p, xp, cosmo);
@@ -460,6 +489,12 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                              cooling, p, xp, iact_rates, dt, dt_therm,
                              /*set_u_directly=*/1);
+
+  if (rt_props->debug_grackle_heat) {
+    p->rt_data.debug_heat[0] +=
+        hydro_get_mass(p) *
+        (hydro_get_physical_internal_energy(p, xp, cosmo) - u_no_rt_heat);
+  }
 
   /* Output du_dt and u  for debug. */
   p->cooling_data.du_dt_cooling =

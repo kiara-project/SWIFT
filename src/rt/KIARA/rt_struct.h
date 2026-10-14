@@ -32,6 +32,12 @@ struct rt_part_data {
    * clamps after transport, 4 redshifting, 5 drift correction */
   float debug_dE[6];
 
+  /*! DEBUG: cumulative RT photoheating (internal energy units), filled only
+   * with KIARART:debug_grackle_heat: 0 delivered by Grackle (m * (u with RT
+   * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
+   * dt) */
+  float debug_heat[2];
+
   /* Radiation state vector. */
   struct {
     /*! Radiation energy density */

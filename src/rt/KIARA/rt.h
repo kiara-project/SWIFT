@@ -222,6 +222,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_part_reset_mass_fluxes(p);
   rt_reset_part_each_subcycle(p, cosmo, 0.);
   for (int k = 0; k < 6; k++) p->rt_data.debug_dE[k] = 0.f;
+  for (int k = 0; k < 2; k++) p->rt_data.debug_heat[k] = 0.f;
   rt_part_reset_fluxes(p);
 
 #ifdef SWIFT_RT_DEBUG_CHECKS

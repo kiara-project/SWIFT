@@ -200,6 +200,14 @@ INLINE static int rt_write_particles(const struct part *parts,
       "Cumulative photon energy changes: injected, absorbed, transport, "
       "clamps, redshift, drift");
   num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugGrackleHeat", FLOAT, 2, UNIT_CONV_ENERGY, 0.f, parts,
+      rt_data.debug_heat,
+      "Cumulative RT photoheating: delivered by Grackle (mass times u with "
+      "RT heating minus u without), intended (heating rate times "
+      "start-of-step HI atoms times dt). Zero unless "
+      "KIARART:debug_grackle_heat");
+  num_elements++;
   list[num_elements] = io_make_output_field_convert_part(
       "RTDebugInterfaceAreaRatio", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
       /*xparts=*/NULL, rt_convert_area_ratio,
