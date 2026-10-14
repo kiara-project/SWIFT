@@ -842,17 +842,17 @@ black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj,
                              l * orbital_angular_momentum_direction[2]};
 
   /* Final spin vector, constructed from the two spins and the auxilliary l
-     vector. */
+     vector: a_fin = (a_1 + a_2 q^2 + l q) / (1 + q)^2 (Eqn. 6 in Barausse &
+     Rezzolla 2009). */
+  const float q2 = mass_ratio * mass_ratio;
+  const float inv_one_plus_q_2 = 1.f / ((1.f + mass_ratio) * (1.f + mass_ratio));
   const float spin_vector[3] = {
-      (spin_vec1[0] +
-       spin_vec2[0] * mass_ratio * mass_ratio * l_vector[0] * mass_ratio) /
-          ((1.f + mass_ratio) * (1.f + mass_ratio)),
-      (spin_vec1[1] +
-       spin_vec2[1] * mass_ratio * mass_ratio * l_vector[1] * mass_ratio) /
-          ((1.f + mass_ratio) * (1.f + mass_ratio)),
-      (spin_vec1[2] +
-       spin_vec2[2] * mass_ratio * mass_ratio * l_vector[2] * mass_ratio) /
-          ((1.f + mass_ratio) * (1.f + mass_ratio))};
+      (spin_vec1[0] + spin_vec2[0] * q2 + l_vector[0] * mass_ratio) *
+          inv_one_plus_q_2,
+      (spin_vec1[1] + spin_vec2[1] * q2 + l_vector[1] * mass_ratio) *
+          inv_one_plus_q_2,
+      (spin_vec1[2] + spin_vec2[2] * q2 + l_vector[2] * mass_ratio) *
+          inv_one_plus_q_2};
 
 
 #ifdef SWIFT_DEBUG_CHECKS
