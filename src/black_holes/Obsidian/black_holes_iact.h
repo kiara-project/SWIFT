@@ -310,6 +310,10 @@ runner_iact_nonsym_bh_gas_density(
   bi->velocity_gas[1] += mj * dv[1];
   bi->velocity_gas[2] += mj * dv[2];
 
+  /* NLT: bi->spec_angular_momentum_gas (used for the spin direction and the
+   * King et al. 2005 prograde/retrograde test) is not accumulated yet, as in
+   * the black_hole_spin branch, so it stays zero. */
+
   /* Contribution to the specific angular momentum of gas, which is later
    * converted to the circular velocity */
   bi->circular_velocity_gas[0] -= L_x;

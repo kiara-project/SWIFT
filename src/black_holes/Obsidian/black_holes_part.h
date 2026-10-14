@@ -138,6 +138,31 @@ struct bpart {
   /*! The current state of the black hole */
   int state;
 
+  /* ---- Spin tracking (NLT) ---- */
+
+  /*! Dimensionless spin (negative for retrograde accretion) */
+  float spin;
+
+  /*! Direction of jet launch */
+  float jet_direction[3];
+
+  /*! The normalised spin/angular momentum vector of the BH */
+  float angular_momentum_direction[3];
+
+  /*! Specific angular momentum of gas around the black hole */
+  float spec_angular_momentum_gas[3];
+
+  /*! Spin-evolution limited time-step of the BH */
+  float dt_ang_mom;
+
+  /*! Spin-dependent jet efficiency */
+  float jet_efficiency;
+
+  /*! Spin-dependent slim-disk coefficients */
+  float A_sd;
+  float B_sd;
+  float C_sd;
+
   /*! The radiative efficiency associated with M_dot,bh */
   float radiative_efficiency;
 
