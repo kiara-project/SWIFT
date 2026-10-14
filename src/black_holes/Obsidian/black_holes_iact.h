@@ -42,7 +42,8 @@
  * @param bi Black hole particle.
  * @param pj Gas particle being kicked.
  * @param ti_current Current integer time value (for random numbers).
- * @param dir_flag Flag to choose direction: 0=rendom, 1=L_gas, 2=L_BH.
+ * @param dir_flag Flag to choose direction: 0=random, 1=L_gas, 2=L_BH,
+ * 3=outwards, 4=BH spin axis.
  * @param dir Direction of kick (returned).
  */
 __attribute__((always_inline)) INLINE static float
@@ -100,8 +101,18 @@ black_hole_set_kick_direction(const struct bpart *bi, const struct part *pj,
       dir[2] = pj->x[2] - bi->x[2];
       break;
 
+    /* Along the BH spin axis (bipolar) */
+    case 4:
+      dir[0] = bi->jet_direction[0];
+      dir[1] = bi->jet_direction[1];
+      dir[2] = bi->jet_direction[2];
+      random_number =
+          random_unit_interval(bi->id, ti_current, random_number_BH_feedback);
+      kick_dir = (random_number > 0.5) ? 1.f : -1.f;
+      break;
+
     default:
-      error("dir_flag=%d but must be 0, 1, or 2", dir_flag);
+      error("dir_flag=%d but must be 0, 1, 2, 3 or 4", dir_flag);
       break;
   }
 
@@ -284,7 +295,21 @@ runner_iact_nonsym_bh_gas_density(
     const int have_L_prev =
         (L_prev[0] != 0.f || L_prev[1] != 0.f || L_prev[2] != 0.f);
     const float proj = -(L_x * L_prev[0] + L_y * L_prev[1] + L_z * L_prev[2]);
-    if (!have_L_prev || proj > 0.f) bi->corot_gas_mass += m_cold;
+    const int corotating = (!have_L_prev || proj > 0.f);
+    if (corotating) bi->corot_gas_mass += m_cold;
+
+    /* Angular momentum of the accreting gas about the BH, which sets the
+     * disk direction for the spin evolution (the gas L is -L_x etc.). Use
+     * the same cold component as the torque accretion: corotating cold gas
+     * for method 0, all cold gas for methods 1 (whose disk mass is corotating
+     * minus counter-rotating) and 3. Method 2 uses all gas (below). */
+    const int method = bh_props->torque_accretion_method;
+    if (method == 1 || method == 3 || (method == 0 && corotating)) {
+      const float f_cold = m_cold / mj;
+      bi->angular_momentum_accreting_gas[0] -= f_cold * L_x;
+      bi->angular_momentum_accreting_gas[1] -= f_cold * L_y;
+      bi->angular_momentum_accreting_gas[2] -= f_cold * L_z;
+    }
 
     bi->gas_SFR += max(pj->sf_data.SFR, 0.);
     // if (bi->id == 19280572) message("BH_SFR z=%g bid=%lld pid=%lld mj=%g
@@ -305,17 +330,17 @@ runner_iact_nonsym_bh_gas_density(
   bi->angular_momentum_gas[1] -= L_y;
   bi->angular_momentum_gas[2] -= L_z;
 
+  /* With the Simba-like torque accretion all gas sets the spin's disk */
+  if (bh_props->torque_accretion_method == 2) {
+    bi->angular_momentum_accreting_gas[0] -= L_x;
+    bi->angular_momentum_accreting_gas[1] -= L_y;
+    bi->angular_momentum_accreting_gas[2] -= L_z;
+  }
+
   /* Contribution to the velocity (gas w.r.t. black hole) */
   bi->velocity_gas[0] += mj * dv[0];
   bi->velocity_gas[1] += mj * dv[1];
   bi->velocity_gas[2] += mj * dv[2];
-
-  /* Gas angular momentum about the BH, used for the spin direction and the
-   * King et al. (2005) prograde/retrograde test; divided by ngb_mass in
-   * black_holes_end_density() to make it specific */
-  bi->spec_angular_momentum_gas[0] -= L_x;
-  bi->spec_angular_momentum_gas[1] -= L_y;
-  bi->spec_angular_momentum_gas[2] -= L_z;
 
   /* Contribution to the specific angular momentum of gas, which is later
    * converted to the circular velocity */
@@ -921,6 +946,9 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float dx[3],
 
         bj->merger_data.swallow_id = bi->id;
         bj->merger_data.swallow_mass = bi->subgrid_mass;
+        bj->merger_data.swallow_dx[0] = dx[0];
+        bj->merger_data.swallow_dx[1] = dx[1];
+        bj->merger_data.swallow_dx[2] = dx[2];
 
       } else {
 
@@ -1213,7 +1241,8 @@ runner_iact_nonsym_bh_gas_feedback(
   /* Kick the particle if is was tagged only */
   if (v_kick > 0.f && flagged_to_kick) {
 
-    /* Set direction of launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+    /* Set direction of launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
+     * 4=BH spin axis */
     float dir[3] = {0.f, 0.f, 0.f};
     int dir_flag = 0;
 

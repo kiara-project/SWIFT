@@ -122,7 +122,7 @@ __attribute__((always_inline)) INLINE static float black_hole_isco_radius(
  * @param constants Physical constants (in internal units).
  */
 __attribute__((always_inline)) INLINE static float
-black_hole_angular_momentum_magnitude(struct bpart *bp,
+black_hole_angular_momentum_magnitude(const struct bpart *bp,
                                       const struct phys_const *constants) { 
   const float J_BH =
       fabs(bp->subgrid_mass * bp->subgrid_mass * bp->spin *
@@ -165,7 +165,7 @@ black_hole_angular_momentum_magnitude(struct bpart *bp,
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static float black_hole_warp_radius(
-    struct bpart *bp, const struct phys_const *constants,
+    const struct bpart *bp, const struct phys_const *constants,
     const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
@@ -274,11 +274,13 @@ __attribute__((always_inline)) INLINE static float black_hole_warp_radius(
  * calculated based on Appendix A in Fiacconi et al. (2018).
  *
  * @param bp Pointer to the b-particle data.
+ * @param Rw The warp radius, from black_hole_warp_radius().
  * @param constants Physical constants (in internal units).
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
-    struct bpart *bp, const struct phys_const *constants,
+    const struct bpart *bp, const float Rw,
+    const struct phys_const *constants,
     const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
@@ -307,7 +309,7 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
     Mw = 2. * bp->accretion_rate /
          (3. * props->alpha_acc * v_0 *
           sqrtf(bp->subgrid_mass * constants->const_newton_G)) *
-         powf(black_hole_warp_radius(bp, constants, props), 1.5);
+         powf(Rw, 1.5);
   } else {
 
     /* Start branching depending on which region of the thin disk we wish to
@@ -319,8 +321,7 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
       const float mass_factor =
           powf(bp->subgrid_mass / (1e8 * constants->const_solar_mass), 2.2);
       const float edd_factor = powf(bp->eddington_fraction, 0.6);
-      const float R_factor =
-          powf(black_hole_warp_radius(bp, constants, props) / (2. * R_G), 1.4);
+      const float R_factor = powf(Rw / (2. * R_G), 1.4);
 
       /* Gather factors and finalize calculation */
       Mw = constants->const_solar_mass * 1.35 * mass_factor *
@@ -332,8 +333,7 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
       const float mass_factor =
           powf(bp->subgrid_mass / (1e6 * constants->const_solar_mass), 2.2);
       const float edd_factor = powf(bp->eddington_fraction, 0.7);
-      const float R_factor =
-          powf(black_hole_warp_radius(bp, constants, props) / (2. * R_G), 1.25);
+      const float R_factor = powf(Rw / (2. * R_G), 1.25);
 
       Mw = constants->const_solar_mass * 0.01 * mass_factor *
            props->alpha_factor_08_inv_10 * edd_factor * R_factor;
@@ -368,11 +368,14 @@ __attribute__((always_inline)) INLINE static double black_hole_warp_mass(
  * respectively.
  *
  * @param bp Pointer to the b-particle data.
+ * @param Rw The warp radius, from black_hole_warp_radius().
+ * @param Mw The warp mass, from black_hole_warp_mass().
  * @param constants Physical constants (in internal units).
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static double
-black_hole_warp_angular_momentum(struct bpart *bp,
+black_hole_warp_angular_momentum(const struct bpart *bp, const float Rw,
+                                 const double Mw,
                                  const struct phys_const *constants,
                                  const struct black_holes_props *props) {
 
@@ -397,9 +400,11 @@ black_hole_warp_angular_momentum(struct bpart *bp,
       omega_0 = props->gamma_SD_inv;
     }
 
-    /* Gather factors for the final result  */
-    const double r_warp = black_hole_warp_radius(bp, constants, props);
-    Jw = 2. * bp->accretion_rate * omega_0 / (2. * props->alpha_acc * v_0) *
+    /* J_warp = int_0^Rw 2 pi R Sigma Omega_0 R v_K dR with
+       Sigma = M_dot / (2 pi R alpha v_0 v_K), i.e. (3/4) Omega_0 M_warp
+       sqrt(G M_BH R_warp) (the SPIN_JET version was a factor 2 too large) */
+    const double r_warp = Rw;
+    Jw = bp->accretion_rate * omega_0 / (2. * props->alpha_acc * v_0) *
          r_warp * r_warp;
   } else {
 
@@ -412,14 +417,10 @@ black_hole_warp_angular_momentum(struct bpart *bp,
        For region b, c=-3/5 (see Griffin et al. 2019), and for region c, c=-3/4
        (see Fiacconi et al. 2018). */
     if (props->TD_region == TD_region_B) {
-      Jw = 0.737 * black_hole_warp_mass(bp, constants, props) *
-           sqrtf(bp->subgrid_mass * constants->const_newton_G *
-                 black_hole_warp_radius(bp, constants, props));
+      Jw = 0.737 * Mw * sqrtf(bp->subgrid_mass * constants->const_newton_G * Rw);
     }
     if (props->TD_region == TD_region_C) {
-      Jw = 0.714 * black_hole_warp_mass(bp, constants, props) *
-           sqrtf(bp->subgrid_mass * constants->const_newton_G *
-                 black_hole_warp_radius(bp, constants, props));
+      Jw = 0.714 * Mw * sqrtf(bp->subgrid_mass * constants->const_newton_G * Rw);
     }
   }
 
@@ -436,9 +437,19 @@ black_hole_warp_angular_momentum(struct bpart *bp,
 }
 
 
-/*--------------------------------------------------------------*/
-/* skipping computation of radiative efficiencies per disk mode */
-/*--------------------------------------------------------------*/
+/**
+ * @brief Compute the radiative efficiency of a thin disk (Novikov & Thorne
+ * 1973), i.e. the binding energy per unit rest mass of gas at the ISCO.
+ *
+ * Used only for the spin evolution; Obsidian's feedback efficiencies are set
+ * separately (from fixed_spin).
+ *
+ * @param a Black hole spin, -1 < a < 1.
+ */
+__attribute__((always_inline)) INLINE static float eps_Novikov_Thorne(
+    const float a) {
+  return 1.f - sqrtf(1.f - 2.f / (3.f * black_hole_isco_radius(a)));
+}
 
 
 
@@ -464,7 +475,7 @@ black_hole_warp_angular_momentum(struct bpart *bp,
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static float l_acc(
-    struct bpart *bp, const struct phys_const *constants,
+    const struct bpart *bp, const struct phys_const *constants,
     const struct black_holes_props *props) {
 
   /* Define placeholder value for the result. We will assign the final result
@@ -526,7 +537,7 @@ __attribute__((always_inline)) INLINE static float l_acc(
  * @param props Properties of the black hole scheme.
  */
 __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
-    struct bpart *bp, const struct phys_const *constants,
+    const struct bpart *bp, const struct phys_const *constants,
     const struct black_holes_props *props) {
   const float a = bp->spin;
 
@@ -542,7 +553,7 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
      * spindown formula, e.g. from Benson & Babul (2009). This accounts for
      * accretion only. */
     return l_acc(bp, constants, props) -
-           2.f * a * (1.f - bp->radiative_efficiency);
+           2.f * a * (1.f - eps_Novikov_Thorne(a));
  
   } else if (bp->state == BH_states_adaf) {
 
@@ -555,14 +566,15 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
               props->use_jets_in_thin_disc)) {*/
 
     /* Fitting function from Ricarte et al. (2023). */
-    float Eddington_ratio =
-        bp->eddington_fraction * 0.1f / 0.1f; /*eps_Novikov_Thorne(bp->spin) / 0.1f;*/
+    /* Obsidian's Eddington rate assumes an efficiency of 0.1 */
+    const float eps_NT = eps_Novikov_Thorne(a);
+    float Eddington_ratio = bp->eddington_fraction * eps_NT / 0.1f;
     float xi = Eddington_ratio * 0.017f;
     float s_min = 0.86f - 1.94f * bp->spin;
     float L_ISCO =
         0.385f *
         (1.f + 2.f * sqrtf(3.f * black_hole_isco_radius(bp->spin) - 2.f));
-    float s_thin = L_ISCO - 2.f * a * (1.f - 0.1f);/* eps_Novikov_Thorne(bp->spin));*/
+    float s_thin = L_ISCO - 2.f * a * (1.f - eps_NT);
     float s_HD = (s_thin + s_min * xi) / (1.f + xi);
 
     float horizon_ang_vel =
@@ -659,13 +671,11 @@ __attribute__((always_inline)) INLINE static float mass_fraction_lost_to_GWs(
  * Rezolla (2009), ApJ, 704, Equations 6 and 7. For the fraction of mass lost,
  * we use Eqns 16-18 from Barausse et al. (2012), ApJ, 758.
  *
- * @param bp Pointer to the b-particle data.
- * @param constants Physical constants (in internal units).
- * @param props Properties of the black hole scheme.
+ * @param bpi The black hole doing the swallowing (updated).
+ * @param bpj The black hole being swallowed.
  */
 __attribute__((always_inline)) INLINE static float
-black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj,
-                              const struct phys_const *constants) {
+black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj) {
 
   /* Check if something is wrong with the masses. This is important and could
      possibly happen as a result of jet spindown and mass loss at any time,
@@ -711,56 +721,20 @@ black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj,
                               spin2 * bpj->angular_momentum_direction[1],
                               spin2 * bpj->angular_momentum_direction[2]};
 
-  /* We want to compute the direction of the orbital angular momentum of the
-     two BHs, which is used in the fits. Start by defining the coordinates in
-     the frame of one of the BHs (it doesn't matter which one, the total
-     angular momentum is the same). */
-  const float centre_of_mass[3] = {
-      (m1 * bpi->x[0] + m2 * bpj->x[0]) / (m1 + m2),
-      (m1 * bpi->x[1] + m2 * bpj->x[1]) / (m1 + m2),
-      (m1 * bpi->x[2] + m2 * bpj->x[2]) / (m1 + m2)};
-  const float centre_of_mass_vel[3] = {
-      (m1 * bpi->v[0] + m2 * bpj->v[0]) / (m1 + m2),
-      (m1 * bpi->v[1] + m2 * bpj->v[1]) / (m1 + m2),
-      (m1 * bpi->v[2] + m2 * bpj->v[2]) / (m1 + m2)};
-
-  /* Coordinates of each of the BHs in the frame of the centre of mass. */
-  const float relative_coordinates_1[3] = {bpi->x[0] - centre_of_mass[0],
-                                           bpi->x[1] - centre_of_mass[1],
-                                           bpi->x[2] - centre_of_mass[2]};
-  const float relative_coordinates_2[3] = {bpj->x[0] - centre_of_mass[0],
-                                           bpj->x[1] - centre_of_mass[1],
-                                           bpj->x[2] - centre_of_mass[2]};
-
-  /* The velocities of each BH in the centre of mass frame. */
-  const float relative_velocities_1[3] = {bpi->v[0] - centre_of_mass_vel[0],
-                                          bpi->v[1] - centre_of_mass_vel[1],
-                                          bpi->v[2] - centre_of_mass_vel[2]};
-  const float relative_velocities_2[3] = {bpj->v[0] - centre_of_mass_vel[0],
-                                          bpj->v[1] - centre_of_mass_vel[1],
-                                          bpj->v[2] - centre_of_mass_vel[2]};
-
-  /* The angular momentum of each BH in the centre of mass frame. */
-  const float angular_momentum_1[3] = {
-      m1 * (relative_coordinates_1[1] * relative_velocities_1[2] -
-            relative_coordinates_1[2] * relative_velocities_1[1]),
-      m1 * (relative_coordinates_1[2] * relative_velocities_1[0] -
-            relative_coordinates_1[0] * relative_velocities_1[2]),
-      m1 * (relative_coordinates_1[0] * relative_velocities_1[1] -
-            relative_coordinates_1[1] * relative_velocities_1[0])};
-  const float angular_momentum_2[3] = {
-      m2 * (relative_coordinates_2[1] * relative_velocities_2[2] -
-            relative_coordinates_2[2] * relative_velocities_2[1]),
-      m2 * (relative_coordinates_2[2] * relative_velocities_2[0] -
-            relative_coordinates_2[0] * relative_velocities_2[2]),
-      m2 * (relative_coordinates_2[0] * relative_velocities_2[1] -
-            relative_coordinates_2[1] * relative_velocities_2[0])};
-
-  /* Calculate the orbital angular momentum itself. */
+  /* Direction of the orbital angular momentum, L ~ r x v with r and v the
+     separation and relative velocity of bpj w.r.t. bpi (the reduced-mass
+     prefactor does not affect the direction). The separation is the
+     periodically wrapped one recorded when bpj was marked for swallowing,
+     bpi->x - bpj->x; raw positions could be a box length apart. */
+  const float r_rel[3] = {-bpj->merger_data.swallow_dx[0],
+                          -bpj->merger_data.swallow_dx[1],
+                          -bpj->merger_data.swallow_dx[2]};
+  const float v_rel[3] = {bpj->v[0] - bpi->v[0], bpj->v[1] - bpi->v[1],
+                          bpj->v[2] - bpi->v[2]};
   const float orbital_angular_momentum[3] = {
-      angular_momentum_1[0] + angular_momentum_2[0],
-      angular_momentum_1[1] + angular_momentum_2[1],
-      angular_momentum_1[2] + angular_momentum_2[2]};
+      r_rel[1] * v_rel[2] - r_rel[2] * v_rel[1],
+      r_rel[2] * v_rel[0] - r_rel[0] * v_rel[2],
+      r_rel[0] * v_rel[1] - r_rel[1] * v_rel[0]};
 
   /* Calculate the magnitude of the orbital angular momentum. */
   const float orbital_angular_momentum_magnitude =
@@ -770,49 +744,11 @@ black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj,
 
   /* Normalize and get the direction of the orbital angular momentum. */
   float orbital_angular_momentum_direction[3] = {0.f, 0.f, 0.f};
-  if (orbital_angular_momentum_magnitude > 0.) {
-    orbital_angular_momentum_direction[0] =
-        orbital_angular_momentum[0] / orbital_angular_momentum_magnitude;
-    orbital_angular_momentum_direction[1] =
-        orbital_angular_momentum[1] / orbital_angular_momentum_magnitude;
-    orbital_angular_momentum_direction[2] =
-        orbital_angular_momentum[2] / orbital_angular_momentum_magnitude;
+  if (orbital_angular_momentum_magnitude > 0.f) {
+    for (int k = 0; k < 3; k++)
+      orbital_angular_momentum_direction[k] =
+          orbital_angular_momentum[k] / orbital_angular_momentum_magnitude;
   }
-  /* We also need to compute the total (initial) angular momentum of the
-     system, i.e. including the orbital angular momentum and the spins. This
-     is needed since the final spin is assumed to be along the direction of
-     this total angular momentum. Hence here we compute the direction. */
-  const float j_BH_1 =
-      fabs(bpi->subgrid_mass * bpi->subgrid_mass * bpi->spin *
-           constants->const_newton_G / constants->const_speed_light_c);
-  const float j_BH_2 =
-      fabs(bpj->subgrid_mass * bpj->subgrid_mass * bpj->spin *
-           constants->const_newton_G / constants->const_speed_light_c);
-
-
-  float total_angular_momentum_direction[3] = {
-      j_BH_1 * spin_vec1[0] + j_BH_2 * spin_vec2[0] +
-          orbital_angular_momentum[0],
-      j_BH_1 * spin_vec1[1] + j_BH_2 * spin_vec2[1] +
-          orbital_angular_momentum[1],
-      j_BH_1 * spin_vec1[2] + j_BH_2 * spin_vec2[2] +
-          orbital_angular_momentum[2]};
-
-  /* The above is actually the total angular momentum, so we need to normalize
-     to get the directions. */
-  const float total_angular_momentum_magnitude =
-      sqrtf(total_angular_momentum_direction[0] *
-                total_angular_momentum_direction[0] +
-            total_angular_momentum_direction[1] *
-                total_angular_momentum_direction[1] +
-            total_angular_momentum_direction[2] *
-                total_angular_momentum_direction[2]);
-  total_angular_momentum_direction[0] =
-      total_angular_momentum_direction[0] / total_angular_momentum_magnitude;
-  total_angular_momentum_direction[1] =
-      total_angular_momentum_direction[1] / total_angular_momentum_magnitude;
-  total_angular_momentum_direction[2] =
-      total_angular_momentum_direction[2] / total_angular_momentum_magnitude;
 
   /* We now define some extra variables used by the fitting functions. The
      below ones are cosines of angles between the two spins and orbital angular

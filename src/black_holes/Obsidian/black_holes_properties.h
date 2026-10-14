@@ -186,8 +186,6 @@ struct black_holes_props {
       appears in the literature.  */
   float alpha_acc;
   float alpha_acc_2;
-  float alpha_acc_2_inv;
-  float alpha_factor_01;
   float alpha_factor_02;
   float alpha_factor_08;
   float alpha_factor_08_inv;
@@ -195,27 +193,9 @@ struct black_holes_props {
   float alpha_factor_0549;
   float alpha_factor_06222;
 
-  /*! Transition accretion rate between thick (ADAF) and thin disk. */
-  float mdot_crit_ADAF;
-
-  /*! Gas-to-total pressure ratio of the accretion disk */
-  float beta_acc;
-  float beta_acc_inv;
-
-  /*! Critical accretion rate that separates two different states in the
-      thick disk regime, related to radiation */
-  float edd_crit_thick;
-
-  /*! Effective adiabatic index of the accretion disk */
-  float gamma_acc;
-
   /*! Epsilon parameter of the ADAF (thick disk), which appears in
       Narayan & Yi (1994, 1995) model */
   float eps_ADAF;
-
-  /*! Numerical coefficient relating sound speed in ADAF (thick disk) to the
-      Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
-  float cs_0_ADAF;
 
   /*! Numerical coefficient relating radial velocity in ADAF (thick disk) to
    the Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
@@ -228,12 +208,7 @@ struct black_holes_props {
 
   /*! Aspect ratio of the ADAF (thick disk), which appears in Narayan & Yi
       (1994, 1995) model */
-  float h_0_ADAF;
   float h_0_ADAF_2;
-
-  /*! Electron heating parameter of the ADAF (thick disk), which appears in
-      Narayan & Yi (1994, 1995) model */
-  float delta_ADAF;
 
   /*! The gamma parameter of the slim disk, which appears in the Wang & Zhou
       (1999) model */
@@ -354,7 +329,8 @@ struct black_holes_props {
    */
   float adaf_kick_factor;
 
-  /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
+   * 4=BH spin axis */
   int adaf_wind_dir;
 
   /*! How long to decouple black hole winds? */
@@ -414,7 +390,8 @@ struct black_holes_props {
   /*! power-law scaling of jet vel with (LBH/1.e45 erg/s) */
   float jet_velocity_scaling_with_BH_lum;
 
-  /*! Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  /*! Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
+   * 4=BH spin axis */
   int jet_launch_dir;
 
   /*! The minimum mass required before the jet will launch */
@@ -771,8 +748,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
      viscosity, that appear in subgrid accretion disk equations. We
      precompute them here. */
   bp->alpha_acc_2 = bp->alpha_acc * bp->alpha_acc;
-  bp->alpha_acc_2_inv = 1. / bp->alpha_acc_2;
-  bp->alpha_factor_01 = pow(bp->alpha_acc, 0.1);
   bp->alpha_factor_02 = pow(bp->alpha_acc, 0.2);
   bp->alpha_factor_08 = pow(bp->alpha_acc, 0.8);
   bp->alpha_factor_08_inv = 1. / bp->alpha_factor_08;
@@ -790,44 +765,22 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         bp->seed_spin);
   }
 
-  /* The critical transition accretion rate between the thick and
-     thin disk regimes. */
-  bp->mdot_crit_ADAF = parser_get_param_float(
-      params, "ObsidianAGN:eddington_fraction_lower_boundary");
-
-  /* Calculate the gas-to-total pressure ratio as based on simulations
+  /* Gas-to-total pressure ratio of the accretion disk, based on simulations
      (see Yuan & Narayan 2014) */
-  bp->beta_acc = 1. / (1. + 2. * bp->alpha_acc);
-  bp->beta_acc_inv = 1. / bp->beta_acc;
-
-  /* Calculate the critical accretion rate between two thick disk regimes as
-     in Mahadevan (1997). */
-  bp->delta_ADAF =
-      parser_get_opt_param_float(params, "ObsidianAGN:delta_ADAF", 0.2f);
-  if (bp->delta_ADAF <= 0.) {
-    error(
-        "The delta electron heating parameter of thick accretion disks "
-        " must be > 0. not %f",
-        bp->delta_ADAF);
-  }
-
-  bp->edd_crit_thick = 2. * bp->delta_ADAF * bp->alpha_acc_2 *
-                       (1. - bp->beta_acc) * bp->beta_acc_inv;
+  const float beta_acc = 1. / (1. + 2. * bp->alpha_acc);
 
   /* Calculate the adiabatic index based on how strong the magnetic fields are
     (see Esin 1997) */
-  bp->gamma_acc = (8. - 3. * bp->beta_acc) / (6. - 3. * bp->beta_acc);
+  const float gamma_acc = (8. - 3. * beta_acc) / (6. - 3. * beta_acc);
 
   /* Calculate numerical factors of the ADAF (thick disk) as in
      Narayan & Yi (1995) */
-  bp->eps_ADAF = (1.6667 - bp->gamma_acc) / (bp->gamma_acc - 1.);
-  bp->cs_0_ADAF = sqrtf(2. / (5. + 2. * bp->eps_ADAF));
+  bp->eps_ADAF = (1.6667 - gamma_acc) / (gamma_acc - 1.);
   bp->v_0_ADAF = 3. / (5. + 2. * bp->eps_ADAF);
   bp->omega_0_ADAF = sqrtf(2. * bp->eps_ADAF / (5. + 2. * bp->eps_ADAF));
 
   /* Instead of using the Narayan & Yi value, we set to 0.3 based on numerous
      GRMHD simulations (see e.g. Narayan et al. 2021) */
-  bp->h_0_ADAF = 0.3;
   bp->h_0_ADAF_2 = 0.09;
 
   bp->gamma_SD = sqrtf(5.);
@@ -968,8 +921,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_velocity_scaling_with_BH_lum = parser_get_opt_param_float(
       params, "ObsidianAGN:jet_velocity_scaling_with_BH_lum", 0.f);
 
+  /* Default: along the BH spin axis */
   bp->jet_launch_dir =
-      parser_get_param_int(params, "ObsidianAGN:jet_launch_dir");
+      parser_get_opt_param_int(params, "ObsidianAGN:jet_launch_dir", 4);
+  if (bp->jet_launch_dir < 0 || bp->jet_launch_dir > 4) {
+    error("jet_launch_dir=%d but must be 0, 1, 2, 3 or 4", bp->jet_launch_dir);
+  }
 
   bp->jet_minimum_reservoir_mass = parser_get_param_float(
       params, "ObsidianAGN:jet_minimum_reservoir_mass_Msun");
@@ -1389,9 +1346,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     message("Black hole jet recouple factor is %g", f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g", bp->epsilon_r);
     message(
-        "Black hole spin tracking: seed spin %g, disk alpha %g, delta_ADAF %g, "
+        "Black hole spin tracking: seed spin %g, disk alpha %g, "
         "thin disk region %s",
-        bp->seed_spin, bp->alpha_acc, bp->delta_ADAF,
+        bp->seed_spin, bp->alpha_acc,
         bp->TD_region == TD_region_B ? "B" : "C");
     if (bp->lum_thresh_always_jet > 0.f) {
       message("Black hole jet mode always on above Lbol>%g erg/s",

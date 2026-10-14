@@ -149,8 +149,10 @@ struct bpart {
   /*! The normalised spin/angular momentum vector of the BH */
   float angular_momentum_direction[3];
 
-  /*! Specific angular momentum of gas around the black hole */
-  float spec_angular_momentum_gas[3];
+  /*! Angular momentum of the accreting gas around the black hole, selected
+   * as for torque_accretion_method (only its direction is used, for the
+   * spin evolution) */
+  float angular_momentum_accreting_gas[3];
 
   /*! Spin-evolution limited time-step of the BH */
   float dt_ang_mom;
