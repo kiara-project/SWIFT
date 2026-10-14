@@ -177,8 +177,7 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
       if (v_kick_var > fabs(props->jet_velocity)) v_kick_var = fabs(props->jet_velocity);
 
       v_kick_var *= props->kms_to_internal;
-    }
-    
+    } 
   }
   float v_kick = 0.f;
   switch (bp->state) {
@@ -198,10 +197,10 @@ __attribute__((always_inline)) INLINE static double get_black_hole_wind_speed(
       error("Invalid black hole state.");
       return 0.f;
       break;
- 
-  return v_kick;
   }
+  return v_kick;
 }
+
 
 /**
  * @brief Computes the fraction of M_dot,inflow that should go into the BH.
