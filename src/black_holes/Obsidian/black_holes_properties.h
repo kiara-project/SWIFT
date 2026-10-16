@@ -344,6 +344,10 @@ struct black_holes_props {
    * MAD jet efficiency at this spin instead of each BH's jet efficiency */
   float adaf_f_accretion_reference_spin;
 
+  /*! If 1, the spin magnitude is not evolved by accretion in the ADAF (its
+   * direction, sign and merger changes still are) */
+  int adaf_freeze_spin;
+
   /*! The MAD jet efficiency at adaf_f_accretion_reference_spin */
   float adaf_f_accretion_reference_jet_efficiency;
 
@@ -1104,6 +1108,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_jet_free_energy =
       parser_get_opt_param_int(params, "ObsidianAGN:adaf_jet_free_energy", 0);
 
+  bp->adaf_freeze_spin =
+      parser_get_opt_param_int(params, "ObsidianAGN:adaf_freeze_spin", 0);
+
   bp->adaf_f_accretion_reference_spin = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_f_accretion_reference_spin", -1.f);
   if (bp->adaf_f_accretion_reference_spin >= 1.f) {
@@ -1464,6 +1471,11 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
           "at spin %g",
           bp->adaf_f_accretion_reference_jet_efficiency,
           bp->adaf_f_accretion_reference_spin);
+    }
+    if (bp->adaf_freeze_spin) {
+      message(
+          "Black hole spin magnitudes are not evolved by accretion in the "
+          "ADAF");
     }
     if (bp->adaf_jet_free_energy) {
       message(

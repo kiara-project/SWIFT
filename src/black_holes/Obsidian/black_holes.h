@@ -205,7 +205,9 @@ __attribute__((always_inline)) INLINE static void black_holes_evolve_spin(
   const double dlnm_total = log1p(delta_m_0 / bp->subgrid_mass);
   /* At most ~1000 sub-steps */
   const double dlnm_min = 1.e-3 * dlnm_total;
+  /* Optionally keep the spin magnitude the BH had on entering the ADAF */
   double dlnm_left = dlnm_total;
+  if (props->adaf_freeze_spin && bp->state == BH_states_adaf) dlnm_left = 0.;
   while (dlnm_left > 0.) {
     const float spinup = black_hole_spinup_rate(bp, phys_const, props);
     double dlnm = dlnm_max;
