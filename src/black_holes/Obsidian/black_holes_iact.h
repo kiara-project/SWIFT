@@ -936,12 +936,13 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float dx[3],
         if (bi->mass * bh_props->mass_to_solar_mass > 1.e8)
           message(
               "BH_MERGER: z=%g bid=%lld to swallow bid=%lld: MBHi=%g MBHj=%g "
-              "Mgali=%g Mgalj=%g",
+              "Mgali=%g Mgalj=%g ai=%g aj=%g",
               cosmo->z, bi->id, bj->id,
               bi->subgrid_mass * bh_props->mass_to_solar_mass,
               bj->subgrid_mass * bh_props->mass_to_solar_mass,
               bi->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass,
-              bj->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass);
+              bj->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass,
+              bi->spin, bj->spin);
 #endif
 
         bj->merger_data.swallow_id = bi->id;

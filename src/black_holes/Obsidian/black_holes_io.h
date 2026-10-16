@@ -458,6 +458,20 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
       "Direction of the black hole spin vector, normalised to unity.");
   num++;
 
+  list[num] = io_make_output_field(
+      "RadiativeEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      radiative_efficiency,
+      "Radiative efficiencies of the black holes at their last accretion "
+      "step.");
+  num++;
+
+  list[num] = io_make_output_field(
+      "JetEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      jet_efficiency,
+      "Spin-dependent (MAD) jet efficiencies of the black holes at their last "
+      "accretion step, before any redshift scaling.");
+  num++;
+
   *num_fields = num;
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES

@@ -168,7 +168,8 @@ struct black_holes_props {
   /*! C from Lupi+17 */
   float C_sd;
 
-  /*! The spin of EVERY black hole */
+  /*! If > 0, the spin used for the efficiencies of EVERY black hole;
+   * otherwise each black hole's evolved spin is used */
   float fixed_spin;
 
   /* ---- Spin tracking and subgrid accretion disk (NLT) ---- */
@@ -542,6 +543,54 @@ struct black_holes_props {
 };
 
 /**
+ * @brief Slim-disk coefficients A, B, C of the Madau et al. (2014) fit to the
+ * radiative efficiency, as used by Lupi et al.
+ *
+ * @param a Black hole spin, -1 < a < 1 (negative for retrograde accretion).
+ * @param A_sd, B_sd, C_sd The coefficients (output).
+ */
+__attribute__((always_inline)) INLINE static void
+black_hole_slim_disk_coefficients(const float a, float *A_sd, float *B_sd,
+                                  float *C_sd) {
+  *A_sd = powf(0.9663f - 0.9292f * a, -0.5639f);
+  *B_sd = powf(4.627f - 4.445f * a, -0.5524f);
+  *C_sd = powf(827.3f - 718.1f * a, -0.7060f);
+}
+
+/**
+ * @brief Slim-disk radiative efficiency (Madau et al. 2014; Lupi et al.) at
+ * R = M_dot,Edd / M_dot,BH for the given coefficients.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_slim_disk_efficiency_from_coefficients(const double R,
+                                                  const double A_sd,
+                                                  const double B_sd,
+                                                  const double C_sd) {
+  return (R / 16.) * A_sd *
+         (0.985 / (R + (5. / 8.) * B_sd) + 0.015 / (R + (5. / 8.) * C_sd));
+}
+
+/**
+ * @brief Jet efficiency of a magnetically arrested disk: eqn. 9 of
+ * Tchekhovskoy et al. (2010) with the magnetic flux phi(a) of Narayan et al.
+ * (2022), eqn. 15.
+ *
+ * @param a Black hole spin, -1 < a < 1 (negative for retrograde accretion).
+ * @param phi_factor Suppression of the magnetic flux (1 for a MAD).
+ */
+__attribute__((always_inline)) INLINE static float black_hole_MAD_jet_efficiency(
+    const float a, const float phi_factor) {
+  const float phi_bh =
+      (-20.2f * a * a * a - 14.9f * a * a + 34.f * a + 52.6f) * phi_factor;
+  /* Angular velocity of the horizon, in units of c / r_g */
+  const float big_J = a / (2.f * (1.f + sqrtf(1.f - a * a)));
+  const float J2 = big_J * big_J;
+  const float f_j = J2 + 1.38f * J2 * J2 - 9.2f * J2 * J2 * J2;
+
+  return (1.f / (24.f * M_PI * M_PI)) * phi_bh * phi_bh * f_j;
+}
+
+/**
  * @brief Initialise the black hole properties from the parameter file.
  *
  * For the basic black holes neighbour finding properties we use the
@@ -862,24 +911,25 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_decouple_time_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:jet_decouple_time_factor", f_jet_recouple);
 
-  bp->fixed_spin = parser_get_param_float(params, "ObsidianAGN:fixed_spin");
-  if (bp->fixed_spin >= 1.f || bp->fixed_spin <= 0.f) {
-    error("Black hole must have spin > 0.0 and < 1.0");
+  /* If fixed_spin is given, every BH uses it for its radiative and jet
+   * efficiencies (the spin is still evolved, as a diagnostic). Otherwise the
+   * efficiencies follow each BH's evolved spin. */
+  bp->fixed_spin =
+      parser_get_opt_param_float(params, "ObsidianAGN:fixed_spin", -1.f);
+  if (bp->fixed_spin != -1.f &&
+      (bp->fixed_spin >= 1.f || bp->fixed_spin <= 0.f)) {
+    error(
+        "fixed_spin must be > 0.0 and < 1.0 (or omitted to use the evolved "
+        "spin)");
   }
 
-  bp->A_sd = powf(0.9663f - 0.9292f * bp->fixed_spin, -0.5639f);
-  bp->B_sd = powf(4.627f - 4.445f * bp->fixed_spin, -0.5524f);
-  bp->C_sd = powf(827.3f - 718.1f * bp->fixed_spin, -0.7060f);
-
-  const float phi_bh = -20.2f * powf(bp->fixed_spin, 3.f) -
-                       14.9f * powf(bp->fixed_spin, 2.f) +
-                       34.f * bp->fixed_spin + 52.6f;
-  const float big_J =
-      bp->fixed_spin / (2.f * (1.f + sqrtf(1.f - powf(bp->fixed_spin, 2.f))));
-  const float f_j =
-      powf(big_J, 2.f) + 1.38f * powf(big_J, 4.f) - 9.2f * powf(big_J, 6.f);
-
-  bp->jet_efficiency = (1.f / (24.f * M_PI * M_PI)) * powf(phi_bh, 2.f) * f_j;
+  /* The values below are per-BH at run time; here they are evaluated at a
+   * reference spin for the setup checks and the log (the seed spin when
+   * the spin is evolved) */
+  const float spin_ref =
+      (bp->fixed_spin > 0.f) ? bp->fixed_spin : bp->seed_spin;
+  black_hole_slim_disk_coefficients(spin_ref, &bp->A_sd, &bp->B_sd, &bp->C_sd);
+  bp->jet_efficiency = black_hole_MAD_jet_efficiency(spin_ref, 1.f);
 
   /* Useful when computing the mass loadings below */
   const double c_over_v = phys_const->const_speed_light_c / jet_velocity;
@@ -909,9 +959,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   const float R = 1.f / bp->eddington_fraction_upper_boundary;
   const float eta_at_slim_disk_boundary =
-      (R / 16.f) * bp->A_sd *
-      ((0.985f / (R + (5.f / 8.f) * bp->B_sd)) +
-       (0.015f / (R + (5.f / 8.f) * bp->C_sd)));
+      black_hole_slim_disk_efficiency_from_coefficients(R, bp->A_sd, bp->B_sd,
+                                                        bp->C_sd);
 
   /* If we scale BH v_jet, choose power law scaling with MBH/1.e8 or LBH/1.e45.
    * The minimum v_jet is always given by jet_subgrid_velocity */
@@ -1055,6 +1104,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
    * is fixed at quasar_f_accretion if f_psi > 0
    */
   if (f_psi > 0.f) {
+
+    /* The sub-grid jet velocity and ADAF wind speed are fixed here from the
+     * spin-dependent efficiencies */
+    if (bp->fixed_spin <= 0.f) {
+      error("adaf_f_quasar_psi > 0 needs a fixed_spin.");
+    }
 
     /* This is always true in the negative case */
     bp->adaf_f_accretion = bp->quasar_f_accretion;
@@ -1342,6 +1397,14 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             bp->jet_subgrid_velocity / bp->kms_to_internal);
     message("Black hole subgrid jet loading (energy) is %g",
             jet_subgrid_mass_loading);
+    if (bp->fixed_spin > 0.f) {
+      message("Black hole efficiencies use fixed_spin=%g", bp->fixed_spin);
+    } else {
+      message(
+          "Black hole efficiencies use the evolved spin; values below are "
+          "at the seed spin %g",
+          bp->seed_spin);
+    }
     message("Black hole jet efficiency is %g", bp->jet_efficiency);
     message("Black hole jet recouple factor is %g", f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g", bp->epsilon_r);

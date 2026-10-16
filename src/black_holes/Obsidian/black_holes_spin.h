@@ -441,8 +441,8 @@ black_hole_warp_angular_momentum(const struct bpart *bp, const float Rw,
  * @brief Compute the radiative efficiency of a thin disk (Novikov & Thorne
  * 1973), i.e. the binding energy per unit rest mass of gas at the ISCO.
  *
- * Used only for the spin evolution; Obsidian's feedback efficiencies are set
- * separately (from fixed_spin).
+ * Used only for the spin evolution; Obsidian's radiative efficiencies use the
+ * Madau et al. (2014) slim-disk fit instead.
  *
  * @param a Black hole spin, -1 < a < 1.
  */
@@ -584,7 +584,12 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
       k_EM = min(0.1f + 0.5f * bp->spin, 0.35f);
     }
 
-    float s_EM = -1.f * bp->spin / fabsf(bp->spin) * bp->jet_efficiency *
+    /* Jet efficiency with the magnetic flux suppressed at high Eddington
+       ratio (Ricarte et al. 2023, eqn. 3) */
+    const float x = powf(Eddington_ratio / 1.88f, 1.29f);
+    const float jet_efficiency = black_hole_MAD_jet_efficiency(a, x / (1.f + x));
+
+    float s_EM = -1.f * bp->spin / fabsf(bp->spin) * jet_efficiency *
                  (1.f / (k_EM * horizon_ang_vel) - 2.f * bp->spin);
     return s_HD + s_EM;
   } else {
@@ -822,7 +827,6 @@ black_hole_merger_spin_evolve(struct bpart *bpi, const struct bpart *bpj) {
   if (fabsf(bpi->spin) < 0.01f) {
     bpi->spin = 0.01f;
   }
-  /*bpi->jet_efficiency = black_hole_jet_efficiency(bpi->spin);*/
 
   /* Assign the directions of the spin to the BH. */
   bpi->angular_momentum_direction[0] = spin_vector[0] / final_spin_magnitude;
