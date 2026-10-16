@@ -27,6 +27,7 @@
 /* Additional RT data in hydro particle struct */
 struct rt_part_data {
 
+#ifdef SWIFT_KIARA_RT_DEBUG
   /*! DEBUG: cumulative photon energy changes (all groups, internal energy
    * units): 0 injected, 1 absorbed, 2 transport exchange, 3 negative-energy
    * clamps after transport, 4 redshifting, 5 drift correction */
@@ -37,6 +38,7 @@ struct rt_part_data {
    * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
    * dt) */
   float debug_heat[2];
+#endif
 
   /* Radiation state vector. */
   struct {

@@ -221,8 +221,10 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_reset_part(p, cosmo);
   rt_part_reset_mass_fluxes(p);
   rt_reset_part_each_subcycle(p, cosmo, 0.);
+#ifdef SWIFT_KIARA_RT_DEBUG
   for (int k = 0; k < 6; k++) p->rt_data.debug_dE[k] = 0.f;
   for (int k = 0; k < 2; k++) p->rt_data.debug_heat[k] = 0.f;
+#endif
   rt_part_reset_fluxes(p);
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
@@ -626,9 +628,11 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
      * So we'll need the division by the volume here. */
 
     rtd->radiation[g].energy_density += rtd->flux[g].energy * Vinv;
+#ifdef SWIFT_KIARA_RT_DEBUG
     rtd->debug_dE[2] += rtd->flux[g].energy * cosmo->a_inv;
     rtd->debug_dE[4] -= rtd->radiation[g].energy_density * redshift_factor *
                         p->geometry.volume;
+#endif
 
     rtd->radiation[g].energy_density -=
         rtd->radiation[g].energy_density *
@@ -657,13 +661,17 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
       rtd->radiation[g].flux[2] = 0.f;
     }*/
 
+#ifdef SWIFT_KIARA_RT_DEBUG
     const float e_before_check = rtd->radiation[g].energy_density;
+#endif
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
                               rtd->radiation[g].flux, e_old,
                               rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/4);
+#ifdef SWIFT_KIARA_RT_DEBUG
     rtd->debug_dE[3] +=
         (rtd->radiation[g].energy_density - e_before_check) * p->geometry.volume;
+#endif
   }
 
   /* Reset the fluxes now that they have been applied. */

@@ -3476,6 +3476,15 @@ case "$with_rt_riemann_solver" in
         ;;
 esac
 
+# KIARA-RT: optional photon energy budget and Grackle heating diagnostics
+AC_ARG_ENABLE([rt-debug],
+   [AS_HELP_STRING([--enable-rt-debug],
+     [Track the KIARA-RT photon energy budget and interface areas per particle and write them to snapshots (also enables KIARART:debug_grackle_heat)@<:@yes/no@:>@]
+   )],
+   [enable_rt_debug="$enableval"],
+   [enable_rt_debug="no"]
+)
+
 case "$with_rt" in
    none)
       AC_DEFINE([RT_NONE], [1], [No radiative transfer scheme])
@@ -3538,6 +3547,10 @@ case "$with_rt" in
 
       if test "$enable_debugging_checks" = "yes"; then
           AC_DEFINE([SWIFT_RT_DEBUG_CHECKS], [1], [additional debugging checks for RT])
+      fi
+
+      if test "$enable_rt_debug" = "yes"; then
+          AC_DEFINE([SWIFT_KIARA_RT_DEBUG], [1], [KIARA-RT photon energy budget and heating diagnostics])
       fi
 
       case "$with_hydro" in
@@ -3849,6 +3862,7 @@ AC_MSG_RESULT([
    Sink particle model  : $with_sink
    Black holes model    : $with_black_holes
    Radiative transfer   : $with_rt
+   RT debug diagnostics : $enable_rt_debug
    Extra i/o            : $with_extra_io
    Hydro cooling ntask  : $with_hydro_cooling_ntask
    Hydro ghost ntask    : $with_hydro_ghost_ntask

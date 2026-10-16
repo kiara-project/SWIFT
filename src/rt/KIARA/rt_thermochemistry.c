@@ -267,8 +267,10 @@ INLINE void rt_do_thermochemistry(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+#ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+#endif
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -452,6 +454,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     // message("RT rate at index %d: %.4g", i, iact_rates[i]);
   }
 
+#ifdef SWIFT_KIARA_RT_DEBUG
   /* DEBUG: Grackle applies the RT heating rate per HI atom to its own,
    * evolving HI density, so the heat it delivers need not match the heating
    * rate times the start-of-step HI. Measure the delivered heat with a
@@ -480,6 +483,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
                                dt_therm, /*set_u_directly=*/1);
     u_no_rt_heat = hydro_get_physical_internal_energy(&p_copy, &xp_copy, cosmo);
   }
+#endif
 
   /* Output internal energy before cooling grackle calculation. */
   p->cooling_data.u_cooling_before =
@@ -490,11 +494,13 @@ INLINE void rt_do_thermochemistry_with_subgrid(
                              cooling, p, xp, iact_rates, dt, dt_therm,
                              /*set_u_directly=*/1);
 
+#ifdef SWIFT_KIARA_RT_DEBUG
   if (rt_props->debug_grackle_heat) {
     p->rt_data.debug_heat[0] +=
         hydro_get_mass(p) *
         (hydro_get_physical_internal_energy(p, xp, cosmo) - u_no_rt_heat);
   }
+#endif
 
   /* Output du_dt and u  for debug. */
   p->cooling_data.du_dt_cooling =
@@ -565,8 +571,10 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
     for (int g = 0; g < RT_NGROUPS; g++) {
       const float E_old = p->rt_data.radiation[g].energy_density;
+#ifdef SWIFT_KIARA_RT_DEBUG
       p->rt_data.debug_dE[1] -=
           p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+#endif
       p->rt_data.radiation[g].energy_density *= (1. - f);
       for (int i = 0; i < 3; i++) {
         p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -613,8 +621,10 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+#ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+#endif
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);

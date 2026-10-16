@@ -148,6 +148,7 @@ INLINE static void rt_convert_mass_fractions(const struct engine *engine,
   ret[4] = part->rt_data.tchem.mass_fraction_HeIII;
 }
 
+#ifdef SWIFT_KIARA_RT_DEBUG
 /**
  * @brief DEBUG: interface area sum in units of that of a sphere's volume
  * radius (sum |A_ij| R / V; 3 for a sphere).
@@ -160,6 +161,7 @@ INLINE static void rt_convert_area_ratio(const struct engine *engine,
   const float R = cbrtf(3.f * V / (4.f * M_PI));
   ret[0] = (V > 0.f) ? part->rt_data.area_sum_last * R / V : 0.f;
 }
+#endif
 
 /**
  * @brief Extract the (possibly variable) reduced speed of light of a particle.
@@ -210,6 +212,7 @@ INLINE static int rt_write_particles(const struct part *parts,
       "and photon interaction rates (physical)");
   num_elements++;
 
+#ifdef SWIFT_KIARA_RT_DEBUG
   /* DEBUG: photon energy budget */
   list[num_elements] = io_make_output_field(
       "RTDebugEnergyBudget", FLOAT, 6, UNIT_CONV_ENERGY, 0.f, parts,
@@ -231,6 +234,7 @@ INLINE static int rt_write_particles(const struct part *parts,
       "Sum of interface areas times volume radius over volume (3 for a "
       "sphere)");
   num_elements++;
+#endif
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   num_elements += 8;

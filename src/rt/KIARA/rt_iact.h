@@ -184,7 +184,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
     const float injected_energy_density =
         si->rt_data.emission_this_step[g] * weight * Vinv;
     pj->rt_data.radiation[g].energy_density += injected_energy_density;
+#ifdef SWIFT_KIARA_RT_DEBUG
     pj->rt_data.debug_dE[0] += injected_energy_density * pj->geometry.volume;
+#endif
     if (g == 0 &&
         injected_energy_density * pj->geometry.volume * 1.98841e+53 > 1.e57)
       message(
