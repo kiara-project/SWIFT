@@ -69,12 +69,13 @@ __attribute__((always_inline)) INLINE static void rt_riemann_solve_for_flux(
   fluxR[3] = hyperFluxR[3][0] * n_unit[0] + hyperFluxR[3][1] * n_unit[1] +
              hyperFluxR[3][2] * n_unit[2];
 
-  const float c_red = rt_params.reduced_speed_of_light;
-
-  flux_half[0] = 0.5f * (fluxL[0] + fluxR[0] - c_red * (UR[0] - UL[0]));
-  flux_half[1] = 0.5f * (fluxL[1] + fluxR[1] - c_red * (UR[1] - UL[1]));
-  flux_half[2] = 0.5f * (fluxL[2] + fluxR[2] - c_red * (UR[2] - UL[2]));
-  flux_half[3] = 0.5f * (fluxL[3] + fluxR[3] - c_red * (UR[3] - UL[3]));
+  /* The states are transport states W = (c E, F) and the F equation is
+   * divided by c (see rt_part_get_transport_state_vector), so the maximal
+   * signal speed is 1. */
+  flux_half[0] = 0.5f * (fluxL[0] + fluxR[0] - (UR[0] - UL[0]));
+  flux_half[1] = 0.5f * (fluxL[1] + fluxR[1] - (UR[1] - UL[1]));
+  flux_half[2] = 0.5f * (fluxL[2] + fluxR[2] - (UR[2] - UL[2]));
+  flux_half[3] = 0.5f * (fluxL[3] + fluxR[3] - (UR[3] - UL[3]));
 }
 
 #endif /* SWIFT_KIARA_RT_RIEMANN_GLF_H */

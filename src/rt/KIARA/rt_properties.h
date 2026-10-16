@@ -100,6 +100,12 @@ struct rt_props {
   /* Coupling with galaxy subgrid physics? */
   int rt_with_galaxy_subgrid;
 
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /* DEBUG: measure the RT heating delivered by Grackle with a second solve
+   * without RT heating (doubles the thermochemistry cost) */
+  int debug_grackle_heat;
+#endif
+
   /*! Subgrid ISM: cold clouds (subgrid temperature below this, in K) absorb
    * all radiation they cover; the warm medium between them is transparent */
   float ism_cold_cloud_temperature;
@@ -263,6 +269,13 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
   if (rtp->rt_with_galaxy_subgrid)
     message("RT is coupling with galaxy subgrid modules.");
   message("RT max number of subcycles: %d", rtp->debug_max_nr_subcycles);
+  if (rt_params.varc_h_ref_inv > 0.f)
+    message(
+        "Variable reduced speed of light: c_red = %.3e * (h / %.3e)^%.2f "
+        "(comoving h), limited to [%.3e, %.3e] (internal units)",
+        rt_params.reduced_speed_of_light, 1.f / rt_params.varc_h_ref_inv,
+        rt_params.varc_alpha,
+        rt_params.reduced_speed_of_light, rt_params.reduced_speed_of_light_max);
 }
 
 /**
@@ -357,6 +370,26 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   rt_params.reduced_speed_of_light = phys_const->const_speed_light_c * f_r;
   rt_params.reduced_speed_of_light_inverse =
       1.f / rt_params.reduced_speed_of_light;
+
+  /* Variable reduced speed of light: c grows linearly with the comoving
+   * smoothing length above varc_h_ref, up to f_reduce_c_max. */
+  const float f_r_max =
+      parser_get_opt_param_float(params, "KIARART:f_reduce_c_max", f_r);
+  if (f_r_max < f_r)
+    error("KIARART:f_reduce_c_max (%.3e) must be >= f_reduce_c (%.3e)",
+          f_r_max, f_r);
+  rt_params.reduced_speed_of_light_max =
+      phys_const->const_speed_light_c * f_r_max;
+  rt_params.varc_h_ref_inv = 0.f;
+  if (f_r_max > f_r) {
+    const float h_ref = parser_get_param_float(params, "KIARART:varc_h_ref");
+    if (h_ref <= 0.f) error("Invalid KIARART:varc_h_ref: %.3e <= 0.", h_ref);
+    rt_params.varc_h_ref_inv = 1.f / h_ref;
+  }
+  rt_params.varc_alpha =
+      parser_get_opt_param_float(params, "KIARART:varc_alpha", 1.f);
+  if (rt_params.varc_alpha <= 0.f)
+    error("Invalid KIARART:varc_alpha: %.3e <= 0.", rt_params.varc_alpha);
 
   /* get CFL condition */
   /* ----------------- */
@@ -457,6 +490,11 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   /* Are we coupling with galaxy subgrid modules? */
   rtp->rt_with_galaxy_subgrid = parser_get_opt_param_int(
       params, "KIARART:rt_with_galaxy_subgrid", /* default = */ 0);
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  rtp->debug_grackle_heat = parser_get_opt_param_int(
+      params, "KIARART:debug_grackle_heat", /* default = */ 0);
+#endif
 
   /* Are we re-doing thermochemistry? */
   rtp->max_tchem_recursion = parser_get_opt_param_int(

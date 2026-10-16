@@ -37,6 +37,18 @@ struct rt_parameters {
 
   /*! Inverse of the reduced speed of light (internal units) */
   float reduced_speed_of_light_inverse;
+
+  /*! Variable reduced speed of light: a particle with comoving smoothing
+   * length h gets c_red * (h / varc_h_ref)^varc_alpha, limited to the range
+   * [reduced_speed_of_light, reduced_speed_of_light_max]. Disabled (uniform
+   * c_red) if varc_h_ref_inv == 0. */
+  float reduced_speed_of_light_max;
+
+  /*! Inverse of the comoving smoothing length above which c increases */
+  float varc_h_ref_inv;
+
+  /*! Power of h / varc_h_ref (1: same RT time step for all particles) */
+  float varc_alpha;
 };
 
 #endif /* SWIFT_KIARA_RT_PARAMETERS_H */
