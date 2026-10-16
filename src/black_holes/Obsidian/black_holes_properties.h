@@ -330,6 +330,11 @@ struct black_holes_props {
    */
   float adaf_kick_factor;
 
+  /*! Magnetic flux of the torque-fed ADAF inflow relative to a magnetically
+   * arrested disk; sets its jet efficiency and jet spin-down (the Bondi
+   * share is always a MAD) */
+  float adaf_torque_phi_factor;
+
   /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
    * 4=BH spin axis */
   int adaf_wind_dir;
@@ -1074,6 +1079,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_disk_efficiency =
       parser_get_param_float(params, "ObsidianAGN:adaf_disk_efficiency");
 
+  bp->adaf_torque_phi_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_torque_phi_factor", 1.f);
+  if (bp->adaf_torque_phi_factor < 0.f || bp->adaf_torque_phi_factor > 1.f) {
+    error("adaf_torque_phi_factor must be >= 0 and <= 1.");
+  }
+
   bp->adaf_kick_factor =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_kick_factor", 0.5f);
   if (bp->adaf_kick_factor < 0.f || bp->adaf_kick_factor > 1.f) {
@@ -1406,6 +1417,11 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
           bp->seed_spin);
     }
     message("Black hole jet efficiency is %g", bp->jet_efficiency);
+    message(
+        "Black hole ADAF torque-fed inflow has %g of the MAD magnetic flux "
+        "(jet efficiency x %g)",
+        bp->adaf_torque_phi_factor,
+        bp->adaf_torque_phi_factor * bp->adaf_torque_phi_factor);
     message("Black hole jet recouple factor is %g", f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g", bp->epsilon_r);
     message(

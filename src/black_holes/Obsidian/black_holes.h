@@ -374,6 +374,26 @@ black_holes_update_spin_efficiencies(struct bpart *bp,
 }
 
 /**
+ * @brief The jet efficiency of a black hole in its current state.
+ *
+ * In the ADAF, only the Bondi share of the inflow is a magnetically arrested
+ * disk; the torque-fed share has adaf_torque_phi_factor of its magnetic
+ * flux, so jet efficiency x phi^2. This matches the jet spin-down in
+ * black_hole_spinup_rate().
+ *
+ * @param bp The black hole particle.
+ * @param props The properties of the black hole scheme.
+ */
+__attribute__((always_inline)) INLINE static float get_black_hole_jet_efficiency(
+    const struct bpart *bp, const struct black_holes_props *props) {
+  if (bp->state != BH_states_adaf) return bp->jet_efficiency;
+  const float phi_t2 =
+      props->adaf_torque_phi_factor * props->adaf_torque_phi_factor;
+  const float f_B = bp->bondi_fraction;
+  return bp->jet_efficiency * (f_B + (1.f - f_B) * phi_t2);
+}
+
+/**
  * @brief Computes the radiative efficiency in the slim disk mode.
  *
  * @param bp The black hole particle.
@@ -635,7 +655,7 @@ get_black_hole_accretion_factor(const struct black_holes_props *props,
       }
       /* Scale jet efficiency with the ADAF coupling, as for the jet itself */
       const float jet_subgrid_mass_loading =
-          2.f * bp->jet_efficiency *
+          2.f * get_black_hole_jet_efficiency(bp, props) *
           get_black_hole_adaf_z_scaling(props, cosmo) *
           (phys_const->const_speed_light_c / jet_subgrid_velocity) *
           (phys_const->const_speed_light_c / jet_subgrid_velocity);
@@ -795,6 +815,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   /* Spin tracking (NLT): ICs without spins get the seed spin, and those
    * without a spin direction get a random one, as for newly seeded BHs */
   bp->dt_ang_mom = FLT_MAX;
+  bp->bondi_fraction = 0.f;
   if (bp->spin == 0.f) bp->spin = props->seed_spin;
   black_holes_update_spin_efficiencies(bp, props);
   const float spin_dir_norm2 =
@@ -1703,6 +1724,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   /* Radiative and jet efficiencies for this step, from the current spin */
   black_holes_update_spin_efficiencies(bp, props);
+  bp->bondi_fraction = (bp->accretion_rate > 0.)
+                           ? bondi_accr_rate / bp->accretion_rate
+                           : 0.f;
 
   /* We need to store the full M_dot,inflow rate to calculate the
    * fraction at high accretion rate */
@@ -1872,7 +1896,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     float jet_velocity = black_hole_compute_jet_velocity(bp, cosmo, props);
     /* If ADAF coupling is variable, scale jet efficiency by same factor */
     const float jet_efficiency =
-        bp->jet_efficiency * get_black_hole_adaf_z_scaling(props, cosmo);
+        get_black_hole_jet_efficiency(bp, props) *
+        get_black_hole_adaf_z_scaling(props, cosmo);
 
     /* With a variable jet velocity we must recalculate the mass loading */
     const double c_over_v =
@@ -1998,7 +2023,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       " vx=%2.7f vy=%2.7f vz=%2.7f "
       " Lgasx=%g Lgasy=%g Lgasz=%g  Lbhx=%g Lbhy=%g Lbhz=%g"
       " Lrad=%g state=%d facc=%g radeff=%g"
-      " fedd=%g madaf=%g tdyn=%g fsupp=%g vkick=%g spin=%g jeteff=%g\n",
+      " fedd=%g madaf=%g tdyn=%g fsupp=%g vkick=%g spin=%g jeteff=%g"
+      " fbondi=%g\n",
       cosmo->z, bp->id, galaxy_mstar * props->mass_to_solar_mass,
       galaxy_sfr_details * props->mass_to_solar_mass / props->time_to_yr,
       bp->mass * props->mass_to_solar_mass,
@@ -2036,7 +2062,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->state, bp->f_accretion, bp->radiative_efficiency,
       bp->eddington_fraction, my_adaf_mass_limit * props->mass_to_solar_mass,
       1.f / tdyn_inv * 1.e-6 * props->time_to_yr, f_suppress,
-      bp->v_kick / props->kms_to_internal, bp->spin, bp->jet_efficiency);
+      bp->v_kick / props->kms_to_internal, bp->spin,
+      get_black_hole_jet_efficiency(bp, props), bp->bondi_fraction);
 #endif
 }
 
@@ -2278,6 +2305,7 @@ INLINE static void black_holes_create_from_gas(
 
   /* Seed spin (NLT) with a random direction */
   bp->spin = props->seed_spin;
+  bp->bondi_fraction = 0.f;
   black_holes_update_spin_efficiencies(bp, props);
   bp->dt_ang_mom = FLT_MAX;
   black_holes_set_random_spin_direction(bp, ti_current);

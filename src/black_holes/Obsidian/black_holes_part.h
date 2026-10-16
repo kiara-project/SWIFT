@@ -157,8 +157,12 @@ struct bpart {
   /*! Spin-evolution limited time-step of the BH */
   float dt_ang_mom;
 
-  /*! Spin-dependent jet efficiency */
+  /*! Spin-dependent jet efficiency of a magnetically arrested disk (before
+   * the ADAF flux factor, see get_black_hole_jet_efficiency) */
   float jet_efficiency;
+
+  /*! Bondi share of this step's inflow (the rest is torque-fed) */
+  float bondi_fraction;
 
   /*! Spin-dependent slim-disk coefficients */
   float A_sd;

@@ -468,8 +468,9 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
   list[num] = io_make_output_field(
       "JetEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
       jet_efficiency,
-      "Spin-dependent (MAD) jet efficiencies of the black holes at their last "
-      "accretion step, before any redshift scaling.");
+      "Spin-dependent jet efficiencies of the black holes for a magnetically "
+      "arrested disk, at their last accretion step (before the ADAF "
+      "torque-fed flux factor and any redshift scaling).");
   num++;
 
   *num_fields = num;

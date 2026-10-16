@@ -518,6 +518,23 @@ __attribute__((always_inline)) INLINE static float l_acc(
 }
 
 /**
+ * @brief Spin-down rate da / dln(M_BH,0) from the jet torque, for a jet of
+ * efficiency jet_efficiency (Ricarte et al. 2023; Lowell et al. 2024).
+ *
+ * @param a Black hole spin, -1 < a < 1, a != 0.
+ * @param jet_efficiency The jet efficiency.
+ */
+__attribute__((always_inline)) INLINE static float black_hole_jet_spindown_rate(
+    const float a, const float jet_efficiency) {
+  const float horizon_ang_vel =
+      fabsf(a) / (2.f * (1.f + sqrtf(1.f - a * a)));
+  float k_EM = 0.23f;
+  if (a > 0.f) k_EM = min(0.1f + 0.5f * a, 0.35f);
+  return -1.f * a / fabsf(a) * jet_efficiency *
+         (1.f / (k_EM * horizon_ang_vel) - 2.f * a);
+}
+
+/**
  * @brief Compute the evolution of the spin of a BH particle. This
  * spinup/spindown rate is equal to da / dln(M_BH)_0, or
  * da / (d(M_BH,0)/M_BH ), where the subscript '0' means that it is
@@ -528,9 +545,12 @@ __attribute__((always_inline)) INLINE static float l_acc(
  * slim disk), due to differing spec. ang. momenta as well as jet and
  * radiative efficiencies.
  *
- * For the thick disc, we use the jet spindown formula from Narayan et al.
- * (2022). For the slim and thin disc, we use the formula from Ricarte et al.
- * (2023).
+ * For the thick disc, the Bondi share of the inflow is a magnetically
+ * arrested disk, with the spin-down fit of Narayan et al. (2022). The
+ * torque-fed share is a thick disk (accreted angular momentum 0.45 L_ISCO,
+ * Benson & Babul 2009) plus the jet torque for a magnetic flux reduced by
+ * adaf_torque_phi_factor. For the slim disc we use the formula from Ricarte
+ * et al. (2023). The thin disc has no jet torque.
  *
  * @param bp Pointer to the b-particle data.
  * @param constants Physical constants (in internal units).
@@ -557,9 +577,18 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
  
   } else if (bp->state == BH_states_adaf) {
 
-    /* Fiting function from Narayan et al. (2022) */
-    return 0.45f - 12.53f * a - 7.8f * a * a + 9.44f * a * a * a +
-           5.71f * a * a * a * a - 4.03f * a * a * a * a * a;
+    /* Fiting function from Narayan et al. (2022) for a MAD */
+    const float s_MAD = 0.45f - 12.53f * a - 7.8f * a * a + 9.44f * a * a * a +
+                        5.71f * a * a * a * a - 4.03f * a * a * a * a * a;
+
+    /* Torque-fed thick disk with a weaker magnetic flux */
+    const float s_torque =
+        l_acc(bp, constants, props) - 2.f * a * (1.f - eps_Novikov_Thorne(a)) +
+        black_hole_jet_spindown_rate(
+            a, black_hole_MAD_jet_efficiency(a, props->adaf_torque_phi_factor));
+
+    const float f_B = bp->bondi_fraction;
+    return f_B * s_MAD + (1.f - f_B) * s_torque;
 
   } else if (bp->state == BH_states_slim_disk){ /* ||
              (bp->state == BH_states_quasar)){  &&
@@ -577,21 +606,12 @@ __attribute__((always_inline)) INLINE static float black_hole_spinup_rate(
     float s_thin = L_ISCO - 2.f * a * (1.f - eps_NT);
     float s_HD = (s_thin + s_min * xi) / (1.f + xi);
 
-    float horizon_ang_vel =
-        fabsf(bp->spin) / (2.f * (1.f + sqrtf(1.f - bp->spin * bp->spin)));
-    float k_EM = 0.23f;
-    if (bp->spin > 0.f) {
-      k_EM = min(0.1f + 0.5f * bp->spin, 0.35f);
-    }
-
     /* Jet efficiency with the magnetic flux suppressed at high Eddington
        ratio (Ricarte et al. 2023, eqn. 3) */
     const float x = powf(Eddington_ratio / 1.88f, 1.29f);
     const float jet_efficiency = black_hole_MAD_jet_efficiency(a, x / (1.f + x));
 
-    float s_EM = -1.f * bp->spin / fabsf(bp->spin) * jet_efficiency *
-                 (1.f / (k_EM * horizon_ang_vel) - 2.f * bp->spin);
-    return s_HD + s_EM;
+    return s_HD + black_hole_jet_spindown_rate(a, jet_efficiency);
   } else {
 
 #ifdef SWIFT_DEBUG_CHECKS
