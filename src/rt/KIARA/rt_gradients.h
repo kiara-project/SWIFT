@@ -53,6 +53,33 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
 }
 
 /**
+ * @brief Checks if particle is ineligible for RT this interaction, i.e.
+ * decoupled (in a wind) or with its cooling shut off.
+ *
+ * Note: all pairs within the kernel exchange radiation. The geometry
+ * (volumes, face areas) uses the full kernel, so excluding the outer pairs
+ * (e.g. r > h) slows the transport, to ~0.46 c_red for r > h with the
+ * Wendland C2 kernel.
+ *
+ * @param pi Particle i.
+ * @param pj Particle j.
+ * @param r2 Squared distance between the two particles.
+ */
+__attribute__((always_inline)) INLINE static int rt_check_ineligible(
+    struct part *restrict pi, struct part *restrict pj, float r2) {
+
+  int ineligible = 0;
+
+  /* Ineligible if particles are in a wind or have their cooling shutoff */
+  if (pi->decoupled > 0.f) ineligible = 1;
+  if (pi->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
+  if (pj->decoupled > 0.f) ineligible = 1;
+  if (pj->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
+
+  return ineligible;
+}
+
+/**
  * @brief Update the gradients for the given particle with the
  * given contributions.
  *
@@ -149,6 +176,9 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
   pj->rt_data.debug_calls_iact_gradient_interaction += 1;
 #endif
 
+  /* Check if particles are eligible for this interaction */
+  if (rt_check_ineligible(pi, pj, r2)) return;
+
   /* Get r and 1/r. */
   const float r = sqrtf(r2);
   const float r_inv = 1.0f / r;
@@ -195,11 +225,11 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
   float psij_tilde[3];
   if (fvpm_part_geometry_well_behaved(pj)) {
     psij_tilde[0] =
-        wi * (Bj[0][0] * dx[0] + Bj[0][1] * dx[1] + Bj[0][2] * dx[2]);
+        wj * (Bj[0][0] * dx[0] + Bj[0][1] * dx[1] + Bj[0][2] * dx[2]);
     psij_tilde[1] =
-        wi * (Bj[1][0] * dx[0] + Bj[1][1] * dx[1] + Bj[1][2] * dx[2]);
+        wj * (Bj[1][0] * dx[0] + Bj[1][1] * dx[1] + Bj[1][2] * dx[2]);
     psij_tilde[2] =
-        wi * (Bj[2][0] * dx[0] + Bj[2][1] * dx[1] + Bj[2][2] * dx[2]);
+        wj * (Bj[2][0] * dx[0] + Bj[2][1] * dx[1] + Bj[2][2] * dx[2]);
   } else {
     const float norm = -wj_dx * r_inv;
     psij_tilde[0] = norm * dx[0];
@@ -210,8 +240,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
   for (int g = 0; g < RT_NGROUPS; g++) {
 
     float Ui[4], Uj[4];
-    rt_part_get_radiation_state_vector(pi, g, Ui);
-    rt_part_get_radiation_state_vector(pj, g, Uj);
+    rt_part_get_transport_state_vector(pi, g, Ui);
+    rt_part_get_transport_state_vector(pj, g, Uj);
     const float dU[4] = {Ui[0] - Uj[0], Ui[1] - Uj[1], Ui[2] - Uj[2],
                          Ui[3] - Uj[3]};
 
@@ -285,6 +315,9 @@ __attribute__((always_inline)) INLINE static void rt_gradients_nonsym_collect(
   pi->rt_data.debug_calls_iact_gradient_interaction += 1;
 #endif
 
+  /* Check if particles are eligible for this interaction */
+  if (rt_check_ineligible(pi, pj, r2)) return;
+
   /* Get r and 1/r. */
   const float r = sqrtf(r2);
   const float r_inv = 1.0f / r;
@@ -323,8 +356,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_nonsym_collect(
   for (int g = 0; g < RT_NGROUPS; g++) {
 
     float Ui[4], Uj[4];
-    rt_part_get_radiation_state_vector(pi, g, Ui);
-    rt_part_get_radiation_state_vector(pj, g, Uj);
+    rt_part_get_transport_state_vector(pi, g, Ui);
+    rt_part_get_transport_state_vector(pj, g, Uj);
     const float dU[4] = {Ui[0] - Uj[0], Ui[1] - Uj[1], Ui[2] - Uj[2],
                          Ui[3] - Uj[3]};
 
@@ -389,8 +422,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
     float Uj[4], int group, const float dx[3], const float r,
     const float xij_i[3]) {
 
-  rt_part_get_radiation_state_vector(pi, group, Ui);
-  rt_part_get_radiation_state_vector(pj, group, Uj);
+  rt_part_get_transport_state_vector(pi, group, Ui);
+  rt_part_get_transport_state_vector(pj, group, Uj);
   /* No need to check unphysical state here:
    * they haven't been touched since the call
    * to rt_injection_update_photon_density */
@@ -420,6 +453,13 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
   /* Apply the slope limiter at this interface */
   rt_slope_limit_face(Ui, Uj, dUi, dUj, dx, r, xij_i, xij_j);
 
+  /* Keep the transport positive: a face energy density may not exceed twice
+   * the particle's own, so that a particle (in particular an empty one) never
+   * exports more radiation than it holds. Otherwise the outflow drives it
+   * negative and clamping it back to zero creates radiation energy. */
+  if (dUi[0] > Ui[0]) dUi[0] = Ui[0];
+  if (dUj[0] > Uj[0]) dUj[0] = Uj[0];
+
   Ui[0] += dUi[0];
   Ui[1] += dUi[1];
   Ui[2] += dUi[2];
@@ -431,8 +471,10 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
   Uj[3] += dUj[3];
 
   /* Check and correct unphysical extrapolated states */
-  rt_check_unphysical_state(Ui, &Ui[1], /*e_old=*/0.f, /*callloc=*/1);
-  rt_check_unphysical_state(Uj, &Uj[1], /*e_old=*/0.f, /*callloc=*/1);
+  rt_check_unphysical_state(Ui, &Ui[1], /*e_old=*/0.f, /*c_red=*/1.f,
+                            /*callloc=*/1);
+  rt_check_unphysical_state(Uj, &Uj[1], /*e_old=*/0.f, /*c_red=*/1.f,
+                            /*callloc=*/1);
 }
 
 /**
@@ -448,7 +490,7 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
 __attribute__((always_inline)) INLINE static void rt_gradients_predict_drift(
     const struct part *restrict p, float U[4], int group, const float dx[3]) {
 
-  rt_part_get_radiation_state_vector(p, group, U);
+  rt_part_get_transport_state_vector(p, group, U);
   /* No need to check unphysical state here:
    * they haven't been touched since the call
    * to rt_injection_update_photon_density */
@@ -468,7 +510,11 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict_drift(
   U[3] += dU[3];
 
   /* Check and correct unphysical extrapolated states */
-  rt_check_unphysical_state(U, &U[1], /*e_old=*/0.f, /*callloc=*/1);
+  rt_check_unphysical_state(U, &U[1], /*e_old=*/0.f, /*c_red=*/1.f,
+                            /*callloc=*/1);
+
+  /* Back from c E to the energy density */
+  U[0] /= rt_part_get_reduced_speed_of_light(p);
 }
 
 #endif /* SWIFT_RT_GRADIENT_KIARA_H */

@@ -566,6 +566,34 @@ void runner_do_stars_sort(struct runner *r, struct cell *c, int flags,
         else
           off[k] = off[k - 1];
 
+      /* The merge below reads exactly c->stars.count entries from the
+       * progeny's sort arrays: they must all be there and complete, or it
+       * runs past their ends (seen as rare crashes around snapshots). */
+      int count_progeny = 0;
+      for (int k = 0; k < 8; k++) {
+        const struct cell *cp = c->progeny[k];
+        if (cp == NULL || cp->stars.count == 0) continue;
+        count_progeny += cp->stars.count;
+        if (cp->stars.sort == NULL || !(cp->stars.sorted & (1 << j)) ||
+            !(cp->stars.sort_allocated & (1 << j)))
+          error(
+              "Stars sort: progeny %d of cell (depth=%d, count=%d, loc=[%g %g "
+              "%g]) is not sorted in direction %d: count=%d sort=%p "
+              "sorted=%#x sort_allocated=%#x do_sort=%#x | parent sorted=%#x "
+              "flags=%#x cleanup=%d | step=%d ti_current=%lld",
+              k, c->depth, count, c->loc[0], c->loc[1], c->loc[2], j,
+              cp->stars.count, (void *)cp->stars.sort, cp->stars.sorted,
+              cp->stars.sort_allocated, cp->stars.do_sort, c->stars.sorted,
+              flags, cleanup, r->e->step, r->e->ti_current);
+      }
+      if (count_progeny != count)
+        error(
+            "Stars sort: cell (depth=%d, loc=[%g %g %g]) has count=%d but its "
+            "progeny hold %d stars (direction %d, flags=%#x, cleanup=%d) | "
+            "step=%d ti_current=%lld",
+            c->depth, c->loc[0], c->loc[1], c->loc[2], count, count_progeny, j,
+            flags, cleanup, r->e->step, r->e->ti_current);
+
       /* Init the entries and indices. */
       int inds[8];
       for (int k = 0; k < 8; k++) {

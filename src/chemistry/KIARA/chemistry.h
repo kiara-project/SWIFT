@@ -954,6 +954,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
       ch->du = 0.;
     }
 
+    /* output u chemistry. */
+    p->cooling_data.u_chemistry =
+        hydro_get_physical_internal_energy(p, xp, cosmo);
+
     /* Check dust change (a dust-free particle can still receive dust) */
     float dust_eps = 0.f;
     if (co->dust_mass > 0.f) {

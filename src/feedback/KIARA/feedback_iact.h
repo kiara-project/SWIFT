@@ -323,11 +323,10 @@ runner_iact_nonsym_feedback_prep2(const float r2, const float dx[3],
         si->feedback_data.wind_velocity * si->feedback_data.wind_velocity;
     const double energy_phys = 0.5 * hydro_get_mass(pj) * v2 * cosmo->a2_inv;
 
-    /* Remove energy used to kick particle from the SNII energy reservoir */
+    /* Remove energy used to kick particle from the SNII energy reservoir.
+     * Kicks are of whole particles, so this can overdraw it: keep the
+     * deficit (no launches until later SN energy has paid it back). */
     si->feedback_data.physical_energy_reservoir -= energy_phys;
-    if (si->feedback_data.physical_energy_reservoir < 0.f) {
-      si->feedback_data.physical_energy_reservoir = 0.f;
-    }
 
     /* Keep track of how many particles launched */
     si->feedback_data.N_launched += 1;
@@ -444,9 +443,18 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
       }
     }
 
+    /* output debug u */
+    pj->cooling_data.u_wind_before =
+        hydro_get_physical_internal_energy(pj, xpj, cosmo);
+
     /* Set the wind particle internal energy */
     hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
     hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
+
+    pj->cooling_data.u_wind_after =
+        hydro_get_physical_internal_energy(pj, xpj, cosmo);
+    pj->cooling_data.du_wind_this_step =
+        pj->cooling_data.u_wind_before - pj->cooling_data.u_wind_after;
 
 #ifdef FIREHOSE_DEBUG_CHECKS
     /* For firehose model, set initial radius of stream */
@@ -725,9 +733,18 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       }
     }
 
+    /* output debug u */
+    pj->cooling_data.u_sn_before =
+        hydro_get_physical_internal_energy(pj, xpj, cosmo);
+
     hydro_set_physical_internal_energy(pj, xpj, cosmo, new_u_phys);
     hydro_set_drifted_physical_internal_energy(pj, cosmo, /*pfloor=*/NULL,
                                                new_u_phys);
+
+    pj->cooling_data.u_sn_after =
+        hydro_get_physical_internal_energy(pj, xpj, cosmo);
+    pj->cooling_data.du_sn_this_step =
+        pj->cooling_data.u_sn_before - pj->cooling_data.u_sn_after;
   } /* si->feedback_data.energy > 0.f */
 
   /* ------ Handle metal injection from SN explosions ------ */

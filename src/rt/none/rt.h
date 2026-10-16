@@ -131,6 +131,15 @@ __attribute__((always_inline)) INLINE static void rt_split_part(struct part *p,
                                                                 double n) {}
 
 /**
+ * @brief Correct the radiation state for a change of particle volume
+ * (nothing to do in this scheme).
+ *
+ * @param p Particle to work on.
+ */
+__attribute__((always_inline)) INLINE static void rt_update_volume(
+    struct part *restrict p) {}
+
+/**
  * @brief Exception handle a hydro part not having any neighbours in ghost task
  *
  * @param p The #part.
@@ -181,6 +190,7 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
 __attribute__((always_inline)) INLINE static float rt_compute_timestep(
     const struct part* restrict p, const struct xpart* restrict xp,
     struct rt_props* rt_props, const struct cosmology* restrict cosmo,
+    const struct gravity_props* grav_props,
     const struct hydro_props* hydro_props,
     const struct phys_const* restrict phys_const,
     const struct cooling_function_data* restrict cooling,

@@ -27,6 +27,19 @@
 /* Additional RT data in hydro particle struct */
 struct rt_part_data {
 
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /*! DEBUG: cumulative photon energy changes (all groups, internal energy
+   * units): 0 injected, 1 absorbed, 2 transport exchange, 3 negative-energy
+   * clamps after transport, 4 redshifting, 5 drift correction */
+  float debug_dE[6];
+
+  /*! DEBUG: cumulative RT photoheating (internal energy units), filled only
+   * with KIARART:debug_grackle_heat: 0 delivered by Grackle (m * (u with RT
+   * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
+   * dt) */
+  float debug_heat[2];
+#endif
+
   /* Radiation state vector. */
   struct {
     /*! Radiation energy density */
@@ -46,15 +59,25 @@ struct rt_part_data {
   /* Particle RT time step. */
   float flux_dt;
 
-  /* Smoothing length from previous timestep */
-  float h_previous;
+  /*! Particle (comoving) volume when the radiation state was last updated
+   * for a change of volume (0 until the first volume computation) */
+  float volume_previous;
+
+  /*! Sum of the (comoving) interface areas |A_ij| with the neighbours,
+   * accumulated during the transport since the last finalise */
+  float area_sum;
+
+  /*! Interface area sum of the last completed transport step, used for the
+   * RT time-step (0 until the first transport) */
+  float area_sum_last;
 
   /* gradients of the radiation state. */
   /* for the flux[3][3] quantity:
    *    first index: x, y, z coordinate of the flux.
    *    Second index: gradient along x, y, z direction. */
   struct {
-    /*! Gradient of the energy density */
+    /*! Gradient of c times the energy density (the transported quantity, see
+     * rt_part_get_transport_state_vector) */
     float energy_density[3];
     /*! Gradient of the flux components */
     float flux[3][3];

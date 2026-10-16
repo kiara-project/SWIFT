@@ -199,6 +199,18 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
 
   p->cooling_data.dust_temperature = 0.f;
 #endif
+
+  /* Initialize debug properties */
+  p->cooling_data.du_dt_cooling = 0;
+  p->cooling_data.u_cooling = 0;
+  p->cooling_data.u_chemistry = 0;
+  p->cooling_data.u_cooling_before = 0;
+  p->cooling_data.u_wind_after = 0;
+  p->cooling_data.u_wind_before = 0;
+  p->cooling_data.u_sn_after = 0;
+  p->cooling_data.u_sn_before = 0;
+  p->cooling_data.du_wind_this_step = 0;
+  p->cooling_data.du_sn_this_step = 0;
 }
 
 /**
@@ -847,6 +859,7 @@ void cooling_copy_to_grackle(
 
   /* velocity (maybe not needed?) */
   species_densities[16] = xp->v_full[0] * cosmo->a_inv;
+  species_densities[16] = (int)p->id;
   species_densities[17] = xp->v_full[1] * cosmo->a_inv;
   species_densities[18] = xp->v_full[2] * cosmo->a_inv;
   data->x_velocity = &species_densities[16];
@@ -859,6 +872,24 @@ void cooling_copy_to_grackle(
                            species_densities);
   cooling_copy_to_grackle3(data, p, xp, species_densities[12],
                            species_densities);
+
+  /* In the subgrid ISM, RT photons are absorbed by the cold clouds only
+   * (see rt_do_thermochemistry_with_subgrid), and the warm medium is taken
+   * to be ionized: no RT heating and ionisation in the subgrid ISM */
+  if (p->cooling_data.subgrid_temp > 0.f) {
+    for (i = 0; i < 5; i++) iact_rates[i] = 0.f;
+  }
+
+  /*const double Ephot_cgs = p->rt_data.radiation[0].energy_density *
+  p->geometry.volume * cooling->energy_units; if (Ephot_cgs > 1.e60) {
+    message("IACT: z=%g id=%lld nH=%g T=%g tdec=%g %d SFR=%g RTheat=%g fluxE=%g
+  Eph=%g Edens=%g V=%g h=%g Eunit=%g", cosmo->z, p->id, nH,
+  cooling_convert_u_to_temp(species_densities[13], xp->cooling_data.e_frac,
+  cooling, p), p->feedback_data.decoupling_delay_time, p->decoupled,
+  p->sf_data.SFR, iact_rates[0], p->rt_data.flux[0].energy, Ephot_cgs,
+  p->rt_data.radiation[0].energy_density, p->geometry.volume, p->h,
+  cooling->energy_units);
+  }*/
 
   /* RT heating and ionisation rates */
   data->RT_heating_rate = &iact_rates[0];
@@ -1087,6 +1118,7 @@ gr_float cooling_grackle_driver(
       }
       break;
   }
+
   cooling_grackle_free_data(&data);
 
   return return_value;
@@ -1428,6 +1460,8 @@ void cooling_init_chemistry(
  * @param iact_rates Interaction rates for radiative transfer (if used)
  * @param dt The time-step of this particle.
  * @param dt_therm The time-step operator used for thermal quantities.
+ * @param set_u_directly If 1 (RT), set the new internal energy directly and
+ * zero du/dt; if 0, set du/dt to the Grackle energy change over dt_therm.
  */
 void cooling_do_grackle_cooling(
     const struct phys_const *restrict phys_const,
@@ -1437,7 +1471,7 @@ void cooling_do_grackle_cooling(
     const struct entropy_floor_properties *floor_props,
     const struct cooling_function_data *restrict cooling,
     struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
-    const double dt, const double dt_therm) {
+    const double dt, const double dt_therm, const int set_u_directly) {
 
   /* Self-enrich gas if very low metallicity */
   cooling_init_chemistry(cooling, p);
@@ -1478,13 +1512,23 @@ void cooling_do_grackle_cooling(
     if (u_new > GRACKLE_HEATLIM * u_old) u_new = GRACKLE_HEATLIM * u_old;
     if (u_new < GRACKLE_COOLLIM * u_old) u_new = GRACKLE_COOLLIM * u_old;
     // u_new = max(u_new, u_warm);
+    /* Get physical internal energy du_dt*/
+    // const float hydro_du_dt = hydro_get_physical_internal_energy_dt(p,
+    // cosmo);
 
     /* Rennehan: Recompute the actual thermal evolution after setting min/max */
     cool_du_dt = (u_new - u_old) / dt_therm;
 
-    /* Update the internal energy time derivative,
-     * which will be evolved later */
-    hydro_set_physical_internal_energy_dt(p, cosmo, cool_du_dt);
+    if (set_u_directly) {
+      /* RT: directly set the new internal energy of the particle, and set
+       * du/dt = 0 */
+      hydro_set_physical_internal_energy(p, xp, cosmo, u_new);
+      hydro_set_physical_internal_energy_dt(p, cosmo, 0.);
+    } else {
+      /* Update the internal energy time derivative,
+       * which will be evolved later */
+      hydro_set_physical_internal_energy_dt(p, cosmo, cool_du_dt);
+    }
 
     /* If there is any dust outside of the ISM, sputter it
      * back into gas phase metals */
@@ -1629,9 +1673,23 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
     /* Interaction rates for RT; not used here */
     gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
 
+    /* Output u for debug. */
+    p->cooling_data.u_cooling_before =
+        hydro_get_physical_internal_energy(p, xp, cosmo);
+
     /* Do the cooling and chemistry */
     cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
-                               cooling, p, xp, iact_rates, dt, dt_therm);
+                               cooling, p, xp, iact_rates, dt, dt_therm,
+                               /*set_u_directly=*/0);
+
+    /* Output du_dt and u for debug. */
+    p->cooling_data.du_dt_cooling =
+        hydro_get_physical_internal_energy_dt(p, cosmo);
+    p->cooling_data.u_cooling =
+        hydro_get_physical_internal_energy(p, xp, cosmo);
+
+    /* Update cooling times this step. */
+    p->cooling_data.ncool_this_step += 1;
 
     /* Record this cooling event */
     xp->cooling_data.time_last_event = time;
@@ -1864,6 +1922,7 @@ void cooling_init_units(const struct unit_system *us,
   cooling->dudt_units =
       units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS) /
       units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+  cooling->energy_units = units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
 
   /* converts galaxy sSFR into G0 by scaling to MW values */
   const double time_to_yr = units_cgs_conversion_factor(us, UNIT_CONV_TIME) /
@@ -2011,7 +2070,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
 
   /* arrays of ionization and heating rates from radiative transfer solutions
    * are being provided */
-  chemistry->use_radiative_transfer = 0;
+  chemistry->use_radiative_transfer = cooling->with_radiative_transfer;
 
   /* must be enabled to couple the passed radiative transfer fields to the
    * chemistry solver */

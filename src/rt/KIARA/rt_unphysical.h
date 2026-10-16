@@ -31,10 +31,13 @@
  * @param energy_density pointer to the radiation energy density
  * @param flux pointer to radiation flux (3 dimensional)
  * @param e_old energy density before change to check. Set = 0 if not available
+ * @param c_red the particle's reduced speed of light (1 for a transport state
+ * W = (c E, F))
  * @param callloc integer indentifier where this function was called from
  */
 __attribute__((always_inline)) INLINE static void rt_check_unphysical_state(
-    float *energy_density, float *flux, const float e_old, int callloc) {
+    float *energy_density, float *flux, const float e_old, const float c_red,
+    int callloc) {
 
   /* Check for negative energies */
   /* Note to self for printouts: Maximal allowable F = E * c.
@@ -75,7 +78,7 @@ __attribute__((always_inline)) INLINE static void rt_check_unphysical_state(
   const double flux2 =
       flux[0] * flux[0] + flux[1] * flux[1] + flux[2] * flux[2];
   const double flux_norm = sqrt(flux2);
-  const double flux_max = rt_params.reduced_speed_of_light * *energy_density;
+  const double flux_max = c_red * *energy_density;
   if (flux_norm > flux_max) {
     const double correct = flux_max / flux_norm;
     flux[0] *= correct;

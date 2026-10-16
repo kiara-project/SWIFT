@@ -169,7 +169,7 @@ INLINE void rt_do_thermochemistry(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_densities,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* TODO: currently manually add iact_rates in grackle data field here. */
   data.RT_heating_rate = &iact_rates[0];
@@ -247,7 +247,7 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, species_densities, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   gr_float species_densities_new[6];
   species_densities_new[0] = data.HI_density[0];
@@ -259,8 +259,7 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(absorption_rates_new, species_densities_new,
                           rt_props->average_photon_energy,
-                          rt_props->number_weighted_cross_sections, phys_const,
-                          us);
+                          rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* Now remove absorbed radiation */
   for (int g = 0; g < RT_NGROUPS; g++) {
@@ -268,6 +267,10 @@ INLINE void rt_do_thermochemistry(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+#ifdef SWIFT_KIARA_RT_DEBUG
+    p->rt_data.debug_dE[1] -=
+        p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+#endif
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -275,6 +278,7 @@ INLINE void rt_do_thermochemistry(
 
     rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                               p->rt_data.radiation[g].flux, E_old,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/2);
   }
 
@@ -320,7 +324,7 @@ float rt_tchem_get_tchem_time(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_densities,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* load particle information from particle to grackle data */
   cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, 0., 0.,
@@ -382,26 +386,27 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   /* Nothing to do here? */
   if (rt_props->skip_thermochemistry) return;
 
-  /* Compute cooling time and other quantities needed for firehose
-  if (dt > 0. && dt_therm > 0.) {
-    firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props,
-                              cooling, p, xp, dt);
-  }*/
-
-  /* Update the subgrid properties
-  cooling_set_particle_subgrid_properties( phys_const, us,
-          cosmo, hydro_props, floor_props, cooling, p, xp);*/
-
-  /* No cooling if particle is decoupled
-  if (p->decoupled) return; */
-
+  /* Nothing happens for zero timestep */
   if (dt == 0.f || dt_therm == 0.f) return;
+
+  /* Don't do thermochemistry if particle is decoupled  */
+  if (p->decoupled) {
+    /* Compute cooling time and other quantities needed for firehose */
+    if (dt > 0. && dt_therm > 0.) {
+      firehose_cooling_and_dust(phys_const, us, cosmo, hydro_props, cooling, p,
+                                xp, dt);
+    }
+    /* Update the subgrid properties */
+    cooling_set_particle_subgrid_properties(phys_const, us, cosmo, hydro_props,
+                                            floor_props, cooling, p, xp);
+    return;
+  }
 
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
 
-  /* TODO: put the iact_rates to the cooling grackle data. */
+  /* Compute the iact_rates for the cooling grackle data. */
   gr_float *iact_rates = (gr_float *)malloc(5 * sizeof(gr_float));
   if (iact_rates == NULL) {
     fprintf(stderr, "Error: malloc failed for iact_rates\n");
@@ -421,7 +426,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   // printf("=== RT computed interaction rates ===\n");
   // printf("RT RT_heating_rate         = %e\n", iact_rates[0]);
@@ -449,9 +454,61 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     // message("RT rate at index %d: %.4g", i, iact_rates[i]);
   }
 
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /* DEBUG: Grackle applies the RT heating rate per HI atom to its own,
+   * evolving HI density, so the heat it delivers need not match the heating
+   * rate times the start-of-step HI. Measure the delivered heat with a
+   * second solve on a copy of the particle without the RT heating rate, and
+   * the intended heat from the rate and the start-of-step HI. Grackle zeroes
+   * the rates in the subgrid ISM, so nothing is intended there. */
+  float u_no_rt_heat = 0.f;
+  if (rt_props->debug_grackle_heat) {
+    if (p->cooling_data.subgrid_temp == 0.f) {
+      /* iact_rates[0] is in erg / s per HI atom */
+      const double N_HI = p->rt_data.tchem.mass_fraction_HI *
+                          hydro_get_mass(p) / phys_const->const_proton_mass;
+      const double dt_cgs = dt * units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+      p->rt_data.debug_heat[1] +=
+          iact_rates[0] * N_HI * dt_cgs /
+          units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+    }
+
+    struct part p_copy = *p;
+    struct xpart xp_copy = *xp;
+    gr_float rates_no_heat[5];
+    for (int i = 0; i < 5; i++) rates_no_heat[i] = iact_rates[i];
+    rates_no_heat[0] = 0.;
+    cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
+                               cooling, &p_copy, &xp_copy, rates_no_heat, dt,
+                               dt_therm, /*set_u_directly=*/1);
+    u_no_rt_heat = hydro_get_physical_internal_energy(&p_copy, &xp_copy, cosmo);
+  }
+#endif
+
+  /* Output internal energy before cooling grackle calculation. */
+  p->cooling_data.u_cooling_before =
+      hydro_get_physical_internal_energy(p, xp, cosmo);
+
   /* solve chemistry, update thermal energy */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
-                             cooling, p, xp, iact_rates, dt, dt_therm);
+                             cooling, p, xp, iact_rates, dt, dt_therm,
+                             /*set_u_directly=*/1);
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  if (rt_props->debug_grackle_heat) {
+    p->rt_data.debug_heat[0] +=
+        hydro_get_mass(p) *
+        (hydro_get_physical_internal_energy(p, xp, cosmo) - u_no_rt_heat);
+  }
+#endif
+
+  /* Output du_dt and u  for debug. */
+  p->cooling_data.du_dt_cooling =
+      hydro_get_physical_internal_energy_dt(p, cosmo);
+  p->cooling_data.u_cooling = hydro_get_physical_internal_energy(p, xp, cosmo);
+
+  /* Update cooling times this step. */
+  p->cooling_data.ncool_this_step += 1;
 
   // int target_id = 2134785;
   // int range = 50;
@@ -486,11 +543,58 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   p->rt_data.tchem.mass_fraction_HeIII = xp->cooling_data.HeIII_frac;
 
   /* Update radiation fields */
-  /* First get absorption rates at the start of the step */
+
+  /* In the subgrid ISM, only the cold clouds absorb, and they absorb all
+   * the radiation they cover; the warm medium between them is taken to be
+   * transparent. The clouds (cold mass fraction f_c at density rho_c) fill
+   * a fraction phi = f_c rho / rho_c of the particle volume. N clouds of
+   * equal size cover a fraction C = N^(1/3) phi^(2/3) of the particle cross
+   * section, so over the path L = c dt travelled this step the absorbed
+   * fraction is 1 - (1 - C)^(L / 2 R_p), with R_p the particle radius. */
+  if (p->cooling_data.subgrid_temp > 0. &&
+      p->cooling_data.subgrid_fcold > 1.e-6) {
+
+    double f = 0.;
+    if (p->cooling_data.subgrid_temp < rt_props->ism_cold_cloud_temperature) {
+      const double rho_phys = hydro_get_physical_density(p, cosmo);
+      const double rho_cold = cooling_get_subgrid_density(p, xp);
+      const double phi =
+          (rho_cold > 0.)
+              ? fmin(p->cooling_data.subgrid_fcold * rho_phys / rho_cold, 1.)
+              : 0.;
+      const double C =
+          fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
+      const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
+      const double L = rt_part_get_reduced_speed_of_light(p) * dt;
+      f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
+    }
+
+    for (int g = 0; g < RT_NGROUPS; g++) {
+      const float E_old = p->rt_data.radiation[g].energy_density;
+#ifdef SWIFT_KIARA_RT_DEBUG
+      p->rt_data.debug_dE[1] -=
+          p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+#endif
+      p->rt_data.radiation[g].energy_density *= (1. - f);
+      for (int i = 0; i < 3; i++) {
+        p->rt_data.radiation[g].flux[i] *= (1. - f);
+      }
+      rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
+                                p->rt_data.radiation[g].flux, E_old,
+                                rt_part_get_reduced_speed_of_light(p),
+                                /*callloc=*/2);
+    }
+
+    free(iact_rates);
+    return;
+  }
+
+  /* Outside the subgrid ISM: absorption by the gas species.
+   * First get absorption rates at the start of the step */
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, rt_species, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* Set up absorption rate calculation at end of step */
   gr_float rt_species_new[6];
@@ -509,7 +613,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates_new, rt_species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
   /* Now remove absorbed radiation, using average absorption */
   for (int g = 0; g < RT_NGROUPS; g++) {
@@ -517,6 +621,10 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+#ifdef SWIFT_KIARA_RT_DEBUG
+    p->rt_data.debug_dE[1] -=
+        p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+#endif
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -524,6 +632,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
     rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                               p->rt_data.radiation[g].flux, E_old,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/2);
   }
 

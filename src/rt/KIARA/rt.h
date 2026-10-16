@@ -29,6 +29,10 @@
 
 #include <float.h>
 
+/*! Maximal interface-area ratio sum|A_ij| R / V used in the RT time-step
+ * (3 for a sphere) */
+#define rt_area_ratio_max 10.f
+
 /**
  * @file src/rt/KIARA/rt.h
  * @brief Main header file for the KIARA M1 Closure radiative transfer scheme.
@@ -101,7 +105,7 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
         (365.25f * 24.f * 60.f * 60.f * 1e6f);
     const double energy_units =
         units_cgs_conversion_factor(internal_units, UNIT_CONV_ENERGY);
-    if (star_age_begin_of_step * time_to_Myr < 5)
+    if (star_age_begin_of_step * time_to_Myr < 0)
       message("RT_energy: id=%lld dE=%g (%g erg) age_start=%g age_now=%g Z=%g",
               sp->id, emission_this_step[0],
               emission_this_step[0] * energy_units,
@@ -127,16 +131,35 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
 __attribute__((always_inline)) INLINE static void rt_init_part(
     struct part *restrict p) {
 
-  /* Correct the energy densities and fluxes for change in volume */
-  float h_ratio = p->rt_data.h_previous / p->h;
-  const float h_ratio2 = h_ratio * h_ratio;
-  for (int g = 0; g < RT_NGROUPS; g++) {
-    p->rt_data.radiation[g].energy_density *= h_ratio * h_ratio2;
-    p->rt_data.radiation[g].flux[0] *= h_ratio2;
-    p->rt_data.radiation[g].flux[1] *= h_ratio2;
-    p->rt_data.radiation[g].flux[2] *= h_ratio2;
+  /* The radiation state is corrected for changes of volume in
+   * rt_update_volume(), once the new volume is known. */
+}
+
+/**
+ * @brief Correct the radiation energy density and flux for the change of
+ * the particle volume, so that the radiation energy (and flux integral)
+ * the particle holds is conserved.
+ *
+ * To be called right after the particle's geometry volume is recomputed.
+ *
+ * @param p Particle to work on.
+ */
+__attribute__((always_inline)) INLINE static void rt_update_volume(
+    struct part *restrict p) {
+
+  const float V = p->geometry.volume;
+  const float V_prev = p->rt_data.volume_previous;
+
+  if (V > 0.f && V_prev > 0.f && V != V_prev) {
+    const float ratio = V_prev / V;
+    for (int g = 0; g < RT_NGROUPS; g++) {
+      p->rt_data.radiation[g].energy_density *= ratio;
+      p->rt_data.radiation[g].flux[0] *= ratio;
+      p->rt_data.radiation[g].flux[1] *= ratio;
+      p->rt_data.radiation[g].flux[2] *= ratio;
+    }
   }
-  p->rt_data.h_previous = p->h;
+  if (V > 0.f) p->rt_data.volume_previous = V;
 }
 
 /**
@@ -198,13 +221,19 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_reset_part(p, cosmo);
   rt_part_reset_mass_fluxes(p);
   rt_reset_part_each_subcycle(p, cosmo, 0.);
+#ifdef SWIFT_KIARA_RT_DEBUG
+  for (int k = 0; k < 6; k++) p->rt_data.debug_dE[k] = 0.f;
+  for (int k = 0; k < 2; k++) p->rt_data.debug_heat[k] = 0.f;
+#endif
   rt_part_reset_fluxes(p);
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   p->rt_data.debug_radiation_absorbed_tot = 0ULL;
 #endif
 
-  p->rt_data.h_previous = p->h;
+  p->rt_data.volume_previous = 0.f;
+  p->rt_data.area_sum = 0.f;
+  p->rt_data.area_sum_last = 0.f;
 }
 
 /**
@@ -356,6 +385,7 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
     /* Check for too high fluxes */
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
                               rtd->radiation[g].flux, /*e_old =*/0.f,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/0);
   }
 
@@ -383,6 +413,7 @@ __attribute__((always_inline)) INLINE static void rt_convert_quantities(
 __attribute__((always_inline)) INLINE static float rt_compute_timestep(
     const struct part *restrict p, const struct xpart *restrict xp,
     struct rt_props *rt_props, const struct cosmology *restrict cosmo,
+    const struct gravity_props *grav_props,
     const struct hydro_props *hydro_props,
     const struct phys_const *restrict phys_const,
     const struct cooling_function_data *restrict cooling,
@@ -397,12 +428,37 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   }
   if (total_energy_density <= 0.) return 1e20f;
 
-  /* just mimic the gizmo particle "size" for now */
-  const float psize = cosmo->a * cosmo->a *
-                      powf(p->geometry.volume / hydro_dimension_unit_sphere,
-                           hydro_dimension_inv);
-  float dt = psize * rt_params.reduced_speed_of_light_inverse *
-             rt_props->CFL_condition;
+  /* Courant condition: radiation travels at c_red/a in comoving
+   * coordinates. A particle must not send more radiation through its
+   * interfaces in one step than it holds: c_red dt sum|A_ij| / (a V) <= CFL,
+   * with the (comoving) interface areas of its last transport step. Before
+   * the first transport step, use 1/10 of the crossing time of the radius
+   * of its volume. */
+  /* Transport length: V / sum|A| from the interface areas of the last
+   * transport step (capped, see below), or 1/10 of the volume radius before
+   * the first one. It is floored at the gravitational softening: transport
+   * is not resolved below it (in the dense ISM the absorption is done by the
+   * cold-cloud covering fraction), and the flux limiter in
+   * runner_iact_rt_flux_common keeps particles smaller than that positive.
+   */
+  const float R = powf(p->geometry.volume / hydro_dimension_unit_sphere,
+                       hydro_dimension_inv);
+  float length;
+  if (p->rt_data.area_sum_last > 0.f) {
+    /* Particles in very dense gas at the smoothing-length floor have many
+     * more neighbours than usual, and so interface areas up to ~100x those
+     * of a sphere (sum|A| R / V = 3): cap the area at
+     * rt_area_ratio_max V / R. */
+    const float area = fminf(p->rt_data.area_sum_last,
+                             rt_area_ratio_max * p->geometry.volume / R);
+    length = p->geometry.volume / area;
+  } else {
+    length = 0.1f * R;
+  }
+  length = fmaxf(length, grav_props->epsilon_baryon_cur);
+
+  const float dt = rt_props->CFL_condition * cosmo->a * length /
+                   rt_part_get_reduced_speed_of_light(p);
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -503,6 +559,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_injection(
   for (int g = 0; g < RT_NGROUPS; g++) {
     rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                               p->rt_data.radiation[g].flux, /*e_old=*/0.f,
+                              rt_part_get_reduced_speed_of_light(p),
                               /*callloc=*/3);
   }
 }
@@ -556,7 +613,9 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 #endif
 
   struct rt_part_data *restrict rtd = &p->rt_data;
-  const float Vinv = 1.f / p->geometry.volume;
+  /* The fluxes are in comoving units over a physical time-step: with
+   * dU/dt + (1/a) div(F) = 0, the transport is slowed by 1/a */
+  const float Vinv = cosmo->a_inv / p->geometry.volume;
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
   const float redshift_factor =
@@ -569,6 +628,12 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
      * So we'll need the division by the volume here. */
 
     rtd->radiation[g].energy_density += rtd->flux[g].energy * Vinv;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    rtd->debug_dE[2] += rtd->flux[g].energy * cosmo->a_inv;
+    rtd->debug_dE[4] -= rtd->radiation[g].energy_density * redshift_factor *
+                        p->geometry.volume;
+#endif
+
     rtd->radiation[g].energy_density -=
         rtd->radiation[g].energy_density *
         redshift_factor;  // Energy lost due to redshift
@@ -588,14 +653,35 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
         rtd->radiation[g].flux[2] *
         redshift_factor;  // Energy lost due to redshift
 
+    /* TEST (WRONG): decoupled particles lose all photon energy/flux
+    if (p->decoupled) {
+      rtd->radiation[g].energy_density = 0.f;
+      rtd->radiation[g].flux[0] = 0.f;
+      rtd->radiation[g].flux[1] = 0.f;
+      rtd->radiation[g].flux[2] = 0.f;
+    }*/
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+    const float e_before_check = rtd->radiation[g].energy_density;
+#endif
     rt_check_unphysical_state(&rtd->radiation[g].energy_density,
-                              rtd->radiation[g].flux, e_old, /*callloc=*/4);
+                              rtd->radiation[g].flux, e_old,
+                              rt_part_get_reduced_speed_of_light(p),
+                              /*callloc=*/4);
+#ifdef SWIFT_KIARA_RT_DEBUG
+    rtd->debug_dE[3] +=
+        (rtd->radiation[g].energy_density - e_before_check) * p->geometry.volume;
+#endif
   }
 
   /* Reset the fluxes now that they have been applied. */
   rt_part_reset_fluxes(p);
   /* Mark the particle as inactive for now. */
   rtd->flux_dt = -1.f;
+
+  /* Keep the interface area of this transport step for the time-step */
+  rtd->area_sum_last = rtd->area_sum;
+  rtd->area_sum = 0.f;
 }
 
 /**
@@ -771,25 +857,19 @@ __attribute__((always_inline)) INLINE static void rt_prepare_force(
 /**
  * @brief Extra operations to be done during the drift
  *
+ * GEAR-RT re-samples the radiation field at the drifted particle position
+ * by extrapolating with the radiation gradients. That is not conservative:
+ * with a reduced speed of light, gas flowing into bright galaxies moves up
+ * the radiation gradient fast enough to create large amounts of radiation
+ * energy. KIARA-RT instead keeps the radiation with the particle between
+ * transport steps, which conserves the radiation energy exactly.
+ *
  * @param p Particle to act upon.
  * @param xp The extended particle data to act upon.
  * @param dt_drift The drift time-step for positions.
  */
 __attribute__((always_inline)) INLINE static void rt_predict_extra(
-    struct part *p, struct xpart *xp, float dt_drift) {
-
-  float dx[3] = {xp->v_full[0] * dt_drift, xp->v_full[1] * dt_drift,
-                 xp->v_full[2] * dt_drift};
-
-  for (int g = 0; g < RT_NGROUPS; g++) {
-    float Unew[4];
-    rt_gradients_predict_drift(p, Unew, g, dx);
-    p->rt_data.radiation[g].energy_density = Unew[0];
-    p->rt_data.radiation[g].flux[0] = Unew[1];
-    p->rt_data.radiation[g].flux[1] = Unew[2];
-    p->rt_data.radiation[g].flux[2] = Unew[3];
-  }
-}
+    struct part *p, struct xpart *xp, float dt_drift) {}
 
 /**
  * @brief Clean the allocated memory inside the RT properties struct.

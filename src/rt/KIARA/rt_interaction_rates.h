@@ -41,6 +41,7 @@
  * @param average_photon_energy mean photon energy in group, in erg
  * @param cse energy weighted photon interaction cross sections, in cm^2
  * @param csn number weighted photon interaction cross sections, in cm^2
+ * @param c_red the particle's reduced speed of light (internal units)
  * @param phys_const physical constants struct
  * @param us internal units struct
  **/
@@ -49,7 +50,7 @@ rt_get_interaction_rates_for_grackle(
     gr_float rates[5], float energy_density[RT_NGROUPS],
     gr_float species_densities[6],
     const double average_photon_energy[RT_NGROUPS], double **cse, double **csn,
-    const struct phys_const *restrict phys_const,
+    const float c_red, const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us) {
 
   rates[0] = 0.; /* Needs to be in [erg / s / cm^3 / nHI] for grackle. */
@@ -62,8 +63,8 @@ rt_get_interaction_rates_for_grackle(
   rt_species_get_ionizing_energy(E_ion_cgs);
 
   /* Get some conversions and constants first. */
-  const double c_cgs = rt_params.reduced_speed_of_light *
-                       units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
+  const double c_cgs =
+      c_red * units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
   const double to_energy_density_cgs =
       units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_DENSITY);
   const double inv_time_cgs =
@@ -100,6 +101,7 @@ rt_get_interaction_rates_for_grackle(
   /* Convert into correct units. */
   const double nHI = ns_cgs[rt_ionizing_species_HI];
   if (nHI > 0.)
+    // rates[0] = 0.;
     rates[0] /= nHI;
   else
     rates[0] = 0.;
@@ -139,13 +141,14 @@ rt_get_interaction_rates_for_grackle(
  *[internal units]
  * @param average_photon_energy mean photon energy in group, in erg
  * @param csn number weighted photon interaction cross sections, in cm^2
+ * @param c_red the particle's reduced speed of light (internal units)
  * @param phys_const physical constants struct
  * @param us internal units struct
  **/
 __attribute__((always_inline)) INLINE static void rt_get_absorption_rates(
     double absorption_rates[RT_NGROUPS], gr_float species_densities[6],
     const double average_photon_energy[RT_NGROUPS], double **csn,
-    const struct phys_const *restrict phys_const,
+    const float c_red, const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us) {
 
   for (int g = 0; g < RT_NGROUPS; g++) absorption_rates[g] = 0.;
@@ -154,8 +157,8 @@ __attribute__((always_inline)) INLINE static void rt_get_absorption_rates(
   rt_species_get_ionizing_energy(E_ion_cgs);
 
   /* Get some conversions and constants first. */
-  const double c_cgs = rt_params.reduced_speed_of_light *
-                       units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
+  const double c_cgs =
+      c_red * units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
   const double inv_time_cgs =
       units_cgs_conversion_factor(us, UNIT_CONV_INV_TIME);
 
