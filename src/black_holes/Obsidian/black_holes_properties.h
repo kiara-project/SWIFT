@@ -340,6 +340,13 @@ struct black_holes_props {
    * part of the jet energy is not taken from the spin */
   int adaf_jet_free_energy;
 
+  /*! If > 0, the ADAF f_accretion (set by the subgrid jet loading) uses the
+   * MAD jet efficiency at this spin instead of each BH's jet efficiency */
+  float adaf_f_accretion_reference_spin;
+
+  /*! The MAD jet efficiency at adaf_f_accretion_reference_spin */
+  float adaf_f_accretion_reference_jet_efficiency;
+
   /*! Only cold gas within this many (Plummer-equivalent) baryon softening
    * lengths of the BH feeds the torque accretion (0: whole kernel) */
   float torque_accretion_max_radius_softening;
@@ -1097,6 +1104,17 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_jet_free_energy =
       parser_get_opt_param_int(params, "ObsidianAGN:adaf_jet_free_energy", 0);
 
+  bp->adaf_f_accretion_reference_spin = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_f_accretion_reference_spin", -1.f);
+  if (bp->adaf_f_accretion_reference_spin >= 1.f) {
+    error("adaf_f_accretion_reference_spin must be < 1 (<= 0 to disable).");
+  }
+  bp->adaf_f_accretion_reference_jet_efficiency =
+      (bp->adaf_f_accretion_reference_spin > 0.f)
+          ? black_hole_MAD_jet_efficiency(bp->adaf_f_accretion_reference_spin,
+                                          1.f)
+          : 0.f;
+
   bp->torque_accretion_max_radius_softening = parser_get_opt_param_float(
       params, "ObsidianAGN:torque_accretion_max_radius_softening", 0.f);
   if (bp->torque_accretion_max_radius_softening < 0.f) {
@@ -1440,6 +1458,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         "(jet efficiency x %g)",
         bp->adaf_torque_phi_factor,
         bp->adaf_torque_phi_factor * bp->adaf_torque_phi_factor);
+    if (bp->adaf_f_accretion_reference_spin > 0.f) {
+      message(
+          "Black hole ADAF f_accretion uses the jet efficiency %g of a MAD "
+          "at spin %g",
+          bp->adaf_f_accretion_reference_jet_efficiency,
+          bp->adaf_f_accretion_reference_spin);
+    }
     if (bp->adaf_jet_free_energy) {
       message(
           "Black hole ADAF jets use the full MAD efficiency (jet energy not "

@@ -656,9 +656,16 @@ get_black_hole_accretion_factor(const struct black_holes_props *props,
       if (jet_subgrid_velocity < 0.f) {
         jet_subgrid_velocity = fabs(jet_subgrid_velocity) * sqrtf(cosmo->a_inv);
       }
+      /* The subgrid jet loading follows the BH's jet efficiency, or that of
+       * a MAD at a reference spin so that f_acc does not depend on spin */
+      const float jet_efficiency_subgrid =
+          (props->adaf_f_accretion_reference_spin > 0.f)
+              ? props->adaf_f_accretion_reference_jet_efficiency
+              : get_black_hole_jet_efficiency(bp, props);
+
       /* Scale jet efficiency with the ADAF coupling, as for the jet itself */
       const float jet_subgrid_mass_loading =
-          2.f * get_black_hole_jet_efficiency(bp, props) *
+          2.f * jet_efficiency_subgrid *
           get_black_hole_adaf_z_scaling(props, cosmo) *
           (phys_const->const_speed_light_c / jet_subgrid_velocity) *
           (phys_const->const_speed_light_c / jet_subgrid_velocity);
