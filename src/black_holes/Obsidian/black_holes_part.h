@@ -208,6 +208,9 @@ struct bpart {
   /*! Mass in accretion disk from which BH accretes */
   float accretion_disk_mass;
 
+  /*! Part of accretion_disk_mass that came in via Bondi accretion */
+  float accretion_disk_bondi_mass;
+
   /*! The mass-weighted internal energy surrounding the black hole (unsmoothed)
    */
   float hot_gas_internal_energy;

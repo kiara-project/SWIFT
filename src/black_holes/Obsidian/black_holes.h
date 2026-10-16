@@ -108,8 +108,10 @@ black_holes_set_spin_alignment(struct bpart *bp, const float cos_theta,
  * step of accretion, and compute the spin-limited time-step dt_ang_mom.
  *
  * The disk is assumed to share the angular momentum direction of the gas
- * that feeds the torque accretion (see torque_accretion_method). Must be called after the accretion rate, state,
- * Eddington fraction and radiative efficiency for this step have been set.
+ * that feeds the torque accretion (see torque_accretion_method). Must be
+ * called after the accretion rate reaching the BH (after the accretion-disk
+ * reservoir), state, Eddington fraction, Bondi fraction and radiative
+ * efficiency for this step have been set.
  *
  * @param bp The black hole particle.
  * @param props The properties of the black hole scheme.
@@ -770,6 +772,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   }
   bp->total_accreted_mass = 0.f;
   bp->accretion_disk_mass = 0.f;
+  bp->accretion_disk_bondi_mass = 0.f;
   bp->accretion_rate = 0.f;
   bp->bondi_accretion_rate = 0.f;
   bp->formation_time = -1.f;
@@ -1284,6 +1287,7 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
 
   /* Carry over the other subgrid reservoirs so nothing is lost */
   bpi->accretion_disk_mass += bpj->accretion_disk_mass;
+  bpi->accretion_disk_bondi_mass += bpj->accretion_disk_bondi_mass;
   bpi->unresolved_mass_reservoir += bpj->unresolved_mass_reservoir;
   bpi->adaf_energy_to_dump += bpj->adaf_energy_to_dump;
 
@@ -1821,9 +1825,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 #endif
   if (bp->radiative_efficiency < 1.e-10f) bp->radiative_efficiency = 0.f;
 
-  /* Evolve the BH spin magnitude and direction (NLT) */
-  black_holes_evolve_spin(bp, props, phys_const, dt);
-
   double mass_rate = 0.;
   const double luminosity =
       bp->radiative_efficiency * bp->accretion_rate * c * c;
@@ -1844,8 +1845,17 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* If desired we put mass into accretion disk which feeds BH on some
    * multiple of tdyn */
   if (props->inverse_dynamical_time_factor > 0.f) {
-    /* Add accreted mass into a reservoir representing BH accretion disk */
+    /* Add accreted mass into a reservoir representing BH accretion disk,
+     * keeping track of its Bondi part */
     bp->accretion_disk_mass += delta_mass;
+    bp->accretion_disk_bondi_mass += bp->bondi_fraction * delta_mass;
+
+    /* Bondi share of what drains onto the BH (the disk is well mixed) */
+    bp->bondi_fraction =
+        (bp->accretion_disk_mass > 0.f)
+            ? fminf(bp->accretion_disk_bondi_mass / bp->accretion_disk_mass,
+                    1.f)
+            : 0.f;
 
     /* Compute mass that will actually go into BH */
     delta_mass =
@@ -1855,9 +1865,13 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     /* This mass gets removed from the accretion disk */
     if (bp->accretion_disk_mass > delta_mass) {
       bp->accretion_disk_mass -= delta_mass;
+      bp->accretion_disk_bondi_mass -= bp->bondi_fraction * delta_mass;
+      if (bp->accretion_disk_bondi_mass < 0.f)
+        bp->accretion_disk_bondi_mass = 0.f;
     } else {
       delta_mass = bp->accretion_disk_mass;
       bp->accretion_disk_mass = 0.;
+      bp->accretion_disk_bondi_mass = 0.;
     }
 
     /* Recompute accretion rate based on the reservoir change */
@@ -1871,6 +1885,10 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     bp->radiative_luminosity =
         bp->radiative_efficiency * bp->accretion_rate * c * c;
   }
+
+  /* Evolve the BH spin magnitude and direction (NLT) with the mass that
+   * reaches the BH this step (M_dot,0 dt = accretion_rate dt) */
+  black_holes_evolve_spin(bp, props, phys_const, dt);
 
   bp->subgrid_mass += delta_mass;
   bp->total_accreted_mass += delta_mass;
