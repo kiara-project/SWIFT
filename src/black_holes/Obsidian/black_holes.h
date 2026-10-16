@@ -386,7 +386,8 @@ black_holes_update_spin_efficiencies(struct bpart *bp,
  */
 __attribute__((always_inline)) INLINE static float get_black_hole_jet_efficiency(
     const struct bpart *bp, const struct black_holes_props *props) {
-  if (bp->state != BH_states_adaf) return bp->jet_efficiency;
+  if (bp->state != BH_states_adaf || props->adaf_jet_free_energy)
+    return bp->jet_efficiency;
   const float phi_t2 =
       props->adaf_torque_phi_factor * props->adaf_torque_phi_factor;
   const float f_B = bp->bondi_fraction;
@@ -873,6 +874,8 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->stellar_bulge_mass = 0.f;
   bp->radiative_luminosity = 0.f;
   bp->ngb_mass = 0.f;
+  bp->torque_ngb_mass = 0.f;
+  bp->torque_radius = 0.f;
   bp->num_ngbs = 0;
   bp->reposition.delta_x[0] = -FLT_MAX;
   bp->reposition.delta_x[1] = -FLT_MAX;
@@ -1514,8 +1517,19 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
         m_star_bh = fmin(m_star_gal / m_gas_cold_gal, 10.f) * m_gas_cold_bh;
       }
 
+      /* With a torque radius inside the kernel, the cold gas (hence the
+       * stars) only counts within it, so evaluate t_dyn there */
+      float m_gas_tdyn = m_gas_bh;
+      double volume_tdyn_inv = volume_bh_inv;
+      if (bp->torque_radius > 0.f && bp->torque_radius < bh_h) {
+        m_gas_tdyn = bp->torque_ngb_mass;
+        volume_tdyn_inv =
+            3. / (4. * M_PI * bp->torque_radius * bp->torque_radius *
+                  bp->torque_radius);
+      }
+
       /* Have to assume baryon dominance within the kernel */
-      const float rho_est = (m_star_bh + m_gas_bh + m_bh) * volume_bh_inv;
+      const float rho_est = (m_star_bh + m_gas_tdyn + m_bh) * volume_tdyn_inv;
 
       /* Inverse physical dynamical time */
       tdyn_inv = sqrt(32. * G * rho_est * cosmo->a3_inv / (3. * M_PI));

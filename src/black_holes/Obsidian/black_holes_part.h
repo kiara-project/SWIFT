@@ -237,6 +237,11 @@ struct bpart {
   /*! Total mass of the gas neighbours. */
   float ngb_mass;
 
+  /*! Gas neighbour mass within the torque-accretion radius, and that radius
+   * (comoving; 0 if the whole kernel is used) */
+  float torque_ngb_mass;
+  float torque_radius;
+
   /*! Integer number of neighbours */
   int num_ngbs;
 

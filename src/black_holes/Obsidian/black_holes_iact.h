@@ -234,6 +234,17 @@ runner_iact_nonsym_bh_gas_density(
   /* Compute the kernel function; note that r cannot be optimised
    * to r2 / sqrtf(r2) because of 1 / 0 behaviour. */
   const float r = sqrtf(r2);
+
+  /* Only gas within the torque radius feeds the torque accretion */
+  int in_torque_region = 1;
+  if (bh_props->torque_accretion_max_radius_softening > 0.f) {
+    const float r_torque = bh_props->torque_accretion_max_radius_softening *
+                           grav_props->epsilon_baryon_cur /
+                           kernel_gravity_softening_plummer_equivalent;
+    bi->torque_radius = r_torque;
+    in_torque_region = (r < r_torque);
+  }
+  if (in_torque_region) bi->torque_ngb_mass += mj;
   const float hi_inv = 1.0f / hi;
   const float ui = r * hi_inv;
   kernel_deval(ui, &wi, &wi_dx);
@@ -275,7 +286,7 @@ runner_iact_nonsym_bh_gas_density(
   if (gas_temperature_state == 1) {
     bi->hot_gas_mass += mj;
     bi->hot_gas_internal_energy += mj * uj; /* Not kernel weighted */
-  } else if (gas_temperature_state == -1) {
+  } else if (gas_temperature_state == -1 && in_torque_region) {
 #if COOLING_GRACKLE_MODE >= 2
     /* With subgrid ISM model, only allow cold dense component to be accreted */
     // bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold *

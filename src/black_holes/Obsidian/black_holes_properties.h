@@ -335,6 +335,15 @@ struct black_holes_props {
    * share is always a MAD) */
   float adaf_torque_phi_factor;
 
+  /*! If 1, ADAF jets have the full MAD efficiency for all inflow while the
+   * spin-down of the torque-fed share still uses adaf_torque_phi_factor, so
+   * part of the jet energy is not taken from the spin */
+  int adaf_jet_free_energy;
+
+  /*! Only cold gas within this many (Plummer-equivalent) baryon softening
+   * lengths of the BH feeds the torque accretion (0: whole kernel) */
+  float torque_accretion_max_radius_softening;
+
   /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
    * 4=BH spin axis */
   int adaf_wind_dir;
@@ -1085,6 +1094,15 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     error("adaf_torque_phi_factor must be >= 0 and <= 1.");
   }
 
+  bp->adaf_jet_free_energy =
+      parser_get_opt_param_int(params, "ObsidianAGN:adaf_jet_free_energy", 0);
+
+  bp->torque_accretion_max_radius_softening = parser_get_opt_param_float(
+      params, "ObsidianAGN:torque_accretion_max_radius_softening", 0.f);
+  if (bp->torque_accretion_max_radius_softening < 0.f) {
+    error("torque_accretion_max_radius_softening must be >= 0.");
+  }
+
   bp->adaf_kick_factor =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_kick_factor", 0.5f);
   if (bp->adaf_kick_factor < 0.f || bp->adaf_kick_factor > 1.f) {
@@ -1422,6 +1440,16 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         "(jet efficiency x %g)",
         bp->adaf_torque_phi_factor,
         bp->adaf_torque_phi_factor * bp->adaf_torque_phi_factor);
+    if (bp->adaf_jet_free_energy) {
+      message(
+          "Black hole ADAF jets use the full MAD efficiency (jet energy not "
+          "all taken from the spin)");
+    }
+    if (bp->torque_accretion_max_radius_softening > 0.f) {
+      message("Black hole torque accretion uses cold gas within %g softening "
+              "lengths",
+              bp->torque_accretion_max_radius_softening);
+    }
     message("Black hole jet recouple factor is %g", f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g", bp->epsilon_r);
     message(
