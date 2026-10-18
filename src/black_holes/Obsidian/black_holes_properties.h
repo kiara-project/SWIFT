@@ -49,6 +49,11 @@ enum BH_loading_types {
   BH_jet_mixed_loaded     /* A mix between momentum and energy loading */
 };
 
+enum thin_disc_regions {
+  TD_region_B, /*< Region B from Shakura & Sunyaev (1973) */
+  TD_region_C  /*< Region C from Shakura & Sunyaev (1973) */
+};
+
 /**
  * @brief Properties of black holes and AGN feedback in the EAGEL model.
  */
@@ -163,8 +168,66 @@ struct black_holes_props {
   /*! C from Lupi+17 */
   float C_sd;
 
-  /*! The spin of EVERY black hole */
+  /*! If > 0, the spin used for the efficiencies of EVERY black hole;
+   * otherwise each black hole's evolved spin is used */
   float fixed_spin;
+
+  /* ---- Spin tracking and subgrid accretion disk (NLT) ---- */
+
+  /*! Spin assigned to BHs when they are seeded */
+  float seed_spin;
+
+  /*! Viscous alpha of the accretion disk, and various factors and powers
+      involving it. Here alpha_factor_x refers to alpha raised to the power of
+      x, expressed as e.g. 0549 if x is 0.549 (these are the decimal
+      expressions for powers of alpha that appear in accretion disk theory).
+      alpha_factor_x_inv refers to the inverse of a similar number, or
+      equivalently alpha raised to the power of -x. alpha_factor_x_inv_10 is
+      alpha * 10 raised to the power of -x, a combination that also often
+      appears in the literature.  */
+  float alpha_acc;
+  float alpha_acc_2;
+  float alpha_factor_02;
+  float alpha_factor_08;
+  float alpha_factor_08_inv;
+  float alpha_factor_08_inv_10;
+  float alpha_factor_0549;
+  float alpha_factor_06222;
+
+  /*! Epsilon parameter of the ADAF (thick disk), which appears in
+      Narayan & Yi (1994, 1995) model */
+  float eps_ADAF;
+
+  /*! Numerical coefficient relating radial velocity in ADAF (thick disk) to
+   the Keplerian velocity, which appears in Narayan & Yi (1994, 1995) model */
+  float v_0_ADAF;
+
+  /*! Numerical coefficient relating angular velocity in ADAF (thick disk) to
+      the Keplerian angular velocity, which appears in Narayan & Yi
+      (1994, 1995) model */
+  float omega_0_ADAF;
+
+  /*! Aspect ratio of the ADAF (thick disk), which appears in Narayan & Yi
+      (1994, 1995) model */
+  float h_0_ADAF_2;
+
+  /*! The gamma parameter of the slim disk, which appears in the Wang & Zhou
+      (1999) model */
+  float gamma_SD;
+  float gamma_SD_inv;
+
+  /*! The ratio of vertical to horizontal kinematic viscosity of the thin disk.
+      Note that we use the definition xi = nu_2 / nu_1, whereas xi =
+      (nu_2 / nu_1) * 2 * alpha^2 is often used, e.g. Fiacconi et al. (2018) */
+  float xi_TD;
+
+  /*! Which region of the thin disc (Shakura & Sunyaev) we are assuming the
+      subgrid accretion disk is represented as:
+       B - region b; gas pressure dominates over radiation pressure,
+                     electron scattering dominates the opacity
+       C - region c; gas pressure dominates over radiation pressure,
+                     free-free absorption dominates the opacity */
+  enum thin_disc_regions TD_region;
 
   /*! Method to compute the dynamical time within the kernel */
   int dynamical_time_calculation_method;
@@ -267,7 +330,33 @@ struct black_holes_props {
    */
   float adaf_kick_factor;
 
-  /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  /*! Magnetic flux of the torque-fed ADAF inflow relative to a magnetically
+   * arrested disk; sets its jet efficiency and jet spin-down (the Bondi
+   * share is always a MAD) */
+  float adaf_torque_phi_factor;
+
+  /*! If 1, ADAF jets have the full MAD efficiency for all inflow while the
+   * spin-down of the torque-fed share still uses adaf_torque_phi_factor, so
+   * part of the jet energy is not taken from the spin */
+  int adaf_jet_free_energy;
+
+  /*! If > 0, the ADAF f_accretion (set by the subgrid jet loading) uses the
+   * MAD jet efficiency at this spin instead of each BH's jet efficiency */
+  float adaf_f_accretion_reference_spin;
+
+  /*! If 1, the spin magnitude is not evolved by accretion in the ADAF (its
+   * direction, sign and merger changes still are) */
+  int adaf_freeze_spin;
+
+  /*! The MAD jet efficiency at adaf_f_accretion_reference_spin */
+  float adaf_f_accretion_reference_jet_efficiency;
+
+  /*! Only cold gas within this many (Plummer-equivalent) baryon softening
+   * lengths of the BH feeds the torque accretion (0: whole kernel) */
+  float torque_accretion_max_radius_softening;
+
+  /*! Direction of ADAF winds: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
+   * 4=BH spin axis */
   int adaf_wind_dir;
 
   /*! How long to decouple black hole winds? */
@@ -327,7 +416,8 @@ struct black_holes_props {
   /*! power-law scaling of jet vel with (LBH/1.e45 erg/s) */
   float jet_velocity_scaling_with_BH_lum;
 
-  /*! Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+  /*! Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
+   * 4=BH spin axis */
   int jet_launch_dir;
 
   /*! The minimum mass required before the jet will launch */
@@ -476,6 +566,54 @@ struct black_holes_props {
   /*! The mass loading factor of stellar feedback suppressed above this z */
   float wind_eta_suppression_redshift;
 };
+
+/**
+ * @brief Slim-disk coefficients A, B, C of the Madau et al. (2014) fit to the
+ * radiative efficiency, as used by Lupi et al.
+ *
+ * @param a Black hole spin, -1 < a < 1 (negative for retrograde accretion).
+ * @param A_sd, B_sd, C_sd The coefficients (output).
+ */
+__attribute__((always_inline)) INLINE static void
+black_hole_slim_disk_coefficients(const float a, float *A_sd, float *B_sd,
+                                  float *C_sd) {
+  *A_sd = powf(0.9663f - 0.9292f * a, -0.5639f);
+  *B_sd = powf(4.627f - 4.445f * a, -0.5524f);
+  *C_sd = powf(827.3f - 718.1f * a, -0.7060f);
+}
+
+/**
+ * @brief Slim-disk radiative efficiency (Madau et al. 2014; Lupi et al.) at
+ * R = M_dot,Edd / M_dot,BH for the given coefficients.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_slim_disk_efficiency_from_coefficients(const double R,
+                                                  const double A_sd,
+                                                  const double B_sd,
+                                                  const double C_sd) {
+  return (R / 16.) * A_sd *
+         (0.985 / (R + (5. / 8.) * B_sd) + 0.015 / (R + (5. / 8.) * C_sd));
+}
+
+/**
+ * @brief Jet efficiency of a magnetically arrested disk: eqn. 9 of
+ * Tchekhovskoy et al. (2010) with the magnetic flux phi(a) of Narayan et al.
+ * (2022), eqn. 15.
+ *
+ * @param a Black hole spin, -1 < a < 1 (negative for retrograde accretion).
+ * @param phi_factor Suppression of the magnetic flux (1 for a MAD).
+ */
+__attribute__((always_inline)) INLINE static float black_hole_MAD_jet_efficiency(
+    const float a, const float phi_factor) {
+  const float phi_bh =
+      (-20.2f * a * a * a - 14.9f * a * a + 34.f * a + 52.6f) * phi_factor;
+  /* Angular velocity of the horizon, in units of c / r_g */
+  const float big_J = a / (2.f * (1.f + sqrtf(1.f - a * a)));
+  const float J2 = big_J * big_J;
+  const float f_j = J2 + 1.38f * J2 * J2 - 9.2f * J2 * J2 * J2;
+
+  return (1.f / (24.f * M_PI * M_PI)) * phi_bh * phi_bh * f_j;
+}
 
 /**
  * @brief Initialise the black hole properties from the parameter file.
@@ -668,6 +806,75 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->dynamical_time_calculation_method = parser_get_opt_param_int(
       params, "ObsidianAGN:dynamical_time_calculation_method", 1);
 
+  /* Spin and subgrid accretion disk parameters (NLT) -------- */
+
+  /* The viscosity parameter of the subgrid accretion disks. */
+  bp->alpha_acc =
+      parser_get_opt_param_float(params, "ObsidianAGN:alpha_acc", 0.2f);
+  if ((bp->alpha_acc <= 0.) || (bp->alpha_acc > 1.)) {
+    error(
+        "The alpha viscosity parameter of accretion disks must be between 0. "
+        " and 1., not %f",
+        bp->alpha_acc);
+  }
+
+  /* Various factors and powers of alpha, the subgrid accretion disc
+     viscosity, that appear in subgrid accretion disk equations. We
+     precompute them here. */
+  bp->alpha_acc_2 = bp->alpha_acc * bp->alpha_acc;
+  bp->alpha_factor_02 = pow(bp->alpha_acc, 0.2);
+  bp->alpha_factor_08 = pow(bp->alpha_acc, 0.8);
+  bp->alpha_factor_08_inv = 1. / bp->alpha_factor_08;
+  bp->alpha_factor_08_inv_10 = pow(bp->alpha_acc * 10., -0.8);
+  bp->alpha_factor_0549 = pow(bp->alpha_acc, 0.549);
+  bp->alpha_factor_06222 = pow(bp->alpha_acc * 10., 0.6222);
+
+  /* The BH seed spin */
+  bp->seed_spin =
+      parser_get_opt_param_float(params, "ObsidianAGN:subgrid_seed_spin", 0.01f);
+  if ((bp->seed_spin <= 0.) || (bp->seed_spin > 1.)) {
+    error(
+        "The BH seed spin parameter must be strictly between 0 and 1, "
+        "not %f",
+        bp->seed_spin);
+  }
+
+  /* Gas-to-total pressure ratio of the accretion disk, based on simulations
+     (see Yuan & Narayan 2014) */
+  const float beta_acc = 1. / (1. + 2. * bp->alpha_acc);
+
+  /* Calculate the adiabatic index based on how strong the magnetic fields are
+    (see Esin 1997) */
+  const float gamma_acc = (8. - 3. * beta_acc) / (6. - 3. * beta_acc);
+
+  /* Calculate numerical factors of the ADAF (thick disk) as in
+     Narayan & Yi (1995) */
+  bp->eps_ADAF = (1.6667 - gamma_acc) / (gamma_acc - 1.);
+  bp->v_0_ADAF = 3. / (5. + 2. * bp->eps_ADAF);
+  bp->omega_0_ADAF = sqrtf(2. * bp->eps_ADAF / (5. + 2. * bp->eps_ADAF));
+
+  /* Instead of using the Narayan & Yi value, we set to 0.3 based on numerous
+     GRMHD simulations (see e.g. Narayan et al. 2021) */
+  bp->h_0_ADAF_2 = 0.09;
+
+  bp->gamma_SD = sqrtf(5.);
+  bp->gamma_SD_inv = 1. / bp->gamma_SD;
+
+  /* Formula taken from Lodato et al. (2010) */
+  bp->xi_TD = 2. * (1. + 7. * bp->alpha_acc_2) / (4. + bp->alpha_acc_2) /
+              bp->alpha_acc_2;
+
+  char TD_region_name[PARSER_MAX_LINE_SIZE];
+  parser_get_opt_param_string(params, "ObsidianAGN:TD_region", TD_region_name,
+                              "B");
+  if (strcmp(TD_region_name, "B") == 0)
+    bp->TD_region = TD_region_B;
+  else if (strcmp(TD_region_name, "C") == 0)
+    bp->TD_region = TD_region_C;
+  else
+    error("The choice of thin disc region must be B or C, not %s",
+          TD_region_name);
+
   /* Feedback parameters ---------------------------------- */
 
   bp->kms_to_internal =
@@ -729,24 +936,25 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_decouple_time_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:jet_decouple_time_factor", f_jet_recouple);
 
-  bp->fixed_spin = parser_get_param_float(params, "ObsidianAGN:fixed_spin");
-  if (bp->fixed_spin >= 1.f || bp->fixed_spin <= 0.f) {
-    error("Black hole must have spin > 0.0 and < 1.0");
+  /* If fixed_spin is given, every BH uses it for its radiative and jet
+   * efficiencies (the spin is still evolved, as a diagnostic). Otherwise the
+   * efficiencies follow each BH's evolved spin. */
+  bp->fixed_spin =
+      parser_get_opt_param_float(params, "ObsidianAGN:fixed_spin", -1.f);
+  if (bp->fixed_spin != -1.f &&
+      (bp->fixed_spin >= 1.f || bp->fixed_spin <= 0.f)) {
+    error(
+        "fixed_spin must be > 0.0 and < 1.0 (or omitted to use the evolved "
+        "spin)");
   }
 
-  bp->A_sd = powf(0.9663f - 0.9292f * bp->fixed_spin, -0.5639f);
-  bp->B_sd = powf(4.627f - 4.445f * bp->fixed_spin, -0.5524f);
-  bp->C_sd = powf(827.3f - 718.1f * bp->fixed_spin, -0.7060f);
-
-  const float phi_bh = -20.2f * powf(bp->fixed_spin, 3.f) -
-                       14.9f * powf(bp->fixed_spin, 2.f) +
-                       34.f * bp->fixed_spin + 52.6f;
-  const float big_J =
-      bp->fixed_spin / (2.f * (1.f + sqrtf(1.f - powf(bp->fixed_spin, 2.f))));
-  const float f_j =
-      powf(big_J, 2.f) + 1.38f * powf(big_J, 4.f) - 9.2f * powf(big_J, 6.f);
-
-  bp->jet_efficiency = (1.f / (24.f * M_PI * M_PI)) * powf(phi_bh, 2.f) * f_j;
+  /* The values below are per-BH at run time; here they are evaluated at a
+   * reference spin for the setup checks and the log (the seed spin when
+   * the spin is evolved) */
+  const float spin_ref =
+      (bp->fixed_spin > 0.f) ? bp->fixed_spin : bp->seed_spin;
+  black_hole_slim_disk_coefficients(spin_ref, &bp->A_sd, &bp->B_sd, &bp->C_sd);
+  bp->jet_efficiency = black_hole_MAD_jet_efficiency(spin_ref, 1.f);
 
   /* Useful when computing the mass loadings below */
   const double c_over_v = phys_const->const_speed_light_c / jet_velocity;
@@ -776,9 +984,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   const float R = 1.f / bp->eddington_fraction_upper_boundary;
   const float eta_at_slim_disk_boundary =
-      (R / 16.f) * bp->A_sd *
-      ((0.985f / (R + (5.f / 8.f) * bp->B_sd)) +
-       (0.015f / (R + (5.f / 8.f) * bp->C_sd)));
+      black_hole_slim_disk_efficiency_from_coefficients(R, bp->A_sd, bp->B_sd,
+                                                        bp->C_sd);
 
   /* If we scale BH v_jet, choose power law scaling with MBH/1.e8 or LBH/1.e45.
    * The minimum v_jet is always given by jet_subgrid_velocity */
@@ -788,8 +995,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_velocity_scaling_with_BH_lum = parser_get_opt_param_float(
       params, "ObsidianAGN:jet_velocity_scaling_with_BH_lum", 0.f);
 
+  /* Default: along the BH spin axis */
   bp->jet_launch_dir =
-      parser_get_param_int(params, "ObsidianAGN:jet_launch_dir");
+      parser_get_opt_param_int(params, "ObsidianAGN:jet_launch_dir", 4);
+  if (bp->jet_launch_dir < 0 || bp->jet_launch_dir > 4) {
+    error("jet_launch_dir=%d but must be 0, 1, 2, 3 or 4", bp->jet_launch_dir);
+  }
 
   bp->jet_minimum_reservoir_mass = parser_get_param_float(
       params, "ObsidianAGN:jet_minimum_reservoir_mass_Msun");
@@ -888,6 +1099,35 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_disk_efficiency =
       parser_get_param_float(params, "ObsidianAGN:adaf_disk_efficiency");
 
+  bp->adaf_torque_phi_factor = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_torque_phi_factor", 1.f);
+  if (bp->adaf_torque_phi_factor < 0.f || bp->adaf_torque_phi_factor > 1.f) {
+    error("adaf_torque_phi_factor must be >= 0 and <= 1.");
+  }
+
+  bp->adaf_jet_free_energy =
+      parser_get_opt_param_int(params, "ObsidianAGN:adaf_jet_free_energy", 0);
+
+  bp->adaf_freeze_spin =
+      parser_get_opt_param_int(params, "ObsidianAGN:adaf_freeze_spin", 0);
+
+  bp->adaf_f_accretion_reference_spin = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_f_accretion_reference_spin", -1.f);
+  if (bp->adaf_f_accretion_reference_spin >= 1.f) {
+    error("adaf_f_accretion_reference_spin must be < 1 (<= 0 to disable).");
+  }
+  bp->adaf_f_accretion_reference_jet_efficiency =
+      (bp->adaf_f_accretion_reference_spin > 0.f)
+          ? black_hole_MAD_jet_efficiency(bp->adaf_f_accretion_reference_spin,
+                                          1.f)
+          : 0.f;
+
+  bp->torque_accretion_max_radius_softening = parser_get_opt_param_float(
+      params, "ObsidianAGN:torque_accretion_max_radius_softening", 0.f);
+  if (bp->torque_accretion_max_radius_softening < 0.f) {
+    error("torque_accretion_max_radius_softening must be >= 0.");
+  }
+
   bp->adaf_kick_factor =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_kick_factor", 0.5f);
   if (bp->adaf_kick_factor < 0.f || bp->adaf_kick_factor > 1.f) {
@@ -918,6 +1158,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
    * is fixed at quasar_f_accretion if f_psi > 0
    */
   if (f_psi > 0.f) {
+
+    /* The sub-grid jet velocity and ADAF wind speed are fixed here from the
+     * spin-dependent efficiencies */
+    if (bp->fixed_spin <= 0.f) {
+      error("adaf_f_quasar_psi > 0 needs a fixed_spin.");
+    }
 
     /* This is always true in the negative case */
     bp->adaf_f_accretion = bp->quasar_f_accretion;
@@ -1205,9 +1451,49 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             bp->jet_subgrid_velocity / bp->kms_to_internal);
     message("Black hole subgrid jet loading (energy) is %g",
             jet_subgrid_mass_loading);
+    if (bp->fixed_spin > 0.f) {
+      message("Black hole efficiencies use fixed_spin=%g", bp->fixed_spin);
+    } else {
+      message(
+          "Black hole efficiencies use the evolved spin; values below are "
+          "at the seed spin %g",
+          bp->seed_spin);
+    }
     message("Black hole jet efficiency is %g", bp->jet_efficiency);
+    message(
+        "Black hole ADAF torque-fed inflow has %g of the MAD magnetic flux "
+        "(jet efficiency x %g)",
+        bp->adaf_torque_phi_factor,
+        bp->adaf_torque_phi_factor * bp->adaf_torque_phi_factor);
+    if (bp->adaf_f_accretion_reference_spin > 0.f) {
+      message(
+          "Black hole ADAF f_accretion uses the jet efficiency %g of a MAD "
+          "at spin %g",
+          bp->adaf_f_accretion_reference_jet_efficiency,
+          bp->adaf_f_accretion_reference_spin);
+    }
+    if (bp->adaf_freeze_spin) {
+      message(
+          "Black hole spin magnitudes are not evolved by accretion in the "
+          "ADAF");
+    }
+    if (bp->adaf_jet_free_energy) {
+      message(
+          "Black hole ADAF jets use the full MAD efficiency (jet energy not "
+          "all taken from the spin)");
+    }
+    if (bp->torque_accretion_max_radius_softening > 0.f) {
+      message("Black hole torque accretion uses cold gas within %g softening "
+              "lengths",
+              bp->torque_accretion_max_radius_softening);
+    }
     message("Black hole jet recouple factor is %g", f_jet_recouple);
     message("Black hole quasar radiative efficiency is %g", bp->epsilon_r);
+    message(
+        "Black hole spin tracking: seed spin %g, disk alpha %g, "
+        "thin disk region %s",
+        bp->seed_spin, bp->alpha_acc,
+        bp->TD_region == TD_region_B ? "B" : "C");
     if (bp->lum_thresh_always_jet > 0.f) {
       message("Black hole jet mode always on above Lbol>%g erg/s",
               bp->lum_thresh_always_jet * bp->conv_factor_energy_rate_to_cgs);
