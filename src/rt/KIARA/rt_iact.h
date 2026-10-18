@@ -255,74 +255,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
 
-  /* Get r and 1/r. */
+  /* Get r. */
   const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
-
-  /* Initialize local variables */
-  float Bi[3][3];
-  float Bj[3][3];
-  for (int k = 0; k < 3; k++) {
-    for (int l = 0; l < 3; l++) {
-      Bi[k][l] = pi->geometry.matrix_E[k][l];
-      Bj[k][l] = pj->geometry.matrix_E[k][l];
-    }
-  }
-  const float Vi = pi->geometry.volume;
-  const float Vj = pj->geometry.volume;
-
-  /* Compute kernel of pi. */
-  float wi, wi_dx;
-  const float hi_inv = 1.0f / hi;
-  const float hi_inv_dim = pow_dimension(hi_inv);
-  const float xi = r * hi_inv;
-  kernel_deval(xi, &wi, &wi_dx);
-
-  /* Compute kernel of pj. */
-  float wj, wj_dx;
-  const float hj_inv = 1.0f / hj;
-  const float hj_inv_dim = pow_dimension(hj_inv);
-  const float xj = r * hj_inv;
-  kernel_deval(xj, &wj, &wj_dx);
 
   /* Compute (square of) area */
   /* eqn. (7) */
-  float Anorm2 = 0.0f;
   float A[3];
-  if (fvpm_part_geometry_well_behaved(pi) &&
-      fvpm_part_geometry_well_behaved(pj)) {
-    /* in principle, we use Vi and Vj as weights for the left and right
-     * contributions to the generalized surface vector.
-     * However, if Vi and Vj are very different (because they have very
-     * different smoothing lengths), then the expressions below are more
-     * stable. */
-    float Xi = Vi;
-    float Xj = Vj;
-#ifdef GIZMO_VOLUME_CORRECTION
-    if (fabsf(Vi - Vj) / min(Vi, Vj) > 1.5f * hydro_dimension) {
-      Xi = (Vi * hj + Vj * hi) / (hi + hj);
-      Xj = Xi;
-    }
-#endif
-    for (int k = 0; k < 3; k++) {
-      /* we add a minus sign since dx is pi->x - pj->x */
-      A[k] = -Xi * (Bi[k][0] * dx[0] + Bi[k][1] * dx[1] + Bi[k][2] * dx[2]) *
-                 wi * hi_inv_dim -
-             Xj * (Bj[k][0] * dx[0] + Bj[k][1] * dx[1] + Bj[k][2] * dx[2]) *
-                 wj * hj_inv_dim;
-      Anorm2 += A[k] * A[k];
-    }
-  } else {
-    /* ill condition gradient matrix: revert to SPH face area */
-    const float hidp1 = pow_dimension_plus_one(hi_inv);
-    const float hjdp1 = pow_dimension_plus_one(hj_inv);
-    const float Anorm =
-        -(hidp1 * Vi * Vi * wi_dx + hjdp1 * Vj * Vj * wj_dx) * r_inv;
-    A[0] = -Anorm * dx[0];
-    A[1] = -Anorm * dx[1];
-    A[2] = -Anorm * dx[2];
-    Anorm2 = Anorm * Anorm * r2;
-  }
+  const float Anorm2 = rt_interface_area(r2, dx, hi, hj, pi, pj, A);
 
   /* if the interface has no area, nothing happens and we return */
   /* continuing results in dividing by zero and NaN's... */
@@ -412,21 +351,47 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
      * it holds through this interface, so that over all its interfaces it
      * never exports more than it has. The exchanged energy is
      * totflux * mindt / a (see rt_finalise_transport), and the same flux is
-     * applied to both particles, so the exchange stays conservative. */
+     * applied to both particles, so the exchange stays conservative.
+     * The energy a particle holds is only updated at the end of its own RT
+     * step (rt_finalise_transport), but a neighbour with a smaller step
+     * exchanges with it every one of its own steps in between: limit the
+     * export per exchange to the fraction mindt / dt_exp of the exporter's
+     * step dt_exp, so it never exports more than it holds over its whole
+     * step. mindt is the step of the particle with the smaller time bin.
+     * The interface areas are those of the last transport step or of this
+     * step's gradient loop, whichever sum is larger, so the limits over all
+     * interfaces add up to at most the energy held even if the neighbourhood
+     * changed since the last step.
+     * The gradient loop only sees the neighbours within the particle's own
+     * kernel, while the transport also exchanges with those whose kernel
+     * contains it, so its area alone can be far too small. A particle without
+     * a transport step with any interface yet (e.g. a wind particle that just
+     * recoupled) therefore exports nothing until it has one: its full area
+     * is known after one RT step.
+     * Everything used here is identical on both sides of an MPI boundary. */
     if (mindt > 0.f && totflux[0] != 0.f) {
       const struct part *restrict p_exp = (totflux[0] > 0.f) ? pi : pj;
-      const float area_sum = p_exp->rt_data.area_sum_last;
-      if (area_sum > 0.f) {
-        const float E_max = p_exp->rt_data.radiation[g].energy_density *
-                            p_exp->geometry.volume * Anorm / area_sum;
-        const float E_exch = fabsf(totflux[0]) * mindt / a;
-        if (E_exch > E_max) {
-          const float ratio = E_max / E_exch;
-          totflux[0] *= ratio;
-          totflux[1] *= ratio;
-          totflux[2] *= ratio;
-          totflux[3] *= ratio;
-        }
+      const float area_sum = fmaxf(p_exp->rt_data.area_sum_last,
+                                   p_exp->rt_data.area_sum_grad);
+      const int no_area = (p_exp->rt_data.area_sum_last <= 0.f);
+      const int bin_exp = p_exp->rt_time_data.time_bin;
+      const int bin_min =
+          min(pi->rt_time_data.time_bin, pj->rt_time_data.time_bin);
+      const float dt_frac =
+          (bin_min > 0 && bin_exp > bin_min) ? ldexpf(1.f, bin_min - bin_exp)
+                                             : 1.f;
+      const float E_avail = p_exp->rt_data.radiation[g].energy_density *
+                            p_exp->geometry.volume * dt_frac;
+      const float E_max =
+          no_area ? 0.f
+                  : ((area_sum > Anorm) ? E_avail * Anorm / area_sum : E_avail);
+      const float E_exch = fabsf(totflux[0]) * mindt / a;
+      if (E_exch > E_max) {
+        const float ratio = E_max / E_exch;
+        totflux[0] *= ratio;
+        totflux[1] *= ratio;
+        totflux[2] *= ratio;
+        totflux[3] *= ratio;
       }
     }
 

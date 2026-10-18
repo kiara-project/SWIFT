@@ -245,6 +245,28 @@ static void engine_do_unskip_gravity(struct cell *c, struct engine *e) {
 }
 
 /**
+ * @brief Can the RT time of this cell be stale?
+ *
+ * The RT times of foreign cells are only updated from their super level down
+ * (by the tend communications and rt_advance_cell_time); cells above it keep
+ * whatever time they had at the last rebuild. Such a cell may look inactive
+ * while some of its progeny are active, and those may need data from our
+ * inactive local cells (or send us theirs): we must still walk below it, or
+ * we miss send/recv tasks that the other node activates, and deadlock.
+ *
+ * @param c The cell.
+ * @param e The engine.
+ */
+static int engine_rt_cell_time_is_stale(const struct cell *c,
+                                        const struct engine *e) {
+#ifdef WITH_MPI
+  return c->nodeID != e->nodeID && c->super == NULL;
+#else
+  return 0;
+#endif
+}
+
+/**
  * @brief Unskip any radiative transfer tasks associated with active cells.
  *
  * @param c The cell.
@@ -265,7 +287,8 @@ static void engine_do_unskip_rt(struct cell *c, struct engine *e,
 
   /* Do we have work to do? */
   if (c->hydro.count == 0) return;
-  if (!cell_is_rt_active(c, e)) return;
+  const int stale = engine_rt_cell_time_is_stale(c, e);
+  if (!stale && !cell_is_rt_active(c, e)) return;
 
   /* Recurse */
   if (c->split) {
@@ -275,6 +298,9 @@ static void engine_do_unskip_rt(struct cell *c, struct engine *e,
       }
     }
   }
+
+  /* A foreign cell above the super level has no RT tasks of its own. */
+  if (stale) return;
 
   /* Unskip any active tasks. */
   const int forcerebuild = cell_unskip_rt_tasks(c, &e->sched, sub_cycle);
@@ -422,7 +448,8 @@ void engine_unskip(struct engine *e) {
         (with_stars && c->nodeID == nodeID && cell_is_active_stars(c, e)) ||
         (with_sinks && cell_is_active_sinks(c, e)) ||
         (with_black_holes && cell_is_active_black_holes(c, e)) ||
-        (with_rt && cell_is_rt_active(c, e))) {
+        (with_rt && (cell_is_rt_active(c, e) ||
+                     engine_rt_cell_time_is_stale(c, e)))) {
 
       if (num_active_cells != k)
         memswap(&local_cells[k], &local_cells[num_active_cells], sizeof(int));
@@ -547,7 +574,8 @@ void engine_unskip_rt_sub_cycle(struct engine *e) {
 
     if (c->hydro.count == 0) continue;
 
-    if (cell_is_rt_active(c, e)) {
+    if (cell_is_rt_active(c, e) ||
+        engine_rt_cell_time_is_stale(c, e)) {
 
       if (num_active_cells != k)
         memswap(&local_cells[k], &local_cells[num_active_cells], sizeof(int));
