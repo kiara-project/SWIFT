@@ -50,6 +50,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
       rtd->gradient[g].flux[i][2] = 0.f;
     }
   }
+
+  rtd->area_sum_grad = 0.f;
 }
 
 /**
@@ -155,6 +157,90 @@ __attribute__((always_inline)) INLINE static void rt_finalise_gradient_part(
 }
 
 /**
+ * @brief Interface area vector A_ij between two particles (eqn. 7 of Hopkins
+ * 2015), as used for the RT transport.
+ *
+ * @param r2 Comoving squared distance between particle i and particle j.
+ * @param dx Comoving distance vector (pi->x - pj->x).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi Particle i.
+ * @param pj Particle j.
+ * @param A (return) The interface area vector.
+ * @return |A|^2.
+ */
+__attribute__((always_inline)) INLINE static float rt_interface_area(
+    const float r2, const float dx[3], const float hi, const float hj,
+    const struct part *restrict pi, const struct part *restrict pj,
+    float A[3]) {
+
+  const float r = sqrtf(r2);
+  const float r_inv = 1.0f / r;
+
+  float Bi[3][3];
+  float Bj[3][3];
+  for (int k = 0; k < 3; k++) {
+    for (int l = 0; l < 3; l++) {
+      Bi[k][l] = pi->geometry.matrix_E[k][l];
+      Bj[k][l] = pj->geometry.matrix_E[k][l];
+    }
+  }
+  const float Vi = pi->geometry.volume;
+  const float Vj = pj->geometry.volume;
+
+  /* Compute kernel of pi. */
+  float wi, wi_dx;
+  const float hi_inv = 1.0f / hi;
+  const float hi_inv_dim = pow_dimension(hi_inv);
+  const float xi = r * hi_inv;
+  kernel_deval(xi, &wi, &wi_dx);
+
+  /* Compute kernel of pj. */
+  float wj, wj_dx;
+  const float hj_inv = 1.0f / hj;
+  const float hj_inv_dim = pow_dimension(hj_inv);
+  const float xj = r * hj_inv;
+  kernel_deval(xj, &wj, &wj_dx);
+
+  float Anorm2 = 0.0f;
+  if (fvpm_part_geometry_well_behaved(pi) &&
+      fvpm_part_geometry_well_behaved(pj)) {
+    /* in principle, we use Vi and Vj as weights for the left and right
+     * contributions to the generalized surface vector.
+     * However, if Vi and Vj are very different (because they have very
+     * different smoothing lengths), then the expressions below are more
+     * stable. */
+    float Xi = Vi;
+    float Xj = Vj;
+#ifdef GIZMO_VOLUME_CORRECTION
+    if (fabsf(Vi - Vj) / min(Vi, Vj) > 1.5f * hydro_dimension) {
+      Xi = (Vi * hj + Vj * hi) / (hi + hj);
+      Xj = Xi;
+    }
+#endif
+    for (int k = 0; k < 3; k++) {
+      /* we add a minus sign since dx is pi->x - pj->x */
+      A[k] = -Xi * (Bi[k][0] * dx[0] + Bi[k][1] * dx[1] + Bi[k][2] * dx[2]) *
+                 wi * hi_inv_dim -
+             Xj * (Bj[k][0] * dx[0] + Bj[k][1] * dx[1] + Bj[k][2] * dx[2]) *
+                 wj * hj_inv_dim;
+      Anorm2 += A[k] * A[k];
+    }
+  } else {
+    /* ill condition gradient matrix: revert to SPH face area */
+    const float hidp1 = pow_dimension_plus_one(hi_inv);
+    const float hjdp1 = pow_dimension_plus_one(hj_inv);
+    const float Anorm =
+        -(hidp1 * Vi * Vi * wi_dx + hjdp1 * Vj * Vj * wj_dx) * r_inv;
+    A[0] = -Anorm * dx[0];
+    A[1] = -Anorm * dx[1];
+    A[2] = -Anorm * dx[2];
+    Anorm2 = Anorm * Anorm * r2;
+  }
+  return Anorm2;
+}
+
+/**
  * @brief symmetric gradient calculations done during the neighbour loop
  *
  * @param r2 Squared distance between the two particles.
@@ -178,6 +264,12 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
+
+  /* Interface area for the positivity limiter of this step's transport */
+  float A_ij[3];
+  const float area_ij = sqrtf(rt_interface_area(r2, dx, hi, hj, pi, pj, A_ij));
+  pi->rt_data.area_sum_grad += area_ij;
+  pj->rt_data.area_sum_grad += area_ij;
 
   /* Get r and 1/r. */
   const float r = sqrtf(r2);
@@ -317,6 +409,11 @@ __attribute__((always_inline)) INLINE static void rt_gradients_nonsym_collect(
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
+
+  /* Interface area for the positivity limiter of this step's transport */
+  float A_ij[3];
+  pi->rt_data.area_sum_grad +=
+      sqrtf(rt_interface_area(r2, dx, hi, hj, pi, pj, A_ij));
 
   /* Get r and 1/r. */
   const float r = sqrtf(r2);

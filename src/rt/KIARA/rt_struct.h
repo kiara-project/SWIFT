@@ -69,6 +69,11 @@ struct rt_part_data {
    * RT time-step (0 until the first transport) */
   float area_sum_last;
 
+  /*! Sum of the (comoving) interface areas |A_ij| with the neighbours of the
+   * current RT step, from the gradient loop (so it is complete before the
+   * transport and the same on all nodes) */
+  float area_sum_grad;
+
   /* gradients of the radiation state. */
   /* for the flux[3][3] quantity:
    *    first index: x, y, z coordinate of the flux.
