@@ -3154,6 +3154,36 @@ void DOSUB_PAIR2(struct runner *r, struct cell *ci, struct cell *cj,
 
   } else {
 
+#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
+    /* The RT transport exchanges radiation symmetrically: a pair whose
+     * particles are processed at different levels relies on the deeper
+     * (smaller) particle finding its partner at its own level, which only
+     * pairs adjacent cells, so pairs within the larger kernel only would be
+     * exchanged on one side. Do not recurse below the level at which some
+     * particles are larger than the daughter cells: interact all the
+     * particles here. */
+    if (!cell_can_recurse_in_subpair2_hydro_task(ci) ||
+        !cell_can_recurse_in_subpair2_hydro_task(cj)) {
+
+      /* Do any of the cells need to be sorted first? */
+      if (!(ci->hydro.sorted & (1 << sid)) ||
+          ci->hydro.dx_max_sort_old > ci->dmin * space_maxreldx) {
+        runner_do_hydro_sort(r, ci, (1 << sid), /*cleanup=*/0, /*lock=*/1,
+                             rt_request, /*clock=*/0);
+      }
+      if (!(cj->hydro.sorted & (1 << sid)) ||
+          cj->hydro.dx_max_sort_old > cj->dmin * space_maxreldx) {
+        runner_do_hydro_sort(r, cj, (1 << sid), /*cleanup=*/0, /*lock=*/1,
+                             rt_request, /*clock=*/0);
+      }
+
+      DOPAIR2_BRANCH(r, ci, cj, /*limit_h_min=*/0, /*limit_h_max=*/0);
+
+      if (gettimer) TIMER_TOC(TIMER_DOSUB_PAIR);
+      return;
+    }
+#endif
+
     /* Should we change the recursion regime because we encountered a large
        particle? */
     if (!recurse_below_h_max &&
@@ -3225,6 +3255,16 @@ void DOSUB_SELF2(struct runner *r, struct cell *c, int recurse_below_h_max,
                    /*limit_h_max=*/recurse_below_h_max);
 
   } else {
+
+#if (FUNCTION_TASK_LOOP == TASK_LOOP_RT_TRANSPORT)
+    /* Do not recurse below the level at which some particles are larger than
+     * the daughter cells: interact all the particles here (see DOSUB_PAIR2) */
+    if (!cell_can_recurse_in_subself2_hydro_task(c)) {
+      DOSELF2_BRANCH(r, c, /*limit_h_min=*/0, /*limit_h_max=*/0);
+      if (gettimer) TIMER_TOC(TIMER_DOSUB_SELF);
+      return;
+    }
+#endif
 
     /* Should we change the recursion regime because we encountered a large
        particle at this level? */
