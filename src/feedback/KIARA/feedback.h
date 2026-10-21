@@ -78,10 +78,11 @@ __attribute__((always_inline)) INLINE static int feedback_double_is_finite(
  * resets the subgrid ISM properties and syncs the particle on the timeline.
  *
  * @param p The #part to consider.
+ * @param xp The #xpart to consider.
  * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
-    struct part *p, const struct cosmology *cosmo) {
+    struct part *p, struct xpart *xp, const struct cosmology *cosmo) {
 
   p->feedback_data.decoupling_delay_time = 0.f;
   p->feedback_data.cooling_shutoff_delay_time = 0.f;
@@ -89,9 +90,8 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
   p->chemistry_data.radius_stream = 0.f;
 
   /* Reset subgrid properties */
-  p->cooling_data.subgrid_temp = 0.f;
-  p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-  p->cooling_data.subgrid_fcold = 0.f;
+  cooling_subgrid_exit(&p->cooling_data, &xp->cooling_data,
+                       hydro_get_physical_density(p, cosmo));
 
   /* Make sure to sync the newly coupled part on the timeline */
   timestep_sync_part(p);
@@ -166,12 +166,11 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
         p->decoupled = 2;
       } else if (recouple) {
         /* extra decoupled step is done, now properly recouple */
-        feedback_recouple_set_flags(p, cosmo);
+        feedback_recouple_set_flags(p, xp, cosmo);
       } else {
         /* Reset subgrid properties if decoupled for safety */
-        p->cooling_data.subgrid_temp = 0.f;
-        p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-        p->cooling_data.subgrid_fcold = 0.f;
+        cooling_subgrid_exit(&p->cooling_data, &xp->cooling_data,
+                             hydro_get_physical_density(p, cosmo));
       }
     }
   }
