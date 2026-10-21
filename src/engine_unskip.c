@@ -79,6 +79,14 @@ struct unskip_data {
  */
 static void engine_do_unskip_hydro(struct cell *c, struct engine *e) {
 
+#ifdef SWIFT_DEBUG_CHECKS
+  /* Ensure we only get zoom cells here when we are in zoom land. */
+  if (e->s->with_zoom_region && c->type != cell_type_zoom) {
+    error("Unskipping hydro tasks in a non-zoom cell (%s/%s) in zoom land.",
+          cellID_names[c->type], subcellID_names[c->subtype]);
+  }
+#endif
+
   /* Early abort (are we below the level where tasks are)? */
   if (!cell_get_flag(c, cell_flag_has_tasks)) return;
 
@@ -218,20 +226,28 @@ static void engine_do_unskip_gravity(struct cell *c, struct engine *e) {
   /* Early abort (are we below the level where tasks are)? */
   if (!cell_get_flag(c, cell_flag_has_tasks)) return;
 
-  /* Ignore empty cells. */
-  if (c->grav.count == 0) return;
+  /* Ignore empty cells but not void cells (in zoom land). */
+  if (cell_is_empty_mpole(c)) return;
 
   /* Skip inactive cells. */
   if (!cell_is_active_gravity(c, e)) return;
 
   /* At the top level we need to recursively check particles haven't moved
-   * too far for the mesh gravity (if using the mesh). 
+   * too far for the mesh gravity (if using the mesh). */
   if (c->depth == 0 && e->s->periodic) {
-    cell_check_grav_mesh_pairs(c, e);
-  }*/
+
+    /* In zoom land we need to redirect to the zoom version. */
+    if (!e->s->with_zoom_region) {
+      cell_check_grav_mesh_pairs(c, e);
+    } else {
+      cell_check_grav_mesh_pairs_zoom(c, e);
+    }
+  }
 
   /* Recurse */
-  if (c->split && ((c->maxdepth - c->depth) >= space_subdepth_diff_grav)) {
+  if (cell_is_split_or_void(c) && (cell_is_above_diff_grav_depth(c) ||
+                                   c->grav.tasks_below_diff_grav_depth ||
+                                   c->subtype == cell_subtype_void)) {
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         struct cell *cp = c->progeny[k];
@@ -345,6 +361,12 @@ void engine_do_unskip_mapper(void *map_data, int num_elements,
     const ptrdiff_t delta = &local_cells[ind] - list_base;
     const int type = delta / num_active_cells;
 
+    /* When running a zoom background cells only have gravity tasks. Skip
+     * here to enforce this. */
+    if (c->type == cell_type_bkg &&
+        task_types[type] != task_broad_types_gravity)
+      continue;
+
 #ifdef SWIFT_DEBUG_CHECKS
     if (type >= data->multiplier) error("Invalid broad task type!");
     if (c == NULL) error("Got an invalid cell index!");
@@ -448,8 +470,8 @@ void engine_unskip(struct engine *e) {
         (with_stars && c->nodeID == nodeID && cell_is_active_stars(c, e)) ||
         (with_sinks && cell_is_active_sinks(c, e)) ||
         (with_black_holes && cell_is_active_black_holes(c, e)) ||
-        (with_rt && (cell_is_rt_active(c, e) ||
-                     engine_rt_cell_time_is_stale(c, e)))) {
+        (with_rt &&
+         (cell_is_rt_active(c, e) || engine_rt_cell_time_is_stale(c, e)))) {
 
       if (num_active_cells != k)
         memswap(&local_cells[k], &local_cells[num_active_cells], sizeof(int));
@@ -574,8 +596,7 @@ void engine_unskip_rt_sub_cycle(struct engine *e) {
 
     if (c->hydro.count == 0) continue;
 
-    if (cell_is_rt_active(c, e) ||
-        engine_rt_cell_time_is_stale(c, e)) {
+    if (cell_is_rt_active(c, e) || engine_rt_cell_time_is_stale(c, e)) {
 
       if (num_active_cells != k)
         memswap(&local_cells[k], &local_cells[num_active_cells], sizeof(int));

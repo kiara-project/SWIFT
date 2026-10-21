@@ -83,6 +83,7 @@ include_HEADERS += adaptive_softening.h adaptive_softening_iact.h adaptive_softe
 include_HEADERS += forcing.h forcing_io.h forcing_struct.h
 include_HEADERS += power_spectrum.h
 include_HEADERS += ghost_stats.h
+include_HEADERS += zoom_region/zoom.h
 include_HEADERS += swift_lustre_api.h
 include_HEADERS += part_init.h
 
@@ -191,6 +192,13 @@ if HAVEKIARAFEEDBACK
 KIARA_FEEDBACK_SOURCES += feedback/KIARA/feedback.c
 endif
 
+# source files for Zoom support
+ZOOM_REGION_SOURCES = zoom_region/zoom_init.c zoom_region/zoom_cell.c \
+    zoom_region/zoom_regrid.c zoom_region/zoom_maketasks.c \ 
+    zoom_region/zoom_split.c zoom_region/zoom_proxy.c \ 
+    zoom_region/zoom_partition.c zoom_region/zoom_io.c \
+    zoom_region/zoom_scheduler.c
+
 # Common source files
 AM_SOURCES = space.c space_rebuild.c space_regrid.c space_unique_id.c
 AM_SOURCES += space_sort.c space_split.c space_extras.c space_first_init.c space_init.c
@@ -242,6 +250,7 @@ AM_SOURCES += $(SPHM1RT_RT_SOURCES)
 AM_SOURCES += $(GEAR_RT_SOURCES)
 AM_SOURCES += $(KIARA_RT_SOURCES)
 AM_SOURCES += $(KIARA_COOLING_SOURCES) $(KIARA_FEEDBACK_SOURCES)
+AM_SOURCES += $(ZOOM_REGION_SOURCES)
 AM_SOURCES += swift_lustre_api.c
 
 # Include files for distribution, not installation.
