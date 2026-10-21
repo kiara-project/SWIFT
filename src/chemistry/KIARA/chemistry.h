@@ -939,6 +939,8 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
           p->cooling_data.subgrid_fcold -= f_evap;
 
           if (p->cooling_data.subgrid_fcold <= 0.f) {
+            /* All cold gas evaporated, so its H2 is returned to HI */
+            cooling_subgrid_exit_H2(&p->cooling_data, &xp->cooling_data);
             p->cooling_data.subgrid_temp = 0.f;
             p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
             p->cooling_data.subgrid_fcold = 0.f;

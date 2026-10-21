@@ -499,6 +499,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     pj->chemistry_data.diffusion_coefficient = 0.f;
 
     /* Take particle out of subgrid ISM mode */
+    cooling_subgrid_exit_H2(&pj->cooling_data, &xpj->cooling_data);
     pj->cooling_data.subgrid_temp = 0.f;
     pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
     pj->cooling_data.subgrid_fcold = 0.f;
@@ -723,6 +724,8 @@ feedback_do_chemical_enrichment_of_gas_around_star(
             pj->cooling_data.subgrid_fcold -= f_evap;
 
             if (pj->cooling_data.subgrid_fcold <= 0.f) {
+              /* All cold gas evaporated, so its H2 is returned to HI */
+              cooling_subgrid_exit_H2(&pj->cooling_data, &xpj->cooling_data);
               pj->cooling_data.subgrid_temp = 0.f;
               pj->cooling_data.subgrid_dens =
                   hydro_get_physical_density(pj, cosmo);

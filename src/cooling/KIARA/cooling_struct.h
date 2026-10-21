@@ -137,4 +137,32 @@ struct cooling_xpart_data {
   float metal_frac;
 };
 
+/**
+ * @brief Convert the H2 fraction of a particle leaving the subgrid ISM from
+ * a cold-phase to a whole-particle value.
+ *
+ * In the subgrid ISM the species fractions are those of the cold phase, so
+ * on leaving only the cold fraction of the H2 is kept; the rest (the warm
+ * phase's share, or evaporated cold gas) is returned to HI. Outside the ISM
+ * crackle evolves the remaining H2 as single-phase gas. Must be called
+ * before subgrid_temp and subgrid_fcold are reset; does nothing if the
+ * particle is not in the subgrid ISM.
+ *
+ * @param cp The cooling data of the #part.
+ * @param cxp The cooling data of the #xpart.
+ */
+static inline void cooling_subgrid_exit_H2(
+    const struct cooling_part_data *cp, struct cooling_xpart_data *cxp) {
+#if COOLING_GRACKLE_MODE >= 2
+  if (cp->subgrid_temp <= 0.f) return;
+
+  float f_cold = cp->subgrid_fcold;
+  if (f_cold < 0.f) f_cold = 0.f;
+  if (f_cold > 1.f) f_cold = 1.f;
+
+  cxp->HI_frac += (1.f - f_cold) * cxp->H2I_frac;
+  cxp->H2I_frac *= f_cold;
+#endif
+}
+
 #endif /* SWIFT_COOLING_STRUCT_KIARA_H */

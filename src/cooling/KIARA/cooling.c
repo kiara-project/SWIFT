@@ -1724,6 +1724,7 @@ void cooling_set_particle_subgrid_properties(
   /* No subgrid ISM if particle is decoupled */
   if (p->decoupled || p->feedback_data.cooling_shutoff_delay_time > 0.f) {
     /* Make sure these are always set for the wind particles */
+    cooling_subgrid_exit_H2(&p->cooling_data, &xp->cooling_data);
     p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
     p->cooling_data.subgrid_temp = 0.;
     p->cooling_data.subgrid_fcold = 0.f;
@@ -1752,10 +1753,25 @@ void cooling_set_particle_subgrid_properties(
        otherwise limit to particle T */
     if (p->cooling_data.subgrid_temp == 0.) {
       p->cooling_data.subgrid_temp = temperature;
+#if COOLING_GRACKLE_MODE >= 2
+      /* H2 the particle still carries (crackle evolves it outside the ISM) */
+      const float H2_frac_part = xp->cooling_data.H2I_frac;
+#endif
       /* Reset grackle subgrid quantities assuming neutral gas */
       cooling_grackle_init_part(cooling, p, xp);
       /* Initialize ISM cold fraction */
       p->cooling_data.subgrid_fcold = cooling->cold_ISM_frac;
+#if COOLING_GRACKLE_MODE >= 2
+      /* Assign the H2 to the cold phase (species are cold-phase values in
+       * the subgrid ISM), limited to all of its hydrogen being molecular */
+      if (H2_frac_part > 0.f && p->cooling_data.subgrid_fcold > 0.f) {
+        const float H2_frac_cold =
+            min(H2_frac_part / p->cooling_data.subgrid_fcold,
+                xp->cooling_data.HI_frac);
+        xp->cooling_data.H2I_frac = H2_frac_cold;
+        xp->cooling_data.HI_frac -= H2_frac_cold;
+      }
+#endif
     } else {
       /* Subgrid temperature should be no higher
        * than overall particle temperature */
@@ -1771,7 +1787,10 @@ void cooling_set_particle_subgrid_properties(
     p->cooling_data.subgrid_dens =
         cooling_compute_subgrid_density(rho, u, u_subgrid, cooling);
   } else {
-    /* NO: subgrid density is the actual particle's physical density */
+    /* NO: if leaving the subgrid ISM, keep only the cold phase's H2 */
+    cooling_subgrid_exit_H2(&p->cooling_data, &xp->cooling_data);
+
+    /* subgrid density is the actual particle's physical density */
     p->cooling_data.subgrid_dens = rho;
 
     /* set subgrid temperature to 0 indicating it's not in subgrid mode */

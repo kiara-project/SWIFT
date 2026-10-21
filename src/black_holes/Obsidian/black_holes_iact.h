@@ -1185,6 +1185,7 @@ runner_iact_nonsym_bh_gas_feedback(
 
 #if COOLING_GRACKLE_MODE >= 2
           /* Take AGN-heated gas out of subgrid ISM mode */
+          cooling_subgrid_exit_H2(&pj->cooling_data, &xpj->cooling_data);
           pj->cooling_data.subgrid_temp = 0.f;
           pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
           pj->cooling_data.subgrid_fcold = 0.f;
@@ -1417,6 +1418,7 @@ runner_iact_nonsym_bh_gas_feedback(
 
 #if COOLING_GRACKLE_MODE >= 2
     /* Take particle out of subgrid ISM mode */
+    cooling_subgrid_exit_H2(&pj->cooling_data, &xpj->cooling_data);
     pj->cooling_data.subgrid_temp = 0.f;
     pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
     pj->cooling_data.subgrid_fcold = 0.f;
