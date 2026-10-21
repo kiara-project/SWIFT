@@ -56,6 +56,10 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
 /**
  * @brief Snapshot converter: atomic hydrogen (HI) mass of a gas particle.
  *
+ * With H2 chemistry (mode >= 2), in the subgrid ISM the species fractions
+ * are those of the cold phase, so (as for H2) this is the HI fraction times
+ * the cold fraction; outside the ISM the particle is single-phase.
+ *
  * @param e The #engine.
  * @param p The #part.
  * @param xp The #xpart.
@@ -66,14 +70,18 @@ INLINE static void convert_part_HI_mass(const struct engine *e,
                                         const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HI_frac;
+#if COOLING_GRACKLE_MODE >= 2
+  if (p->cooling_data.subgrid_temp > 0.f) *ret *= p->cooling_data.subgrid_fcold;
+#endif
 }
 
 /**
  * @brief Snapshot converter: molecular hydrogen mass of a gas particle.
  *
- * With H2 chemistry (mode >= 2) this is the H2I + H2II fraction of the
- * cold subgrid phase times the cold fraction; otherwise all non-HI hydrogen
- * of star-forming gas is counted as H2.
+ * With H2 chemistry (mode >= 2) this is the H2I + H2II fraction, times the
+ * cold fraction in the subgrid ISM (where the fractions are cold-phase
+ * values); outside the ISM the particle is single-phase. Otherwise all
+ * non-HI hydrogen of star-forming gas is counted as H2.
  *
  * @param e The #engine.
  * @param p The #part.
@@ -89,7 +97,8 @@ INLINE static void convert_part_H2_mass(const struct engine *e,
   // chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
 #if COOLING_GRACKLE_MODE >= 2
   H2_frac = xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac;
-  *ret = hydro_get_mass(p) * p->cooling_data.subgrid_fcold * H2_frac;
+  *ret = hydro_get_mass(p) * H2_frac;
+  if (p->cooling_data.subgrid_temp > 0.f) *ret *= p->cooling_data.subgrid_fcold;
 #else
   if (p->sf_data.SFR > 0) H2_frac = 1. - xp->cooling_data.HI_frac;
   *ret = hydro_get_mass(p) * H2_frac;

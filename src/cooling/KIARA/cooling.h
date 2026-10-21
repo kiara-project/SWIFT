@@ -49,7 +49,7 @@
 #define GRACKLE_NPART 1
 #define GRACKLE_RANK 3
 #if COOLING_GRACKLE_MODE >= 2
-#define N_SPECIES 46 /* This further includes properties for dust model */
+#define N_SPECIES 47 /* This further includes properties for dust model */
 #else
 #define N_SPECIES                                 \
   21 /* This includes extra values at end to hold \

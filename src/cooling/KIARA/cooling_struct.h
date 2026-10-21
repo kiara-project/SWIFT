@@ -137,4 +137,44 @@ struct cooling_xpart_data {
   float metal_frac;
 };
 
+/**
+ * @brief Take a particle out of the subgrid ISM (or make sure it is out).
+ *
+ * Resets the subgrid properties (temperature 0, density = particle density,
+ * no cold gas, no ISRF). If the particle was in the subgrid ISM, the
+ * molecular hydrogen fractions are converted from cold-phase to
+ * whole-particle values: in the subgrid ISM the species fractions are those
+ * of the cold phase, so only the cold fraction of the H2 is kept, and the
+ * rest (the warm phase's share, or evaporated cold gas) is dissociated, H2
+ * to HI and H2+ to HI + HII (which leaves the electron fraction unchanged).
+ * Outside the ISM crackle evolves the remaining H2 as single-phase gas.
+ *
+ * @param cp The cooling data of the #part.
+ * @param cxp The cooling data of the #xpart.
+ * @param rho_phys The physical density of the particle (internal units).
+ */
+static inline void cooling_subgrid_exit(struct cooling_part_data *cp,
+                                        struct cooling_xpart_data *cxp,
+                                        const float rho_phys) {
+#if COOLING_GRACKLE_MODE >= 2
+  if (cp->subgrid_temp > 0.f) {
+    float f_cold = cp->subgrid_fcold;
+    if (f_cold < 0.f) f_cold = 0.f;
+    if (f_cold > 1.f) f_cold = 1.f;
+
+    const float dH2I = (1.f - f_cold) * cxp->H2I_frac;
+    const float dH2II = (1.f - f_cold) * cxp->H2II_frac;
+    cxp->H2I_frac -= dH2I;
+    cxp->H2II_frac -= dH2II;
+    cxp->HI_frac += dH2I + 0.5f * dH2II;
+    cxp->HII_frac += 0.5f * dH2II;
+  }
+#endif
+
+  cp->subgrid_temp = 0.f;
+  cp->subgrid_dens = rho_phys;
+  cp->subgrid_fcold = 0.f;
+  cp->G0 = 0.f;
+}
+
 #endif /* SWIFT_COOLING_STRUCT_KIARA_H */

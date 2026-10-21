@@ -138,6 +138,37 @@ struct bpart {
   /*! The current state of the black hole */
   int state;
 
+  /* ---- Spin tracking (NLT) ---- */
+
+  /*! Dimensionless spin (negative for retrograde accretion) */
+  float spin;
+
+  /*! Direction of jet launch */
+  float jet_direction[3];
+
+  /*! The normalised spin/angular momentum vector of the BH */
+  float angular_momentum_direction[3];
+
+  /*! Angular momentum of the accreting gas around the black hole, selected
+   * as for torque_accretion_method (only its direction is used, for the
+   * spin evolution) */
+  float angular_momentum_accreting_gas[3];
+
+  /*! Spin-evolution limited time-step of the BH */
+  float dt_ang_mom;
+
+  /*! Spin-dependent jet efficiency of a magnetically arrested disk (before
+   * the ADAF flux factor, see get_black_hole_jet_efficiency) */
+  float jet_efficiency;
+
+  /*! Bondi share of this step's inflow (the rest is torque-fed) */
+  float bondi_fraction;
+
+  /*! Spin-dependent slim-disk coefficients */
+  float A_sd;
+  float B_sd;
+  float C_sd;
+
   /*! The radiative efficiency associated with M_dot,bh */
   float radiative_efficiency;
 
@@ -177,6 +208,9 @@ struct bpart {
   /*! Mass in accretion disk from which BH accretes */
   float accretion_disk_mass;
 
+  /*! Part of accretion_disk_mass that came in via Bondi accretion */
+  float accretion_disk_bondi_mass;
+
   /*! The mass-weighted internal energy surrounding the black hole (unsmoothed)
    */
   float hot_gas_internal_energy;
@@ -205,6 +239,11 @@ struct bpart {
 
   /*! Total mass of the gas neighbours. */
   float ngb_mass;
+
+  /*! Gas neighbour mass within the torque-accretion radius, and that radius
+   * (comoving; 0 if the whole kernel is used) */
+  float torque_ngb_mass;
+  float torque_radius;
 
   /*! Integer number of neighbours */
   int num_ngbs;
