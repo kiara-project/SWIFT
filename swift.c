@@ -215,6 +215,8 @@ int main(int argc, char *argv[]) {
   int with_power = 0;
   int with_kiara = 0;
   int with_kiarart = 0;
+  int with_zoom_region = 0;
+  int with_zoom_geometry_dry_run = 0;
   int verbose = 0;
   int nr_threads = 1;
   int nr_pool_threads = -1;
@@ -288,6 +290,8 @@ int main(int argc, char *argv[]) {
                   NULL, 0, 0),
       OPT_BOOLEAN(0, "power", &with_power, "Run with power spectrum outputs.",
                   NULL, 0, 0),
+      OPT_BOOLEAN('z', "zoom", &with_zoom_region, "Run with a zoom region.",
+                  NULL, 0, 0),
 
       OPT_GROUP("  Simulation meta-options:\n"),
       OPT_BOOLEAN(0, "quick-lyman-alpha", &with_qla,
@@ -345,6 +349,13 @@ int main(int argc, char *argv[]) {
                   "not read the particles from ICs. Exits before the start of "
                   "time integration. Checks the validity of parameters and IC "
                   "files as well as memory limits.",
+                  NULL, 0, 0),
+      OPT_BOOLEAN(0, "dump-zoom-geometry", &with_zoom_geometry_dry_run,
+                  "Compute the zoom geometry, dump cell diagnostic data, "
+                  "and exit. Implies --zoom. This will load the particles, "
+                  "build the space and then analyse the zoom geometry. Thus, "
+                  "unlike --dry-run, you will need to run this option with the "
+                  "same resources as the full run.",
                   NULL, 0, 0),
       OPT_BOOLEAN(0, "no-io", &with_no_io,
                   "Skip writing snapshots and restart files.", NULL, 0, 0),
@@ -484,6 +495,11 @@ int main(int argc, char *argv[]) {
     with_black_holes = 1;
     with_fof = 1;
   }
+  /* --dump-zoom-geometry implies --zoom */
+  if (with_zoom_geometry_dry_run) {
+    with_zoom_region = 1;
+  }
+
 #ifdef MOVING_MESH
   if (with_hydro) {
     with_grid = 1;
@@ -753,9 +769,10 @@ int main(int argc, char *argv[]) {
         "Error: Cannot use radiative transfer without --feedback "
         "(even if configured --with-feedback=none).");
   }
-  //if (with_rt && with_cooling) {
-  //  error("Error: Cannot use radiative transfer and cooling simultaneously.");
-  //}
+  // if (with_rt && with_cooling) {
+  //   error("Error: Cannot use radiative transfer and cooling
+  //   simultaneously.");
+  // }
 #endif /* idfef RT_NONE */
 
 #ifdef SINK_NONE
@@ -797,6 +814,11 @@ int main(int argc, char *argv[]) {
     message(
         "Executing a dry run. No i/o or time integration will be performed.");
 
+  if (myrank == 0 && with_zoom_geometry_dry_run)
+    message(
+        "Executing a zoom geometry dry run. Diagnostic files will be "
+        "written and the run will exit before time integration.");
+
   /* Report CPU frequency.*/
   cpufreq = clocks_get_cpufreq();
   if (myrank == 0) {
@@ -811,6 +833,10 @@ int main(int argc, char *argv[]) {
 #else
   message("Running on: %s", hostname());
 #endif
+
+  if (with_zoom_region) {
+    message("Running with a zoom region");
+  }
 
 /* Do we have debugging checks ? */
 #ifdef SWIFT_DEBUG_CHECKS
@@ -983,6 +1009,12 @@ int main(int argc, char *argv[]) {
               initial_partition.grid[1], initial_partition.grid[2]);
     message("  repartitioning: %s", repartition_name[reparttype.type]);
   }
+
+#if defined(HAVE_PARMETIS) || defined(HAVE_METIS)
+  /* Zoom simulations can't use "timecosts" repartition. */
+  if (with_zoom_region && reparttype.type == REPART_METIS_VERTEX_COSTS_TIMEBINS)
+    error("Zoom simulations cannot use the 'timecosts' repartition strategy.");
+#endif
 #endif
 
   /* Common variables for restart and IC sections. */
@@ -1070,6 +1102,20 @@ int main(int argc, char *argv[]) {
 
     /* Now read it. */
     restart_read(&e, restart_file);
+
+    /* Ensure that we are running a zoom if we were running a zoom (and vice
+     * versa). */
+    if (with_zoom_region != e.s->with_zoom_region) {
+      if (with_zoom_region) {
+        error(
+            "Restart file was created without a zoom region but --zoom was "
+            "requested.");
+      } else {
+        error(
+            "Restart file was created with a zoom region but --zoom was not "
+            "requested.");
+      }
+    }
 
 #ifdef WITH_MPI
     integertime_t min_ti_current = e.ti_current;
@@ -1472,7 +1518,7 @@ int main(int argc, char *argv[]) {
                periodic, replicate, remap_ids, generate_gas_in_ics, with_hydro,
                with_self_gravity, with_star_formation, with_sinks,
                with_DM_particles, with_DM_background_particles, with_neutrinos,
-               talking, dry_run, nr_nodes);
+               with_zoom_region, talking, dry_run, nr_nodes);
 
     /* Initialise the line of sight properties. */
     if (with_line_of_sight) los_init(s.dim, &los_properties, params);
@@ -1496,12 +1542,13 @@ int main(int argc, char *argv[]) {
 
     /* Initialise the gravity properties */
     bzero(&gravity_properties, sizeof(struct gravity_props));
-    if (with_self_gravity)
+    if (with_self_gravity) {
       gravity_props_init(&gravity_properties, params, &prog_const, &cosmo,
                          with_cosmology, with_external_gravity,
                          with_baryon_particles, with_DM_particles,
                          with_neutrinos, with_DM_background_particles, periodic,
                          s.dim, s.cdim);
+    }
 
     /* Initialize the neutrino response if used */
     bzero(&neutrino_response, sizeof(struct neutrino_response));
@@ -1675,6 +1722,22 @@ int main(int argc, char *argv[]) {
           e.dt_min, e.dt_max);
       fflush(stdout);
     }
+  }
+
+  /* Time to dump zoom geometry diagnostics if requested. */
+  if (with_zoom_geometry_dry_run) {
+    zoom_dump_geometry(&e);
+#ifdef WITH_MPI
+    if ((res = MPI_Finalize()) != MPI_SUCCESS)
+      error("call to MPI_Finalize failed with error %i.", res);
+#endif
+    if (myrank == 0)
+      message(
+          "Zoom geometry diagnostic files written. End of zoom "
+          "geometry dry run.");
+    engine_clean(&e, /*fof=*/0, /*restart=*/0);
+    free(params);
+    return 0;
   }
 
   /* Time to say good-bye if this was not a serious run. */
