@@ -56,6 +56,10 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
 /**
  * @brief Snapshot converter: atomic hydrogen (HI) mass of a gas particle.
  *
+ * With H2 chemistry (mode >= 2), in the subgrid ISM the species fractions
+ * are those of the cold phase, so (as for H2) this is the HI fraction times
+ * the cold fraction; outside the ISM the particle is single-phase.
+ *
  * @param e The #engine.
  * @param p The #part.
  * @param xp The #xpart.
@@ -66,6 +70,9 @@ INLINE static void convert_part_HI_mass(const struct engine *e,
                                         const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HI_frac;
+#if COOLING_GRACKLE_MODE >= 2
+  if (p->cooling_data.subgrid_temp > 0.f) *ret *= p->cooling_data.subgrid_fcold;
+#endif
 }
 
 /**

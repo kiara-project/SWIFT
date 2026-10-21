@@ -354,7 +354,8 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
  * SNe in this step, the interstellar radiation field G0 (-1 outside the
  * subgrid ISM), the H2 self-shielding length (rho/|grad rho|, limited to
  * [MIN_SHIELD_H_FRAC h, kernel_gamma h]) and the gas and dust element
- * densities. Requires the metal density (species_densities[12]) to be set.
+ * densities, and sets the slot in which crackle returns its dust temperature.
+ * Requires the metal density (species_densities[12]) to be set.
  *
  * @param data The grackle_field_data structure from grackle.
  * @param p The #part.
@@ -457,6 +458,10 @@ void cooling_copy_to_grackle2(
     data->S_dust_metalDensity = &species_densities[43];
     data->Ca_dust_metalDensity = &species_densities[44];
     data->Fe_dust_metalDensity = &species_densities[45];
+
+    /* Dust temperature returned by crackle (unchanged if not computed) */
+    species_densities[46] = p->cooling_data.dust_temperature;
+    data->dust_temperature = &species_densities[46];
   } else {
     data->dust_density = NULL;
     data->SNe_ThisTimeStep = NULL;
@@ -646,6 +651,9 @@ void cooling_copy_from_grackle2(
         *data->Ca_gas_metalDensity * rhoinv;
     p->chemistry_data.metal_mass_fraction[10] =
         *data->Fe_gas_metalDensity * rhoinv;
+
+    /* Dust temperature used by crackle */
+    p->cooling_data.dust_temperature = *data->dust_temperature;
 
     /* Load dust metallicities */
     p->cooling_data.dust_mass = *data->dust_density * p->mass * rhoinv;
@@ -1066,7 +1074,6 @@ gr_float cooling_grackle_driver(
 
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
-  double t_dust = 0.f;
 
   switch (mode) {
     case 0:
@@ -1080,15 +1087,9 @@ gr_float cooling_grackle_driver(
       /* copy from grackle data to particle */
       cooling_copy_from_grackle(&data, p, xp, cooling, species_densities[12]);
       return_value = data.internal_energy[0];
-#if COOLING_GRACKLE_MODE >= 2
-      /* Compute dust temperature */
-      t_dust = p->cooling_data.dust_temperature;
-      if (calculate_dust_temperature(&units, &data, &t_dust) == 0) {
-        error("Error in Grackle calculate dust temperature.");
-      }
-
-      p->cooling_data.dust_temperature = t_dust;
-#endif
+      /* The dust temperature is returned by crackle itself (with the dust
+       * model on); grackle's calculate_dust_temperature() uses a different
+       * dust opacity normalisation, so is not used. */
       break;
 
     case 1:
