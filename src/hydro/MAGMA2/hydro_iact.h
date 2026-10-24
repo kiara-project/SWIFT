@@ -35,6 +35,52 @@
 #include "signal_velocity.h"
 
 /**
+ * @brief Cap a pair's viscosity so that over one time-step it removes at most
+ * const_viscosity_max_dv_fraction of the pair's radial relative velocity.
+ *
+ * The pairwise viscous rates conserve energy, but if the viscous impulse over
+ * a step exceeds the radial relative momentum the approach reverses, and the
+ * explicit update then creates energy (F^2 dt^2 / 2 mu). The acceleration and
+ * heating terms are scaled by the same factor, so the pair stays conservative.
+ * The time-step enters through the thermal/hydro kick factor (int dt/a^2,
+ * the same for both), so all quantities are comoving.
+ *
+ * @param visc_acc_term The viscous acceleration term (scaled in place).
+ * @param visc_du_term The viscous heating term (scaled in place).
+ * @param G_rad_ij The gradient vector multiplying visc_acc_term.
+ * @param dx_ij_hat Unit vector from pj to pi.
+ * @param dv_raw Peculiar velocity difference v_i - v_j.
+ * @param r Comoving distance between the particles.
+ * @param a2_Hubble a^2 H.
+ * @param mi Mass of pi.
+ * @param mj Mass of pj.
+ * @param delta Kick factor of the step (0 if unknown, then no cap).
+ */
+__attribute__((always_inline)) INLINE static void hydro_cap_pair_viscosity(
+    hydro_real_t *visc_acc_term, hydro_real_t *visc_du_term,
+    const hydro_real_t G_rad_ij[3], const hydro_real_t dx_ij_hat[3],
+    const hydro_real_t dv_raw[3], const hydro_real_t r,
+    const hydro_real_t a2_Hubble, const hydro_real_t mi, const hydro_real_t mj,
+    const hydro_real_t delta) {
+
+  if (delta <= 0. || *visc_acc_term == 0.) return;
+
+  const hydro_real_t dv_r =
+      hydro_vec3_vec3_dot(dv_raw, dx_ij_hat) + a2_Hubble * r;
+  const hydro_real_t G_r = hydro_vec3_vec3_dot(G_rad_ij, dx_ij_hat);
+
+  /* Change of the radial relative velocity from viscosity over the step */
+  const hydro_real_t dv_visc = (mi + mj) * fabs(*visc_acc_term * G_r) * delta;
+  const hydro_real_t dv_max = const_viscosity_max_dv_fraction * fabs(dv_r);
+
+  if (dv_visc <= dv_max) return;
+
+  const hydro_real_t f = dv_max / dv_visc;
+  *visc_acc_term *= f;
+  *visc_du_term *= f;
+}
+
+/**
  * @brief Density interaction between two particles.
  *
  * @param r2 Comoving square distance between the two particles.
@@ -567,11 +613,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 
   /* For MAGMA2, this is the full anti-symmetric gradient vector. For the
    * fallback Gasoline2-style SPH, this will just be the direction vector
-   * between the two particles (r_i - r_j). */
-  hydro_real_t G_ij[3] = {0., 0., 0.};
-  hydro_real_t G_rad_ij[3] = {0., 0., 0.};
-  hydro_real_t G_ij_norm = 0.;
-  hydro_real_t G_rad_ij_norm = 0.;
+   * between the two particles (r_i - r_j). Initialise to the fallback so that
+   * pairs with ill-conditioned matrices still interact. */
+  hydro_real_t G_ij[3] = {dx[0], dx[1], dx[2]};
+  hydro_real_t G_rad_ij[3] = {dx[0], dx[1], dx[2]};
+  hydro_real_t G_ij_norm = r;
+  hydro_real_t G_rad_ij_norm = r;
 
   /* Separation vectors and swapped */
   const hydro_real_t dx_ij[3] = {dx[0], dx[1], dx[2]};
@@ -980,6 +1027,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 #endif
   }
 
+  /* Limit the viscous impulse over the step (kick factor of the longer of
+   * the two steps; dt_kick_therm holds the half-step from the last kick) */
+  hydro_cap_pair_viscosity(&visc_acc_term, &visc_du_term, G_rad_ij, dx_ij_hat,
+                           dv_raw, r, a2_Hubble, mi, mj,
+                           2. * fmax(pi->dt_kick_therm, pj->dt_kick_therm));
+
   /* If one or both are decoupled they do not contribute to accel or u_dt */
   if (pi->decoupled || pj->decoupled) return;
 
@@ -1077,11 +1130,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* For MAGMA2, this is the full anti-symmetric gradient vector. For the
    * fallback Gasoline2-style SPH, this will just be the direction vector
-   * between the two particles (r_i - r_j). */
-  hydro_real_t G_ij[3] = {0., 0., 0.};
-  hydro_real_t G_rad_ij[3] = {0., 0., 0.};
-  hydro_real_t G_ij_norm = 0.;
-  hydro_real_t G_rad_ij_norm = 0.;
+   * between the two particles (r_i - r_j). Initialise to the fallback so that
+   * pairs with ill-conditioned matrices still interact. */
+  hydro_real_t G_ij[3] = {dx[0], dx[1], dx[2]};
+  hydro_real_t G_rad_ij[3] = {dx[0], dx[1], dx[2]};
+  hydro_real_t G_ij_norm = r;
+  hydro_real_t G_rad_ij_norm = r;
 
   /* Separation vectors and swapped */
   const hydro_real_t dx_ij[3] = {dx[0], dx[1], dx[2]};
@@ -1467,6 +1521,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     pi->debug.N_force_low_order_grad++;
 #endif
   }
+
+  /* Limit the viscous impulse over pi's step (dt_kick_therm holds the
+   * half-step from the last kick) */
+  hydro_cap_pair_viscosity(&visc_acc_term, &visc_du_term, G_rad_ij, dx_ij_hat,
+                           dv_raw, r, a2_Hubble, pi->mass, mj,
+                           2. * pi->dt_kick_therm);
 
   /* If one or both are decoupled they do not contribute to accel or u_dt */
   if (pi->decoupled || pj->decoupled) return;

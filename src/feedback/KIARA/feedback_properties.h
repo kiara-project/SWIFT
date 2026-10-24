@@ -293,6 +293,13 @@ struct feedback_props {
   /*! Factor (<1) below ISM density below which to recouple */
   float recouple_density_factor;
 
+  /*! Once its decoupling time is up, a jet particle recouples only below
+   * this physical H number density (cgs)... */
+  float jet_recouple_nH_cgs;
+
+  /*! ...or once its Mach number relative to the ambient gas is below this */
+  float jet_recouple_mach;
+
   /*! The internal energy corresponding to the unheated wind temperature */
   float cold_wind_internal_energy;
 

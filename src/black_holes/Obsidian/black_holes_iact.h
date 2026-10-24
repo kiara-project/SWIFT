@@ -1327,6 +1327,7 @@ runner_iact_nonsym_bh_gas_feedback(
       /* Set delay time to at least the time-step*/
       pj->feedback_data.decoupling_delay_time = dt + f_decouple * t_H;
       pj->decoupled = 1;
+      pj->feedback_data.jet_decoupled = jet_flag;
 
       /* Give the wind a firehose stream radius, as for stellar winds, from
        * the BH's wind mass outflow rate (accretion rate times the jet or

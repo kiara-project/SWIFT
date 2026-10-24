@@ -145,8 +145,9 @@ struct part {
   /*! Conduction du/dt */
   float u_dt_cond;
 
-  /*! Debug dt_therm */
-  double dt_therm_debug;
+  /*! Thermal (= hydro) kick factor of the last half-kick, int dt/a^2; twice
+   * this is the step length used to cap the viscosity */
+  double dt_kick_therm;
 
   /*! Time derivative of the internal energy. */
   float u_dt_hydro_kick;
@@ -193,6 +194,9 @@ struct part {
 
     /*! Number of times u_aux_norm was ill-conditioned */
     int u_ill_conditioned_count;
+
+    /*! Number of times the SPH fallback was forced by too few neighbours */
+    int low_ngb_fallback_count;
 
     /*! How many low-order SPH gradients in force interactions */
     int N_force_low_order_grad;

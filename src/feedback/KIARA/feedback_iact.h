@@ -490,6 +490,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
           dt + fb_props->wind_decouple_time_factor *
                    cosmology_get_time_since_big_bang(cosmo, cosmo->a);
       pj->decoupled = 1;
+      pj->feedback_data.jet_decoupled = 0;
     } else {
       pj->feedback_data.decoupling_delay_time = 0.f;
       pj->decoupled = 0;
