@@ -86,6 +86,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
 
   p->feedback_data.decoupling_delay_time = 0.f;
   p->feedback_data.cooling_shutoff_delay_time = 0.f;
+  p->feedback_data.jet_decoupled = 0;
   p->decoupled = 0;
   p->chemistry_data.radius_stream = 0.f;
 
@@ -149,14 +150,39 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
        * Recouple under 3 conditions:
        * (1) Below the density threshold.
        * (2) If the stream radius is negative.
-       * (3) If the timer has run out.
+       * (3) If the timer has run out. A jet particle then also has to be
+       *     outside the ISM or no longer highly supersonic: recoupling a
+       *     ~5000 km/s particle inside dense gas can drive a runaway in the
+       *     viscous heating.
        */
       const double rho_nH_cgs =
           hydro_get_physical_density(p, cosmo) * fb_props->rho_to_n_cgs;
       const double rho_recouple_cgs = fb_props->recouple_density_factor *
                                       fb_props->recouple_ism_density_nH_cgs;
 
-      const int recouple = (p->feedback_data.decoupling_delay_time <= 0.f ||
+      int timer_recouple = (p->feedback_data.decoupling_delay_time <= 0.f);
+      if (timer_recouple && p->feedback_data.jet_decoupled) {
+        int jet_ok = (rho_nH_cgs < fb_props->jet_recouple_nH_cgs);
+
+        /* Mach number relative to the ambient (non-stream) gas, only if
+         * there is any; a jet among other jet particles has v_ambient = v */
+        if (!jet_ok && p->chemistry_data.w_ambient > 0.f) {
+          float v_rel2 = 0.f;
+          for (int k = 0; k < 3; k++) {
+            const float dv_k = p->v[k] - p->chemistry_data.v_ambient[k];
+            v_rel2 += dv_k * dv_k;
+          }
+          const float v_rel_phys = sqrtf(v_rel2) * cosmo->a_inv;
+          const float c_s_phys =
+              cosmo->a_factor_sound_speed *
+              sqrtf(p->chemistry_data.u_ambient * hydro_gamma *
+                    hydro_gamma_minus_one);
+          jet_ok = (v_rel_phys < fb_props->jet_recouple_mach * c_s_phys);
+        }
+        timer_recouple = jet_ok;
+      }
+
+      const int recouple = (timer_recouple ||
                             p->chemistry_data.radius_stream < 0.f ||
                             rho_nH_cgs < rho_recouple_cgs);
 
@@ -373,6 +399,7 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
 
   p->feedback_data.decoupling_delay_time = 0.f;
   p->feedback_data.number_of_times_decoupled = 0;
+  p->feedback_data.jet_decoupled = 0;
   p->feedback_data.cooling_shutoff_delay_time = 0.f;
   p->feedback_data.kick_id = -1;
   p->feedback_data.mass_limiter_count = 0;

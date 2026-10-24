@@ -167,6 +167,17 @@
 /*! Fallback multiplier for alpha/beta terms to reduce spread */
 #define const_fallback_reduction_factor 0.25
 
+/*! Use the SPH fallback when a particle has fewer than this fraction of the
+ * target neighbour number (only possible when h is capped at h_max) */
+#define const_fallback_min_neighbour_fraction 0.5
+
+/*! Maximal fraction of a pair's radial relative velocity (Hubble flow
+ * included) that viscosity may remove over one time-step. Beyond this the
+ * viscous impulse would reverse the approach, and the explicit update then
+ * creates energy (the F^2 dt^2 / 2 mu term); the pair's viscous acceleration
+ * and heating are scaled down together, so the pair stays conservative. */
+#define const_viscosity_max_dv_fraction 0.5
+
 /* ---------- Structures for below ---------- */
 
 /*! Artificial viscosity parameters */

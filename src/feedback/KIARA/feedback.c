@@ -1832,6 +1832,16 @@ void feedback_props_init(struct feedback_props *fp,
   fp->recouple_density_factor = parser_get_opt_param_double(
       params, "KIARAFeedback:recouple_density_factor", 0.01);
 
+  /* Jets recouple only outside the ISM or once they are no longer highly
+   * supersonic, so they never recouple at full speed inside dense gas */
+  fp->jet_recouple_nH_cgs = parser_get_opt_param_double(
+      params, "KIARAFeedback:jet_recouple_nH_cgs", 0.13);
+  fp->jet_recouple_mach = parser_get_opt_param_double(
+      params, "KIARAFeedback:jet_recouple_mach", 10.);
+  if (engine_rank == 0)
+    message("Jets recouple below nH=%g cm^-3 or below Mach %g",
+            fp->jet_recouple_nH_cgs, fp->jet_recouple_mach);
+
   fp->cold_wind_internal_energy = parser_get_opt_param_double(
       params, "KIARAFeedback:cold_wind_temperature_K", 1.e4);
   if (fp->cold_wind_internal_energy <= 0.) {
