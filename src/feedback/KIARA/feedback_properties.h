@@ -284,6 +284,20 @@ struct feedback_props {
   /*! Added scatter to the wind velocities */
   float kick_velocity_scatter;
 
+  /*! Slope of the wind velocity boost with the host galaxy SFR surface
+   * density, v_w -> v_w (Sigma_SFR / pivot)^slope (0 = off) */
+  float vwind_sigma_sfr_slope;
+
+  /*! Pivot SFR surface density (Msun/yr/kpc^2) of the wind velocity boost */
+  float vwind_sigma_sfr_pivot;
+
+  /*! Minimum and maximum factors of the wind velocity boost */
+  float vwind_sigma_sfr_min_factor;
+  float vwind_sigma_sfr_max_factor;
+
+  /*! Floor on the galaxy's star-forming radius (physical kpc) */
+  float vwind_sigma_sfr_min_radius_kpc;
+
   /*! max decoupling time is (this factor) * current Hubble time */
   float wind_decouple_time_factor;
 

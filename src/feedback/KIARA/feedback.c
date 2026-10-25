@@ -1825,6 +1825,23 @@ void feedback_props_init(struct feedback_props *fp,
   fp->kick_velocity_scatter =
       parser_get_param_double(params, "KIARAFeedback:kick_velocity_scatter");
 
+  fp->vwind_sigma_sfr_slope = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_slope", 0.f);
+  fp->vwind_sigma_sfr_pivot = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_pivot_Msun_yr_kpc2", 0.1f);
+  fp->vwind_sigma_sfr_min_factor = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_min_factor", 0.5f);
+  fp->vwind_sigma_sfr_max_factor = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_max_factor", 2.f);
+  fp->vwind_sigma_sfr_min_radius_kpc = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_min_radius_kpc", 0.25f);
+  if (fp->vwind_sigma_sfr_slope != 0.f &&
+      (fp->vwind_sigma_sfr_pivot <= 0.f ||
+       fp->vwind_sigma_sfr_min_factor <= 0.f ||
+       fp->vwind_sigma_sfr_max_factor < fp->vwind_sigma_sfr_min_factor ||
+       fp->vwind_sigma_sfr_min_radius_kpc <= 0.f))
+    error("Invalid KIARAFeedback:vwind_sigma_sfr_* parameters");
+
   fp->wind_decouple_time_factor = parser_get_param_double(
       params, "KIARAFeedback:wind_decouple_time_factor");
   fp->recouple_ism_density_nH_cgs = parser_get_opt_param_double(
@@ -1912,6 +1929,14 @@ void feedback_props_init(struct feedback_props *fp,
             fp->FIRE_velocity_normalization);
     message("Feedback FIRE velocity slope: %g", fp->FIRE_velocity_slope);
     message("Feedback velocity scatter: %g", fp->kick_velocity_scatter);
+    if (fp->vwind_sigma_sfr_slope != 0.f) {
+      message(
+          "Feedback wind speed scales as (Sigma_SFR / %g Msun/yr/kpc^2)^%g, "
+          "within [%g, %g], with R_SF >= %g kpc",
+          fp->vwind_sigma_sfr_pivot, fp->vwind_sigma_sfr_slope,
+          fp->vwind_sigma_sfr_min_factor, fp->vwind_sigma_sfr_max_factor,
+          fp->vwind_sigma_sfr_min_radius_kpc);
+    }
     message("Feedback FIRE eta normalization: %g", fp->FIRE_eta_normalization);
     message("Feedback FIRE eta break: %g", fp->FIRE_eta_break);
     message("Feedback FIRE eta upper slope: %g", fp->FIRE_eta_upper_slope);

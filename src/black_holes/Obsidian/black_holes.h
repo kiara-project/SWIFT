@@ -2326,6 +2326,7 @@ INLINE static void black_holes_create_from_gas(
   bp->galaxy_data.stellar_mass = p->galaxy_data.stellar_mass;
   bp->galaxy_data.gas_mass = p->galaxy_data.gas_mass;
   bp->galaxy_data.specific_sfr = p->galaxy_data.specific_sfr;
+  bp->galaxy_data.sfr_radius = p->galaxy_data.sfr_radius;
 
   /* Initial seed mass */
   bp->subgrid_mass = props->subgrid_seed_mass;

@@ -492,6 +492,48 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
 }
 
 /**
+ * @brief Factor by which to boost the wind velocity from the host galaxy's
+ * SFR surface density.
+ *
+ * Sigma_SFR = SFR / (2 pi R^2), with R^2 = (2/3) r_SF^2 the projected
+ * (random orientation) square of the SFR-weighted rms radius r_SF of the
+ * galaxy's star-forming gas, floored at vwind_sigma_sfr_min_radius_kpc.
+ * The factor is (Sigma_SFR / pivot)^slope, clipped to
+ * [vwind_sigma_sfr_min_factor, vwind_sigma_sfr_max_factor]. It is 1 when the
+ * scaling is off, or when the galaxy has no star-forming radius (too few
+ * star-forming particles) or no SFR.
+ *
+ * @param sp The star particle.
+ * @param cosmo The current cosmological model.
+ * @param fb_props The properties of the feedback model.
+ */
+__attribute__((always_inline)) INLINE static float
+feedback_sigma_sfr_velocity_factor(const struct spart *sp,
+                                   const struct cosmology *cosmo,
+                                   const struct feedback_props *fb_props) {
+
+  if (fb_props->vwind_sigma_sfr_slope == 0.f) return 1.f;
+
+  const float sfr = sp->galaxy_data.specific_sfr * sp->galaxy_data.stellar_mass;
+  if (sp->galaxy_data.sfr_radius <= 0.f || sfr <= 0.f) return 1.f;
+
+  /* Physical radius in kpc */
+  const float r_kpc = fmaxf(
+      sp->galaxy_data.sfr_radius * cosmo->a * fb_props->length_to_kpc,
+      fb_props->vwind_sigma_sfr_min_radius_kpc);
+
+  /* Msun/yr/kpc^2; 2 pi (2/3) = 4 pi / 3 */
+  const float sfr_Msun_yr =
+      sfr * fb_props->mass_to_solar_mass / fb_props->time_to_yr;
+  const float sigma_sfr = sfr_Msun_yr / (4.18879f * r_kpc * r_kpc);
+
+  const float factor = powf(sigma_sfr / fb_props->vwind_sigma_sfr_pivot,
+                            fb_props->vwind_sigma_sfr_slope);
+  return fminf(fmaxf(factor, fb_props->vwind_sigma_sfr_min_factor),
+               fb_props->vwind_sigma_sfr_max_factor);
+}
+
+/**
  * @brief Prepare a #spart for the feedback task.
  *
  * In KIARA, this function does the stellar evolution for a #spart.
@@ -614,6 +656,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   /* velocity in internal units which is a^2*comoving, or a*physical */
   float v_internal = feedback_compute_kick_velocity(M_star, sp->id, cosmo,
                                                     feedback_props, ti_begin);
+
+  /* Boost the wind speed by the host galaxy's SFR surface density */
+  v_internal *= feedback_sigma_sfr_velocity_factor(sp, cosmo, feedback_props);
 
   /* Early (non-SN) stellar feedback energy from Keller+22 eq. 10 */
   const float alpha = feedback_props->early_stellar_feedback_alpha;

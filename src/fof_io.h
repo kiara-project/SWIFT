@@ -69,7 +69,13 @@ INLINE static int fof_write_parts(const struct part *parts,
       "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
       convert_part_group_id,
       "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
-  return 1;
+  list[1] = io_make_output_field(
+      "GalaxySFRRadii", FLOAT, 1, UNIT_CONV_LENGTH, 1.f, parts,
+      galaxy_data.sfr_radius,
+      "Co-moving SFR-weighted rms radius of the star-forming gas of the host "
+      "galaxy, at the last galaxy FoF call (0 if too few star-forming "
+      "particles)");
+  return 2;
 #elif WITH_FOF
   list[0] = io_make_output_field_convert_part(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
@@ -163,7 +169,13 @@ INLINE static int fof_write_sparts(const struct spart *sparts,
       "FOFGalaxyIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, sparts, 
       convert_spart_group_id,
       "Friends-Of-Friends ID of the baryonic galaxy the particles belong to");
-  return 1;
+  list[1] = io_make_output_field(
+      "GalaxySFRRadii", FLOAT, 1, UNIT_CONV_LENGTH, 1.f, sparts,
+      galaxy_data.sfr_radius,
+      "Co-moving SFR-weighted rms radius of the star-forming gas of the host "
+      "galaxy, at the last galaxy FoF call (0 if too few star-forming "
+      "particles)");
+  return 2;
 #elif WITH_FOF
   list[0] = io_make_output_field_convert_spart(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,

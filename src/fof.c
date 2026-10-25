@@ -193,6 +193,8 @@ void fof_init(struct fof_props *props, struct swift_params *params,
       parser_get_opt_param_double(params, "FOF:cold_gas_n_H_threshold_cgs",
                                   0.13) /
       units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+  props->galaxy_min_sf_particles =
+      parser_get_opt_param_int(params, "FOF:galaxy_min_sf_particles", 10);
 #endif
 
   /* Read what particle types we want to run FOF on */
@@ -2559,10 +2561,11 @@ static int fof_gas_is_galaxy_gas(const struct fof_props *props,
  * @param stellar_mass The galaxy stellar mass.
  * @param gas_mass The galaxy (ISM) gas mass.
  * @param sfr The galaxy star formation rate.
+ * @param sfr_radius The galaxy SFR-weighted rms radius (comoving).
  */
 static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
                                 const float stellar_mass, const float gas_mass,
-                                const float sfr) {
+                                const float sfr, const float sfr_radius) {
 
   struct fof_galaxy_data *gd = NULL;
   if (gp->type == swift_type_gas) {
@@ -2578,6 +2581,7 @@ static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
   gd->stellar_mass = stellar_mass;
   gd->gas_mass = gas_mass;
   gd->specific_sfr = (stellar_mass > 0.f) ? sfr / stellar_mass : 0.f;
+  gd->sfr_radius = sfr_radius;
 }
 #endif
 
@@ -2851,6 +2855,22 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     max_part_density[i] = -FLT_MAX;
   }
 
+#ifdef WITH_FOF_GALAXIES
+  /* SFR-weighted moments of the star-forming gas positions, per group:
+   * [sum sfr, sum sfr x (3), sum sfr |x|^2, number of SF particles] */
+  const int n_sf_moments = 6;
+  double *sf_moments = NULL;
+  if (swift_memalign("fof_group_sf_moments", (void **)&sf_moments, 32,
+                     props->num_groups * n_sf_moments * sizeof(double)) != 0)
+    error("Unable to allocate memory for the SF moments");
+  bzero(sf_moments, props->num_groups * n_sf_moments * sizeof(double));
+
+  float *sfr_radius = NULL;
+  if (swift_memalign("fof_group_sfr_radius", (void **)&sfr_radius, 32,
+                     props->num_groups * sizeof(float)) != 0)
+    error("Unable to allocate memory for the SFR radii");
+#endif
+
   /* Collect information about the local particles and update the array of
    * properties. Recall the array is as big as all the haloes accross
    * all domains */
@@ -3009,6 +3029,25 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     centre_of_mass[index * 3 + 1] += gparts[i].mass * x[1];
     centre_of_mass[index * 3 + 2] += gparts[i].mass * x[2];
 
+#ifdef WITH_FOF_GALAXIES
+    /* SFR-weighted moments of the star-forming gas (the half-box shift
+     * above is common to the whole group, so it cancels in the variance) */
+    if (gparts[i].type == swift_type_gas) {
+      const size_t gas_index = -gparts[i].id_or_neg_offset;
+      const double sfr =
+          star_formation_get_SFR(&parts[gas_index], &xparts[gas_index]);
+      if (sfr > 0.) {
+        double *mom = &sf_moments[index * n_sf_moments];
+        mom[0] += sfr;
+        mom[1] += sfr * x[0];
+        mom[2] += sfr * x[1];
+        mom[3] += sfr * x[2];
+        mom[4] += sfr * (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+        mom[5] += 1.;
+      }
+    }
+#endif
+
     /* Should we seed a BH in this group? */
     float group_mass_for_seeding = group_mass[index];
 #ifdef WITH_FOF_GALAXIES
@@ -3047,6 +3086,27 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
                 MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, id_gas_particle_to_convert, props->num_groups,
                 MPI_LONG_LONG, MPI_MIN, MPI_COMM_WORLD);
+#ifdef WITH_FOF_GALAXIES
+  MPI_Allreduce(MPI_IN_PLACE, sf_moments, n_sf_moments * props->num_groups,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif
+#endif
+
+#ifdef WITH_FOF_GALAXIES
+  /* SFR-weighted rms radius of the star-forming gas about its SFR-weighted
+   * centre, for galaxies with enough star-forming particles */
+  for (size_t i = 0; i < (size_t)props->num_groups; ++i) {
+    const double *mom = &sf_moments[i * n_sf_moments];
+    sfr_radius[i] = 0.f;
+    if (mom[5] >= props->galaxy_min_sf_particles && mom[0] > 0.) {
+      const double w_inv = 1. / mom[0];
+      const double cx = mom[1] * w_inv, cy = mom[2] * w_inv,
+                   cz = mom[3] * w_inv;
+      const double r2 = mom[4] * w_inv - (cx * cx + cy * cy + cz * cz);
+      sfr_radius[i] = (r2 > 0.) ? (float)sqrt(r2) : 0.f;
+    }
+  }
+  swift_free("fof_group_sf_moments", sf_moments);
 #endif
 
   /* Finalise the operations on the group catalog */
@@ -3083,7 +3143,7 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     if (gparts[i].fof_data.group_id == group_id_default) {
 #ifdef WITH_FOF_GALAXIES
       /* Not in a galaxy: clear any host-galaxy data from earlier calls */
-      fof_set_galaxy_data(s, &gparts[i], 0.f, 0.f, 0.f);
+      fof_set_galaxy_data(s, &gparts[i], 0.f, 0.f, 0.f, 0.f);
 #endif
       continue;
     }
@@ -3129,7 +3189,7 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     /* Load the host-galaxy data into particles of various types (the sSFR
      * is zero in a galaxy without stars) */
     fof_set_galaxy_data(s, &gparts[i], stellar_mass[index], gas_mass[index],
-                        star_formation_rate[index]);
+                        star_formation_rate[index], sfr_radius[index]);
 #endif
   }
 
@@ -3146,6 +3206,9 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
   swift_free("fof_group_max_positions", max_positions);
   swift_free("fof_group_min_positions", min_positions);
   swift_free("fof_group_max_density", max_part_density);
+#ifdef WITH_FOF_GALAXIES
+  swift_free("fof_group_sfr_radius", sfr_radius);
+#endif
 }
 
 /**
