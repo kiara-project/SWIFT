@@ -2103,6 +2103,22 @@ void engine_print_stats(struct engine *e) {
 }
 
 /**
+ * @brief Clear the pending stars-sort requests of a foreign cell.
+ *
+ * Used when the foreign stars_sort tasks are skipped: their requests must not
+ * leak into the next step (a stale cell_flag_do_stars_sub_sort would stop
+ * cell_activate_stars_sorts_up() before it reaches the super-cell).
+ */
+static void engine_clear_foreign_stars_sort_flags(struct cell *c,
+                                                  void *data) {
+  const struct engine *e = (const struct engine *)data;
+  if (c->nodeID == e->nodeID) return;
+  c->stars.do_sort = 0;
+  c->stars.requires_sorts = 0;
+  cell_clear_flag(c, cell_flag_do_stars_sub_sort);
+}
+
+/**
  * @brief Sets all the force, drift and kick tasks to be skipped.
  *
  * @param e The #engine to act on.
@@ -2169,11 +2185,23 @@ void engine_skip_force_and_kick(struct engine *e) {
         t->subtype == task_subtype_rt_gradient ||
         t->subtype == task_subtype_rt_transport)
       t->skip = 1;
+
+    /* The spart recvs (task_subtype_spart_density) are skipped above, so
+     * the foreign sparts are never received in this pass: sorting them would
+     * read whatever is in s->sparts_foreign (uninitialised memory outside
+     * SWIFT_DEBUG_CHECKS builds) and can produce NaN sort keys that crash
+     * runner_do_stars_sort(). Foreign stars are only needed by the feedback
+     * and prep loops, which are skipped too. */
+    if (t->type == task_type_stars_sort && t->ci->nodeID != e->nodeID) {
+      t->skip = 1;
+      t->flags = 0;
+    }
   }
 
   /* Run through the cells and clear some flags. */
   space_map_cells_pre(e->s, 1, cell_clear_drift_flags, NULL);
   space_map_cells_pre(e->s, 1, cell_clear_limiter_flags, NULL);
+  space_map_cells_pre(e->s, 1, engine_clear_foreign_stars_sort_flags, e);
 }
 
 /**
