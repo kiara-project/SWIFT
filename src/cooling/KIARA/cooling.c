@@ -2141,7 +2141,13 @@ void cooling_init_chemistry(
     p->chemistry_data.metal_mass_fraction_total = 0.f;
     for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
       const int slot = cooling_crackle_slot(i);
-      if (slot < 0) continue;
+
+      /* Elements crackle does not know keep what they have */
+      if (slot < 0) {
+        p->chemistry_data.metal_mass_fraction_total +=
+            p->chemistry_data.metal_mass_fraction[i];
+        continue;
+      }
       const int d = dust_element_of_chemistry(i);
 
       /* fraction of gas mass in each element (gas phase) */
