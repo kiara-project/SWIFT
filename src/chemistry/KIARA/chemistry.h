@@ -248,9 +248,11 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     cpd->dZ_dt[elem] = 0.f;
     cpd->dm_Z[elem] = 0.f;
-    cpd->dm_dust_Z[elem] = 0.f;
+  }
+  for (int d = 0; d < dust_element_count; ++d) {
+    cpd->dm_dust_Z[d] = 0.f;
 #if COOLING_GRACKLE_MODE >= 2
-    cpd->dZ_dust_dt[elem] = 0.f;
+    cpd->dZ_dust_dt[d] = 0.f;
 #endif
   }
 
@@ -422,10 +424,12 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
   cpd->dZ_dt_total = 0.f;
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     cpd->dZ_dt[elem] = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-    cpd->dZ_dust_dt[elem] = 0.f;
-#endif
   }
+#if COOLING_GRACKLE_MODE >= 2
+  for (int d = 0; d < dust_element_count; ++d) {
+    cpd->dZ_dust_dt[d] = 0.f;
+  }
+#endif
 
 #if COOLING_GRACKLE_MODE >= 2
   /* No neighbours, so only the particle's own SFR contributes */
@@ -984,20 +988,21 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
       if (elem != chemistry_element_H && elem != chemistry_element_He) {
         ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
       }
+    }
 
-      if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
-        const float old_dust_mass_Z =
-            co->dust_mass_fraction[elem] * co->dust_mass;
-        co->dust_mass_fraction[elem] =
-            (old_dust_mass_Z + ch->dm_dust_Z[elem]) / new_dust_mass;
+    if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+      for (int d = 0; d < dust_element_count; ++d) {
+        const float old_dust_mass_Z = co->dust_mass_fraction[d] * co->dust_mass;
+        co->dust_mass_fraction[d] =
+            (old_dust_mass_Z + ch->dm_dust_Z[d]) / new_dust_mass;
       }
     }
 
     /* Set the new dust mass from the exchange */
     co->dust_mass = (new_dust_mass > 0.f) ? new_dust_mass : 0.f;
     if (co->dust_mass <= 0.f) {
-      for (int elem = 0; elem < chemistry_element_count; ++elem) {
-        co->dust_mass_fraction[elem] = 0.f;
+      for (int d = 0; d < dust_element_count; ++d) {
+        co->dust_mass_fraction[d] = 0.f;
       }
 
       co->dust_mass = 0.f;
@@ -1079,7 +1084,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
           "Ztot=%g Zdust=%g.",
           p->id, dt, elem, ch->metal_mass_fraction[elem], ch->dZ_dt[elem],
           dZ[elem], ch->metal_mass_fraction_total,
-          p->cooling_data.dust_mass_fraction[elem]);
+          (dust_element_of_chemistry(elem) >= 0)
+              ? p->cooling_data
+                    .dust_mass_fraction[dust_element_of_chemistry(elem)]
+              : 0.f);
       reset_time_derivatives = true;
     }
 
@@ -1098,10 +1106,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     ch->dZ_dt_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
       ch->dZ_dt[elem] = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-      ch->dZ_dust_dt[elem] = 0.f;
-#endif
     }
+#if COOLING_GRACKLE_MODE >= 2
+    for (int d = 0; d < dust_element_count; d++) {
+      ch->dZ_dust_dt[d] = 0.f;
+    }
+#endif
     return;
   }
 
@@ -1122,25 +1132,22 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
   struct cooling_part_data *co = &p->cooling_data;
   const float m = hydro_get_mass(p);
   float new_dust_mass = 0.f;
-  float dust_mass_elem[chemistry_element_count];
-  for (int elem = chemistry_element_C; elem < chemistry_element_count; elem++) {
-    dust_mass_elem[elem] = co->dust_mass_fraction[elem] * co->dust_mass +
-                           ch->dZ_dust_dt[elem] * dt * factor * m;
-    if (dust_mass_elem[elem] < 0.f) dust_mass_elem[elem] = 0.f;
-    new_dust_mass += dust_mass_elem[elem];
+  float dust_mass_elem[dust_element_count];
+  for (int d = 0; d < dust_element_count; d++) {
+    dust_mass_elem[d] = co->dust_mass_fraction[d] * co->dust_mass +
+                        ch->dZ_dust_dt[d] * dt * factor * m;
+    if (dust_mass_elem[d] < 0.f) dust_mass_elem[d] = 0.f;
+    new_dust_mass += dust_mass_elem[d];
   }
   if (new_dust_mass > 0.f) {
     const float inv = 1.f / new_dust_mass;
-    co->dust_mass_fraction[chemistry_element_H] = 1.f; /* sum of fractions */
-    co->dust_mass_fraction[chemistry_element_He] = 0.f;
-    for (int elem = chemistry_element_C; elem < chemistry_element_count;
-         elem++) {
-      co->dust_mass_fraction[elem] = dust_mass_elem[elem] * inv;
+    for (int d = 0; d < dust_element_count; d++) {
+      co->dust_mass_fraction[d] = dust_mass_elem[d] * inv;
     }
     co->dust_mass = new_dust_mass;
   } else {
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      co->dust_mass_fraction[elem] = 0.f;
+    for (int d = 0; d < dust_element_count; d++) {
+      co->dust_mass_fraction[d] = 0.f;
     }
     co->dust_mass = 0.f;
   }

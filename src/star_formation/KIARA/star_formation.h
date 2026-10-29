@@ -776,9 +776,10 @@ INLINE static void star_formation_copy_properties(
     const float D = p->cooling_data.dust_mass / hydro_get_mass(p);
     float Z_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
-      if (elem != chemistry_element_H) {
+      const int d = dust_element_of_chemistry(elem);
+      if (d >= 0) {
         sp->chemistry_data.metal_mass_fraction[elem] +=
-            D * p->cooling_data.dust_mass_fraction[elem];
+            D * p->cooling_data.dust_mass_fraction[d];
       }
       if (elem != chemistry_element_H && elem != chemistry_element_He) {
         Z_total += sp->chemistry_data.metal_mass_fraction[elem];

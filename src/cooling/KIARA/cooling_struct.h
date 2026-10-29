@@ -39,8 +39,8 @@ struct cooling_part_data {
   /*! Total mass in dust */
   float dust_mass;
 
-  /*! Fraction of the dust mass in each element (index 0 holds the sum) */
-  float dust_mass_fraction[chemistry_element_count];
+  /*! Fraction of the dust mass in each #dust_element */
+  float dust_mass_fraction[dust_element_count];
 
   /*! Dust temperature computed by grackle (K) */
   float dust_temperature;

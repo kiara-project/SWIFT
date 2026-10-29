@@ -314,11 +314,11 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
                            cooling_data.dust_mass, "Total masses in dust.");
   num++;
 
-  list[num] = io_make_output_field("DustMassFractions", FLOAT,
-                                   chemistry_element_count, UNIT_CONV_NO_UNITS,
-                                   0.f, parts, cooling_data.dust_mass_fraction,
-                                   "Fractions of the particles' masses that "
-                                   "are in dust for a given element.");
+  list[num] = io_make_output_field(
+      "DustMassFractions", FLOAT, dust_element_count, UNIT_CONV_NO_UNITS, 0.f,
+      parts, cooling_data.dust_mass_fraction,
+      "Fractions of the particles' dust masses in each dust element, in the "
+      "order:" KIARA_DUST_ELEMENT_NAMES);
   num++;
 
   list[num] =

@@ -1431,8 +1431,10 @@ runner_iact_nonsym_bh_gas_feedback(
            ++elem) {
         const float old_metal_mass_elem =
             pj->chemistry_data.metal_mass_fraction[elem] * hydro_get_mass(pj);
+        const int d = dust_element_of_chemistry(elem);
         const float old_dust_mass_elem =
-            pj->cooling_data.dust_mass_fraction[elem] * old_dust_mass;
+            (d >= 0) ? pj->cooling_data.dust_mass_fraction[d] * old_dust_mass
+                     : 0.f;
 
         pj->chemistry_data.metal_mass_fraction[elem] =
             (old_metal_mass_elem + old_dust_mass_elem) / hydro_get_mass(pj);
@@ -1440,8 +1442,9 @@ runner_iact_nonsym_bh_gas_feedback(
         if (elem != chemistry_element_H && elem != chemistry_element_He) {
           new_Z_total += pj->chemistry_data.metal_mass_fraction[elem];
         }
-
-        pj->cooling_data.dust_mass_fraction[elem] = 0.f;
+      }
+      for (int d = 0; d < dust_element_count; d++) {
+        pj->cooling_data.dust_mass_fraction[d] = 0.f;
       }
 
       pj->chemistry_data.metal_mass_fraction_total = new_Z_total;

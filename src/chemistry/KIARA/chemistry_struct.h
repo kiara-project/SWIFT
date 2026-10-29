@@ -19,6 +19,8 @@
 #ifndef SWIFT_CHEMISTRY_STRUCT_KIARA_H
 #define SWIFT_CHEMISTRY_STRUCT_KIARA_H
 
+#include "inline.h"
+
 #define FIREHOSE_COOLLIM 0.1f            /* -u_new / u */
 #define FIREHOSE_HEATLIM 10.f            /* +u_new / u */
 #define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
@@ -41,21 +43,55 @@ enum chemistry_element {
   chemistry_element_count
 };
 
-#if COOLING_GRACKLE_MODE >= 2
 /**
- * @brief The individual elements traced in the Grackle dust model.
+ * @brief The elements that can be locked in dust, in the order of the
+ * per-element dust arrays (dust_mass_fraction, dZ_dust_dt, dm_dust_Z,
+ * delta_dust_mass). Each must be one of the #chemistry_element; changing
+ * this list is all that is needed to change the dust elements.
+ */
+#define KIARA_DUST_ELEMENTS(X) X(C) X(N) X(O) X(Ne) X(Mg) X(Si) X(S) X(Ca) X(Fe)
+
+/**
+ * @brief The elements locked in dust (indices into the dust arrays).
  */
 enum dust_element {
-  dust_element_C,
-  dust_element_O,
-  dust_element_Mg,
-  dust_element_Si,
-  dust_element_S,
-  dust_element_Ca,
-  dust_element_Fe,
+#define KIARA_DUST_ENUM(e) dust_element_##e,
+  KIARA_DUST_ELEMENTS(KIARA_DUST_ENUM)
+#undef KIARA_DUST_ENUM
   dust_element_count
 };
-#endif
+
+/*! The names of the dust elements, in order (for the snapshot metadata) */
+#define KIARA_DUST_NAME(e) " " #e
+#define KIARA_DUST_ELEMENT_NAMES KIARA_DUST_ELEMENTS(KIARA_DUST_NAME)
+
+/**
+ * @brief The #chemistry_element of a dust element.
+ *
+ * @param d The #dust_element.
+ */
+__attribute__((always_inline)) INLINE static int chemistry_element_of_dust(
+    const int d) {
+  static const int elem[dust_element_count] = {
+#define KIARA_DUST_ELEM(e) chemistry_element_##e,
+      KIARA_DUST_ELEMENTS(KIARA_DUST_ELEM)
+#undef KIARA_DUST_ELEM
+  };
+  return elem[d];
+}
+
+/**
+ * @brief The #dust_element of a chemistry element, or -1 if that element is
+ * not locked in dust.
+ *
+ * @param elem The #chemistry_element.
+ */
+__attribute__((always_inline)) INLINE static int dust_element_of_chemistry(
+    const int elem) {
+  for (int d = 0; d < dust_element_count; d++)
+    if (chemistry_element_of_dust(d) == elem) return d;
+  return -1;
+}
 
 /**
  * @brief Global chemical abundance information in the KIARA model.
@@ -179,8 +215,8 @@ struct chemistry_part_data {
   float dZ_dt[chemistry_element_count];
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Variation of the dust mass (per unit gas mass) by element */
-  float dZ_dust_dt[chemistry_element_count];
+  /*! Variation of the dust mass (per unit gas mass) by dust element */
+  float dZ_dust_dt[dust_element_count];
 #endif
 
   /*! Velocity shear tensor in internal and physical units. */
@@ -221,8 +257,8 @@ struct chemistry_part_data {
   /*! Firehose exchanged dust mass */
   float dm_dust;
 
-  /*! Firehose exchanged dust mass metals */
-  float dm_dust_Z[chemistry_element_count];
+  /*! Firehose exchanged dust mass by dust element */
+  float dm_dust_Z[dust_element_count];
 
   /*! Firehose exchanged internal energy, internal units */
   double du;

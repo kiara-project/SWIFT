@@ -349,10 +349,12 @@ __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
   /* Zero the metal enrichment quantities */
   for (int i = 0; i < chemistry_element_count; i++) {
     sp->feedback_data.metal_mass[i] = 0.;
-#if COOLING_GRACKLE_MODE >= 2
-    sp->feedback_data.delta_dust_mass[i] = 0.;
-#endif
   }
+#if COOLING_GRACKLE_MODE >= 2
+  for (int d = 0; d < dust_element_count; d++) {
+    sp->feedback_data.delta_dust_mass[d] = 0.;
+  }
+#endif
   sp->feedback_data.total_metal_mass = 0.;
 
   /* Zero the energy to inject */
@@ -883,10 +885,12 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     sp->feedback_data.total_metal_mass *= ejecta_scale;
     for (elem = 0; elem < chemistry_element_count; elem++) {
       sp->feedback_data.metal_mass[elem] *= ejecta_scale;
-#if COOLING_GRACKLE_MODE >= 2
-      sp->feedback_data.delta_dust_mass[elem] *= ejecta_scale;
-#endif
     }
+#if COOLING_GRACKLE_MODE >= 2
+    for (int d = 0; d < dust_element_count; d++) {
+      sp->feedback_data.delta_dust_mass[d] *= ejecta_scale;
+    }
+#endif
   }
 
   /* Compute the total mass to distribute */

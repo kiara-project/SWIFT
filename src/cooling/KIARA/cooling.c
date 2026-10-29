@@ -197,8 +197,8 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
   /* Initialize dust properties */
 #if COOLING_GRACKLE_MODE >= 2
   p->cooling_data.dust_mass = 0.f;
-  for (int i = 0; i < chemistry_element_count; i++) {
-    p->cooling_data.dust_mass_fraction[i] = 0.f;
+  for (int d = 0; d < dust_element_count; d++) {
+    p->cooling_data.dust_mass_fraction[d] = 0.f;
   }
 
   p->cooling_data.dust_temperature = 0.f;
@@ -434,8 +434,12 @@ void cooling_copy_to_grackle2(
     for (int i = 0; i < chemistry_element_count; i++) {
       species_densities[24 + i] = max(
           p->chemistry_data.metal_mass_fraction[i] * species_densities[12], 0.);
+      const int d = dust_element_of_chemistry(i);
       species_densities[24 + chemistry_element_count + i] =
-          max(p->cooling_data.dust_mass_fraction[i] * species_densities[20], 0);
+          (d >= 0) ? max(p->cooling_data.dust_mass_fraction[d] *
+                             species_densities[20],
+                         0)
+                   : 0.;
       // if (i>0) printf("dust densities: %d %g %g
       // %g\n",i,species_densities[23+chemistry_element_count+i],species_densities[23+chemistry_element_count+i]/data->dust_density[0],p->cooling_data.dust_mass_fraction[i]*p->mass
       // / p->cooling_data.dust_mass);
@@ -669,7 +673,6 @@ void cooling_copy_from_grackle2(
               p->mass * chemistry_get_total_metal_mass_fraction_for_cooling(p));
     }
 
-    p->cooling_data.dust_mass_fraction[0] = 0.f;
     if (*data->dust_density > 0.f) {
       rhoinv = 1. / *data->dust_density;
 
@@ -683,14 +686,13 @@ void cooling_copy_from_grackle2(
       /* no Helium metal density */
       assert(rhodust[0] == 0.);
 
-      for (int i = 1; i < chemistry_element_count; i++) {
-        p->cooling_data.dust_mass_fraction[i] = rhodust[i - 1] * rhoinv;
-        p->cooling_data.dust_mass_fraction[0] +=
-            p->cooling_data.dust_mass_fraction[i];
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] =
+            rhodust[chemistry_element_of_dust(d) - 1] * rhoinv;
       }
     } else {
-      for (int i = 1; i < chemistry_element_count; i++) {
-        p->cooling_data.dust_mass_fraction[i] = 0.f;
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] = 0.f;
       }
     }
   }
@@ -1251,8 +1253,10 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
     for (int i = 0; i < chemistry_element_count; i++) {
       gas_metals[i] =
           max(p->chemistry_data.metal_mass_fraction[i] * rho, 0.);
-      dust_metals[i] =
-          max(p->cooling_data.dust_mass_fraction[i] * dust_density, 0);
+    }
+    for (int d = 0; d < dust_element_count; d++) {
+      dust_metals[chemistry_element_of_dust(d)] =
+          max(p->cooling_data.dust_mass_fraction[d] * dust_density, 0);
     }
   }
   if (chemistry->H2_custom_shielding == 2) {
@@ -1371,20 +1375,18 @@ void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
               p->cooling_data.dust_mass,
               p->mass * chemistry_get_total_metal_mass_fraction_for_cooling(p));
     }
-    p->cooling_data.dust_mass_fraction[0] = 0.f;
     if (gp->dust_density > 0.f) {
       rhoinv = 1. / gp->dust_density;
       /* no Helium metal density */
       assert(gp->dust_metalDensity[0] == 0.);
-      for (int i = 1; i < chemistry_element_count; i++) {
-        p->cooling_data.dust_mass_fraction[i] =
-            gp->dust_metalDensity[i - 1] * rhoinv;
-        p->cooling_data.dust_mass_fraction[0] +=
-            p->cooling_data.dust_mass_fraction[i];
+      /* crackle's element arrays start at He */
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] =
+            gp->dust_metalDensity[chemistry_element_of_dust(d) - 1] * rhoinv;
       }
     } else {
-      for (int i = 1; i < chemistry_element_count; i++) {
-        p->cooling_data.dust_mass_fraction[i] = 0.f;
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] = 0.f;
       }
     }
   }
@@ -1940,8 +1942,10 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
 
         /* This is the positive amount of metal mass to add since we
          * are losing dust mass when sputtering. */
+        const int d = dust_element_of_chemistry(elem);
         const float delta_metal_mass_elem =
-            p->cooling_data.dust_mass_fraction[elem] * dust_mass_lost;
+            (d >= 0) ? p->cooling_data.dust_mass_fraction[d] * dust_mass_lost
+                     : 0.f;
         const float elem_mass_new = elem_mass_old + delta_metal_mass_elem;
         const float Z_elem_new = elem_mass_new / hydro_get_mass(p);
 
@@ -2080,14 +2084,12 @@ void cooling_init_chemistry(
           p->chemistry_data.metal_mass_fraction[i];
 
       /* fraction of dust mass in each element (sums to 1) */
-      p->cooling_data.dust_mass_fraction[i] =
-          cooling->chemistry.SolarAbundances[j] / Z_sun;
+      const int d = dust_element_of_chemistry(i);
+      if (d >= 0)
+        p->cooling_data.dust_mass_fraction[d] =
+            cooling->chemistry.SolarAbundances[j] / Z_sun;
       j++;
     }
-
-    /* No H or He in dust; element 0 holds the sum over elements */
-    p->cooling_data.dust_mass_fraction[chemistry_element_H] = 1.f;
-    p->cooling_data.dust_mass_fraction[chemistry_element_He] = 0.f;
 
     /* Dust holds the remaining init_dust_to_gas of the self-enriched metals */
     p->cooling_data.dust_mass =

@@ -777,23 +777,21 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       fmax(pj->feedback_data.SNe_ThisTimeStep, 0.);
 
   /* Spread dust ejecta to gas */
-  for (int elem = chemistry_element_He; elem < chemistry_element_count;
-       elem++) {
+  for (int d = 0; d < dust_element_count; d++) {
     const double current_dust_mass =
-        pj->cooling_data.dust_mass_fraction[elem] * pj->cooling_data.dust_mass;
+        pj->cooling_data.dust_mass_fraction[d] * pj->cooling_data.dust_mass;
     const double delta_dust_mass =
-        si->feedback_data.delta_dust_mass[elem] * Omega_frac;
+        si->feedback_data.delta_dust_mass[d] * Omega_frac;
 
     /* at the moment this stores the mass (not mass frac) in each elem */
-    pj->cooling_data.dust_mass_fraction[elem] =
+    pj->cooling_data.dust_mass_fraction[d] =
         (current_dust_mass + delta_dust_mass);
   }
 
   /* Sum up each element to get total new dust mass */
   pj->cooling_data.dust_mass = 0.;
-  for (int elem = chemistry_element_He; elem < chemistry_element_count;
-       elem++) {
-    pj->cooling_data.dust_mass += pj->cooling_data.dust_mass_fraction[elem];
+  for (int d = 0; d < dust_element_count; d++) {
+    pj->cooling_data.dust_mass += pj->cooling_data.dust_mass_fraction[d];
   }
 
   /* Compute inverse of new dust mass */
@@ -801,29 +799,28 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     const double dust_mass_inv = 1. / pj->cooling_data.dust_mass;
 
     /* Divide by new dust mass to get the fractions */
-    for (int elem = chemistry_element_He; elem < chemistry_element_count;
-         elem++) {
-      pj->cooling_data.dust_mass_fraction[elem] *= dust_mass_inv;
+    for (int d = 0; d < dust_element_count; d++) {
+      pj->cooling_data.dust_mass_fraction[d] *= dust_mass_inv;
     }
 
     /* Check for inconsistency */
     if (pj->cooling_data.dust_mass > 0.2f * pj->mass) {
-      for (int elem = chemistry_element_He; elem < chemistry_element_count;
-           elem++) {
+      for (int d = 0; d < dust_element_count; d++) {
+        const int elem = chemistry_element_of_dust(d);
         message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n",
                 pj->id, elem,
                 pj->chemistry_data.metal_mass_fraction[elem] * pj->mass,
-                pj->cooling_data.dust_mass_fraction[elem] *
+                pj->cooling_data.dust_mass_fraction[d] *
                     pj->cooling_data.dust_mass,
-                si->feedback_data.delta_dust_mass[elem] * Omega_frac);
+                si->feedback_data.delta_dust_mass[d] * Omega_frac);
       }
       warning("TOTAL DUST EXCEEDS MASS mgas=%g  mdust=%g\n", pj->mass,
               pj->cooling_data.dust_mass);
     }
   } else {
     /* For some reason the dust mass is zero or negative */
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      pj->cooling_data.dust_mass_fraction[elem] = 0.f;
+    for (int d = 0; d < dust_element_count; d++) {
+      pj->cooling_data.dust_mass_fraction[d] = 0.f;
     }
   }
 

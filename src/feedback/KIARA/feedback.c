@@ -149,8 +149,7 @@ double feedback_get_lum_from_star_particle(
  * Myr) or AGB O-rich efficiencies are used for each element, with O locked
  * in silicates and oxides of Mg, Si, S, Ca and Fe. The dust formed in each
  * element is capped at max_dust_fraction of that element's ejected mass and
- * removed from the ejected gas-phase metals; delta_dust_mass[0] holds the
- * total.
+ * removed from the ejected gas-phase metals.
  *
  * @param sp The #spart whose ejecta are processed.
  * @param star_age The stellar age (internal units).
@@ -165,9 +164,10 @@ void feedback_dust_production_condensation(
   /* Get age of star to separate AGB from SNII */
   star_age *= fb_props->time_to_Myr;
 
-  /* initialize change in dust mass */
+  /* Dust mass formed in each chemistry element */
+  double dust[chemistry_element_count];
   for (k = 0; k < chemistry_element_count; k++) {
-    sp->feedback_data.delta_dust_mass[k] = 0.f;
+    dust[k] = 0.f;
   }
 
   const double C_minus_O = sp->feedback_data.metal_mass[chemistry_element_C] -
@@ -176,7 +176,7 @@ void feedback_dust_production_condensation(
     /* Compute dust mass created in high-C/O AGB stars
      * (atomic C forms graphite)
      */
-    sp->feedback_data.delta_dust_mass[chemistry_element_C] =
+    dust[chemistry_element_C] =
         fb_props->delta_AGBCOG1[chemistry_element_C] *
         (sp->feedback_data.metal_mass[chemistry_element_C] -
          0.75 * sp->feedback_data.metal_mass[chemistry_element_O]);
@@ -185,13 +185,13 @@ void feedback_dust_production_condensation(
     /* Cap the new dust mass formed to some fraction of total ejecta
      * metals in that element
      */
-    if (sp->feedback_data.delta_dust_mass[chemistry_element_C] > max_dust_C) {
-      sp->feedback_data.delta_dust_mass[chemistry_element_C] = max_dust_C;
+    if (dust[chemistry_element_C] > max_dust_C) {
+      dust[chemistry_element_C] = max_dust_C;
     }
 
     /* Subtract this from ejecta metals */
     sp->feedback_data.metal_mass[chemistry_element_C] -=
-        sp->feedback_data.delta_dust_mass[chemistry_element_C];
+        dust[chemistry_element_C];
   } else {
     /* Choose dust table: If age > 100 Myr, assume ejecta is from AGB,
      * otherwise SNII
@@ -208,7 +208,7 @@ void feedback_dust_production_condensation(
     for (k = chemistry_element_He; k < chemistry_element_count; k++) {
       if (k ==
           chemistry_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
-        sp->feedback_data.delta_dust_mass[k] =
+        dust[k] =
             16.0 *
             (delta_table[chemistry_element_Mg] *
                  sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
@@ -221,25 +221,28 @@ void feedback_dust_production_condensation(
              delta_table[chemistry_element_Fe] *
                  sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
-        sp->feedback_data.delta_dust_mass[k] =
+        dust[k] =
             delta_table[k] * sp->feedback_data.metal_mass[k];
       }
 
       const double max_dust =
           fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
-      if (sp->feedback_data.delta_dust_mass[k] > max_dust) {
-        sp->feedback_data.delta_dust_mass[k] = max_dust;
+      if (dust[k] > max_dust) {
+        dust[k] = max_dust;
       }
 
-      /* Remove dust from gas-phase metals to be distributed from star */
-      sp->feedback_data.metal_mass[k] -= sp->feedback_data.delta_dust_mass[k];
-      sp->feedback_data.total_metal_mass -=
-          sp->feedback_data.delta_dust_mass[k];
+      /* Only the dust elements condense */
+      if (dust_element_of_chemistry(k) < 0) dust[k] = 0.;
 
-      /* We will use element 0 of dust to store total change in dust mass */
-      sp->feedback_data.delta_dust_mass[0] +=
-          sp->feedback_data.delta_dust_mass[k];
+      /* Remove dust from gas-phase metals to be distributed from star */
+      sp->feedback_data.metal_mass[k] -= dust[k];
+      sp->feedback_data.total_metal_mass -= dust[k];
     }
+  }
+
+  /* Store by dust element */
+  for (int d = 0; d < dust_element_count; d++) {
+    sp->feedback_data.delta_dust_mass[d] = dust[chemistry_element_of_dust(d)];
   }
 }
 #endif
