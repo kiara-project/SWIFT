@@ -29,9 +29,6 @@ extern int grackle_verbose;
 extern chemistry_data *grackle_data;
 extern chemistry_data_storage grackle_rates;
 
-void auto_show_config(FILE *fp);
-void auto_show_flags(FILE *fp);
-grackle_version get_grackle_version();
 void show_parameters(FILE *fp, chemistry_data *my_chemistry);
 
 int _free_cloudy_data(cloudy_data *my_cloudy, chemistry_data *my_chemistry, int primordial);
@@ -53,11 +50,9 @@ void initialize_empty_UVBtable_struct(UVBtable *table);
 
 static void show_version(FILE *fp)
 {
-  grackle_version gversion = get_grackle_version();
   fprintf (fp, "\n");
-  fprintf (fp, "The Grackle Version %s\n", gversion.version);
-  fprintf (fp, "Git Branch   %s\n", gversion.branch);
-  fprintf (fp, "Git Revision %s\n", gversion.revision);
+  fprintf (fp, "crackle in SWIFT/KIARA (src/cooling/KIARA/crackle), imported from\n");
+  fprintf (fp, "crackle 6937733 and Grackle (EwanBJones98/grackle kiara) 908cc83\n");
   fprintf (fp, "\n");
 }
 
@@ -302,10 +297,6 @@ int local_initialize_chemistry_data(chemistry_data *my_chemistry,
     FILE *fptr = fopen("GRACKLE_INFO", "w");
     fprintf(fptr, "%s\n", tstr);
     show_version(fptr);
-    fprintf(fptr, "Grackle build options:\n");
-    auto_show_config(fptr);
-    fprintf(fptr, "Grackle build flags:\n");
-    auto_show_flags(fptr);
     fprintf(fptr, "Grackle run-time parameters:\n");
     show_parameters(fptr, my_chemistry);
     fclose(fptr);

@@ -186,7 +186,6 @@ int free_chemistry_data(void);
 
 int local_free_chemistry_data(chemistry_data *my_chemistry, chemistry_data_storage *my_rates);
 
-grackle_version get_grackle_version(void);
 
 // Below, we conditionally define a handful of deprecated functions to maintain
 // backwards compatibility. These functions were deprecated because externally
