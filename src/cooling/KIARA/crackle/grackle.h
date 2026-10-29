@@ -1,0 +1,223 @@
+/***********************************************************************
+/
+/ Grackle function prototypes
+/
+/
+/ Copyright (c) 2013, Enzo/Grackle Development Team.
+/
+/ Distributed under the terms of the Enzo Public Licence.
+/
+/ The full license is in the file LICENSE, distributed with this 
+/ software.
+************************************************************************/
+
+#ifndef __GRACKLE_H__
+#define __GRACKLE_H__
+
+#include "grackle_types.h"
+#include "grackle_chemistry_data.h"
+
+extern int grackle_verbose;
+
+extern chemistry_data *grackle_data;
+extern chemistry_data_storage grackle_rates;
+
+double get_velocity_units(code_units *my_units);
+
+void set_velocity_units(code_units *my_units);
+
+double get_temperature_units(code_units *my_units);
+
+int set_default_chemistry_parameters(chemistry_data *my_grackle);
+
+int local_initialize_chemistry_parameters(chemistry_data *my_chemistry);
+
+int initialize_chemistry_data(code_units *my_units);
+
+int local_initialize_chemistry_data(chemistry_data *my_chemistry, 
+                                    chemistry_data_storage *my_rates,
+                                    code_units *my_units);
+
+int* local_chemistry_data_access_int(chemistry_data* my_chemistry,
+                                     const char* param_name);
+double* local_chemistry_data_access_double(chemistry_data* my_chemistry,
+                                           const char* param_name);
+char** local_chemistry_data_access_string(chemistry_data* my_chemistry,
+                                          const char* param_name);
+
+const char* param_name_int(unsigned int i);
+const char* param_name_double(unsigned int i);
+const char* param_name_string(unsigned int i);
+
+unsigned int grackle_num_params(const char* type_name);
+
+int solve_chemistry(code_units *my_units,
+                    grackle_field_data *my_fields,
+                    double dt_value);
+
+int local_solve_chemistry(chemistry_data *my_chemistry,
+                          chemistry_data_storage *my_rates,
+                          code_units *my_units,
+                          grackle_field_data *my_fields,
+                          double dt_value);
+
+int _solve_chemistry(chemistry_data *my_chemistry,
+                     chemistry_data_storage *my_rates,
+                     code_units *my_units, double dt_value, double dx_value,
+                     int grid_rank, int *grid_dimension,
+                     int *grid_start, int *grid_end,
+                     gr_float *density, gr_float *internal_energy,
+                     gr_float *x_velocity, gr_float *y_velocity, gr_float *z_velocity,
+                     gr_float *HI_density, gr_float *HII_density, gr_float *HM_density,
+                     gr_float *HeI_density, gr_float *HeII_density, gr_float *HeIII_density,
+                     gr_float *H2I_density, gr_float *H2II_density,
+                     gr_float *DI_density, gr_float *DII_density, gr_float *HDI_density,
+                     gr_float *e_density, gr_float *metal_density, gr_float *dust_density,
+                     gr_float *volumetric_heating_rate, gr_float *specific_heating_rate,
+                     gr_float *RT_heating_rate, gr_float *RT_HI_ionization_rate, gr_float *RT_HeI_ionization_rate,
+                     gr_float *RT_HeII_ionization_rate, gr_float *RT_H2_dissociation_rate,
+                     gr_float *H2_self_shielding_length) __attribute__ ((deprecated));
+
+int calculate_cooling_time(code_units *my_units,
+                           grackle_field_data *my_fields,
+                           gr_float *cooling_time);
+
+int local_calculate_cooling_time(chemistry_data *my_chemistry,
+                                 chemistry_data_storage *my_rates,
+                                 code_units *my_units,
+                                 grackle_field_data *my_fields,
+                                 gr_float *cooling_time);
+
+int _calculate_cooling_time(chemistry_data *my_chemistry,
+                            chemistry_data_storage *my_rates,
+                            code_units *my_units,
+                            int grid_rank, int *grid_dimension,
+                            int *grid_start, int *grid_end,
+                            gr_float *density, gr_float *internal_energy,
+                            gr_float *x_velocity, gr_float *y_velocity, gr_float *z_velocity,
+                            gr_float *HI_density, gr_float *HII_density, gr_float *HM_density,
+                            gr_float *HeI_density, gr_float *HeII_density, gr_float *HeIII_density,
+                            gr_float *H2I_density, gr_float *H2II_density,
+                            gr_float *DI_density, gr_float *DII_density, gr_float *HDI_density,
+                            gr_float *e_density, gr_float *metal_density, gr_float *dust_density,
+                            gr_float *cooling_time, gr_float *RT_heating_rate,
+                            gr_float *volumetric_heating_rate, gr_float *specific_heating_rate) __attribute__ ((deprecated));
+
+int calculate_dust_temperature(code_units *my_units,
+                               grackle_field_data *my_fields,
+                               gr_float *dust_temperature);
+
+int local_calculate_dust_temperature(chemistry_data *my_chemistry,
+                                     chemistry_data_storage *my_rates,
+                                     code_units *my_units,
+                                     grackle_field_data *my_fields,
+                                     gr_float *dust_temperature);
+
+int calculate_gamma(code_units *my_units,
+                    grackle_field_data *my_fields,
+                    gr_float *my_gamma);
+
+int local_calculate_gamma(chemistry_data *my_chemistry,
+                          chemistry_data_storage *my_rates,
+                          code_units *my_units,
+                          grackle_field_data *my_fields,
+                          gr_float *my_gamma);
+
+int _calculate_gamma(chemistry_data *my_chemistry,
+                     chemistry_data_storage *my_rates,
+                     code_units *my_units,
+                     int grid_rank, int *grid_dimension,
+                     int *grid_start, int *grid_end,
+                     gr_float *density, gr_float *internal_energy,
+                     gr_float *HI_density, gr_float *HII_density, gr_float *HM_density,
+                     gr_float *HeI_density, gr_float *HeII_density, gr_float *HeIII_density,
+                     gr_float *H2I_density, gr_float *H2II_density,
+                     gr_float *DI_density, gr_float *DII_density, gr_float *HDI_density,
+                     gr_float *e_density, gr_float *metal_density,
+                     gr_float *my_gamma) __attribute__ ((deprecated));
+
+int calculate_pressure(code_units *my_units,
+                       grackle_field_data *my_fields,
+                       gr_float *pressure);
+
+int local_calculate_pressure(chemistry_data *my_chemistry,
+                             chemistry_data_storage *my_rates,
+                             code_units *my_units,
+                             grackle_field_data *my_fields,
+                             gr_float *pressure);
+
+int _calculate_pressure(chemistry_data *my_chemistry,
+                        chemistry_data_storage *my_rates,
+                        code_units *my_units,
+                        int grid_rank, int *grid_dimension,
+                        int *grid_start, int *grid_end,
+                        gr_float *density, gr_float *internal_energy,
+                        gr_float *HI_density, gr_float *HII_density, gr_float *HM_density,
+                        gr_float *HeI_density, gr_float *HeII_density, gr_float *HeIII_density,
+                        gr_float *H2I_density, gr_float *H2II_density,
+                        gr_float *DI_density, gr_float *DII_density, gr_float *HDI_density,
+                        gr_float *e_density, gr_float *metal_density,
+                        gr_float *pressure) __attribute__ ((deprecated));
+
+int calculate_temperature(code_units *my_units,
+                          grackle_field_data *my_fields,
+                          gr_float *temperature);
+
+int local_calculate_temperature(chemistry_data *my_chemistry,
+                                chemistry_data_storage *my_rates,
+                                code_units *my_units,
+                                grackle_field_data *my_fields,
+                                gr_float *temperature);
+
+int _calculate_temperature(chemistry_data *my_chemistry,
+                           chemistry_data_storage *my_rates,
+                           code_units *my_units,
+                           int grid_rank, int *grid_dimension,
+                           int *grid_start, int *grid_end,
+                           gr_float *density, gr_float *internal_energy,
+                           gr_float *HI_density, gr_float *HII_density, gr_float *HM_density,
+                           gr_float *HeI_density, gr_float *HeII_density, gr_float *HeIII_density,
+                           gr_float *H2I_density, gr_float *H2II_density,
+                           gr_float *DI_density, gr_float *DII_density, gr_float *HDI_density,
+                           gr_float *e_density, gr_float *metal_density,
+                           gr_float *temperature) __attribute__ ((deprecated));
+
+int free_chemistry_data(void);
+
+int local_free_chemistry_data(chemistry_data *my_chemistry, chemistry_data_storage *my_rates);
+
+grackle_version get_grackle_version(void);
+
+// Below, we conditionally define a handful of deprecated functions to maintain
+// backwards compatibility. These functions were deprecated because externally
+// visible identifiers that begin with an underscore invoke undefined behavior
+// - note: to allow these functions to be called in simulation codes that are
+//         written in C, we need to label them as ``static inline`` (if they
+//         were ONLY ever used in C++, then we would just need to label them as
+//         ``inline``)
+
+#ifndef OMIT_LEGACY_INTERNAL_GRACKLE_FUNC
+
+#warning "The legacy functions, _initialize_chemistry_data, _set_default_chemistry_parameters & _free_chemistry_data will be removed after version 3.2. To avoid defining these function (and this message) define the OMIT_LEGACY_INTERNAL_GRACKLE_FUNC macro."
+
+static inline __attribute__((deprecated)) chemistry_data
+_set_default_chemistry_parameters(void) {
+  chemistry_data my_chemistry;
+  local_initialize_chemistry_parameters(&my_chemistry);
+  return my_chemistry;
+}
+
+static inline __attribute__((deprecated)) int
+_initialize_chemistry_data(chemistry_data *my_chemistry,
+                           chemistry_data_storage *my_rates,
+                           code_units *my_units)
+{ return local_initialize_chemistry_data(my_chemistry, my_rates, my_units); }
+
+static inline __attribute__((deprecated)) int
+_free_chemistry_data (chemistry_data *my_chemistry,
+                      chemistry_data_storage *my_rates)
+{ return local_free_chemistry_data(my_chemistry, my_rates); }
+
+#endif /* OMIT_LEGACY_INTERNAL_GRACKLE_FUNC */
+
+#endif
