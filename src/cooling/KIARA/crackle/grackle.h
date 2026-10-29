@@ -14,6 +14,9 @@
 #ifndef __GRACKLE_H__
 #define __GRACKLE_H__
 
+/* crackle in SWIFT: rename all exported symbols (crk_ prefix) */
+#include "crackle_namespace.h"
+
 #include "grackle_types.h"
 #include "grackle_chemistry_data.h"
 
