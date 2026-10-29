@@ -185,10 +185,19 @@ INLINE void rt_do_thermochemistry(
   /* Note: `grackle_rates` is a global variable defined by grackle itself.
    * Using a manually allocd and initialized variable here fails with MPI
    * for some reason. */
+#ifdef CRACKLE_VALIDATE
+  struct crackle_validate_state crv;
+  crackle_validate_save(&crv, &rt_props->grackle_units, &data,
+                        species_densities, N_SPECIES, iact_rates, 5);
+#endif
   if (local_solve_chemistry(&rt_props->grackle_chemistry_data,
                             &rt_props->grackle_chemistry_rates,
                             &rt_props->grackle_units, &data, dt) == 0)
     error("Error in solve_chemistry.");
+#ifdef CRACKLE_VALIDATE
+  crackle_validate_check(&crv, crackle_validate_local, 0, dt,
+                         species_densities, iact_rates, 0., p->id);
+#endif
 
   /* copy from grackle data to particle */
   cooling_copy_from_grackle(&data, p, xp, cooling, species_densities[12]);
@@ -342,10 +351,19 @@ float rt_tchem_get_tchem_time(
    * Using a manually allocd and initialized variable here fails with MPI
    * for some reason. */
   gr_float tchem_time;
+#ifdef CRACKLE_VALIDATE
+  struct crackle_validate_state crv;
+  crackle_validate_save(&crv, &rt_props->grackle_units, &data,
+                        species_densities, N_SPECIES, iact_rates, 5);
+#endif
   if (local_calculate_cooling_time(
           &rt_props->grackle_chemistry_data, &rt_props->grackle_chemistry_rates,
           &rt_props->grackle_units, &data, &tchem_time) == 0)
     error("Error in calculate_cooling_time.");
+#ifdef CRACKLE_VALIDATE
+  crackle_validate_check(&crv, crackle_validate_local, 1, 0.,
+                         species_densities, iact_rates, tchem_time, p->id);
+#endif
 
   /* Clean up after yourself. */
   cooling_grackle_free_data(&data);

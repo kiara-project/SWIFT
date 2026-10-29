@@ -186,7 +186,7 @@ endif
 # source files for KIARA cooling
 KIARA_COOLING_SOURCES =
 if HAVEKIARACOOLING
-KIARA_COOLING_SOURCES += cooling/KIARA/cooling.c 
+KIARA_COOLING_SOURCES += cooling/KIARA/cooling.c cooling/KIARA/crackle_validate.c
 endif
 
 # source files for KIARA feedback
@@ -489,6 +489,7 @@ nobase_noinst_HEADERS += cooling/PS2020/cooling_tables.h cooling/PS2020/cooling_
 nobase_noinst_HEADERS += cooling/PS2020/cooling_properties.h cooling/PS2020/cooling_debug.h
 nobase_noinst_HEADERS += cooling/KIARA/cooling.h cooling/KIARA/cooling_struct.h
 nobase_noinst_HEADERS += cooling/KIARA/cooling_io.h cooling/KIARA/cooling_properties.h cooling/KIARA/cooling_debug.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle_validate.h
 nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle.h
 nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle_aux.h
 nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle_dust.h

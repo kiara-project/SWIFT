@@ -42,6 +42,7 @@
 
 /* The grackle library itself */
 #include "crackle/grackle.h"
+#include "crackle_validate.h"
 extern chemistry_data *grackle_data;
 
 /* Local includes. */
@@ -1075,12 +1076,23 @@ gr_float cooling_grackle_driver(
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
 
+#ifdef CRACKLE_VALIDATE
+  /* Save the inputs, to run the external library on them after each call */
+  struct crackle_validate_state crv;
+  crackle_validate_save(&crv, &units, &data, species_densities, N_SPECIES,
+                        iact_rates, 5);
+#endif
+
   switch (mode) {
     case 0:
       /* solve chemistry, advance thermal energy by dt */
       if (solve_chemistry(&units, &data, dt) == 0) {
         error("Error in Grackle solve_chemistry.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 0, dt,
+                             species_densities, iact_rates, 0., p->id);
+#endif
       // if (solve_chemistry(&units, &data, -dt) == 0) {
       //   error("Error in Crackle solve_chemistry.");
       // }
@@ -1097,6 +1109,11 @@ gr_float cooling_grackle_driver(
       if (calculate_cooling_time(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_cooling_time.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 1, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
 
     case 2:
@@ -1104,6 +1121,11 @@ gr_float cooling_grackle_driver(
       if (calculate_temperature(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_temperature.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 2, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
 
     case 3:
@@ -1111,12 +1133,22 @@ gr_float cooling_grackle_driver(
       if (calculate_pressure(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_pressure.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 3, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
     case 4:
       /* compute gamma */
       if (calculate_gamma(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_gamma.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 4, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
   }
 
@@ -2163,6 +2195,13 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
 
   cooling->use_grackle_h2_form =
       cooling->use_grackle_dust_evol && COOLING_GRACKLE_MODE >= 2;
+
+#ifdef CRACKLE_VALIDATE
+  /* Initialise the external library with the same parameters */
+  crackle_validate_init(crackle_validate_global, chemistry, &cooling->units,
+                        sizeof(chemistry_data), sizeof(code_units),
+                        sizeof(grackle_field_data));
+#endif
 
   /* Initialize the chemistry object. */
   if (initialize_chemistry_data(&cooling->units) == 0) {

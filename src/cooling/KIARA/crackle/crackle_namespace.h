@@ -2,7 +2,7 @@
  * This file is part of SWIFT.
  *
  * crackle namespace: every symbol exported by the crackle library is renamed
- * with a crk_ prefix (names already starting with crackle_ are kept), so that
+ * with a crk_ prefix, so that
  * it cannot clash with, or be interposed by, an external Grackle library.
  * This file must be included before any other crackle/Grackle header; the
  * crackle sources are compiled with -include crackle_namespace.h and SWIFT
@@ -153,4 +153,7 @@
 #define update_UVbackground_rates crk_update_UVbackground_rates
 #define vibh_rate crk_vibh_rate
 
+#define crackle_cooling_time crk_crackle_cooling_time
+#define crackle_solve_chemistry crk_crackle_solve_chemistry
+#define crackle_temperature crk_crackle_temperature
 #endif /* CRACKLE_NAMESPACE_H */

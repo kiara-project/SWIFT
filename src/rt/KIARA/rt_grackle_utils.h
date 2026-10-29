@@ -26,6 +26,7 @@
 #include "hydro.h"
 
 #include "../../cooling/KIARA/crackle/grackle.h"
+#include "../../cooling/KIARA/crackle_validate.h"
 
 /* need to rework (and check) code if changed */
 #define FIELD_SIZE 1
@@ -200,6 +201,13 @@ __attribute__((always_inline)) INLINE static void rt_init_grackle(
   // grackle_chemistry_data->HydrogenFractionByMass = hydrogen_mass_fraction;
   /* Use case B recombination? (On-the-spot approximation) */
   grackle_chemistry_data->CaseBRecombination = case_B_recombination;
+
+#ifdef CRACKLE_VALIDATE
+  /* Initialise the external library with the same parameters */
+  crackle_validate_init(crackle_validate_local, grackle_chemistry_data,
+                        grackle_units, sizeof(chemistry_data),
+                        sizeof(code_units), sizeof(grackle_field_data));
+#endif
 
   if (local_initialize_chemistry_data(grackle_chemistry_data,
                                       grackle_chemistry_rates,
