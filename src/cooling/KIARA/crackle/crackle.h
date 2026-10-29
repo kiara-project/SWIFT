@@ -1,4 +1,5 @@
 
+#include "crackle_namespace.h"
 #include "grackle_types.h"
 #include "grackle_chemistry_data.h"
 
@@ -125,6 +126,18 @@ typedef struct
   cr_float SNe_density; // Crackle needs the number of SNe per unit volume (in code units)
 
 } grackle_part_data;
+
+/**
+ * @brief Initialise the evolved (non-input) quantities of a particle before
+ * a crackle call; the inputs are set by the caller.
+ */
+static inline void crackle_init_part(grackle_part_data *gp)
+{
+	gp->edot = gp->edot_ext = gp->edot_end = gp->dedot = gp->HIdot = gp->H2Idot = gp->fSShHI = gp->fSShHeI = gp->fSShHeII = gp->rhoH = gp->rhoHe = gp->rhoH2 = gp->mmw = gp->tgas = gp->logtem = gp->delta_HI = gp->delta_HII = gp->delta_HeI = gp->delta_HeII = gp->delta_HeIII = gp->delta_HM = gp->delta_H2I = gp->delta_H2II = gp->delta_e = 0.;
+	gp->tdust = -1.;  // initialize to negative value so it makes an initial guess
+	gp->verbose = 0;
+	gp->freeze_shielding = 0;
+}
 
 typedef struct {
   /* Parameters for the chemistry rates table */
@@ -332,6 +345,15 @@ typedef struct
 /* New stuff for crackle */
 
 int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, chemistry_data_storage grackle_rates, photo_rate_storage uvb_rates, code_units *units, double dt);
+
+/* Direct per-particle API: the caller fills a grackle_part_data (after
+ * crackle_init_part) and prepares the UV background rates, units and crackle
+ * units once per step with crackle_prepare_step. */
+int crackle_prepare_step(chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, code_units *units, photo_rate_storage *uvb_rates, crackle_units *cunits);
+int crackle_get_uvb_rates(chemistry_data *chemistry, chemistry_data_storage *grackle_rates, photo_rate_storage *uvb_rates, code_units *units);
+int crackle_solve_part(grackle_part_data *gp, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *uvb_rates, code_units *units, const crackle_units *cunits, double dt);
+void crackle_cooling_time_part(grackle_part_data *gp, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *uvb_rates, code_units *units, const crackle_units *cunits, gr_float *tcool);
+void crackle_temperature_part(grackle_part_data *gp, chemistry_data *chemistry, code_units *units, gr_float *temp);
 
 void evolve_internal_energy(grackle_part_data *gp, chemistry_data *chemistry, double dtit);
 

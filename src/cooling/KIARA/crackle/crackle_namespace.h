@@ -156,4 +156,9 @@
 #define crackle_cooling_time crk_crackle_cooling_time
 #define crackle_solve_chemistry crk_crackle_solve_chemistry
 #define crackle_temperature crk_crackle_temperature
+#define crackle_cooling_time_part crk_crackle_cooling_time_part
+#define crackle_get_uvb_rates crk_crackle_get_uvb_rates
+#define crackle_prepare_step crk_crackle_prepare_step
+#define crackle_solve_part crk_crackle_solve_part
+#define crackle_temperature_part crk_crackle_temperature_part
 #endif /* CRACKLE_NAMESPACE_H */

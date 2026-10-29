@@ -31,6 +31,74 @@ int update_UVbackground_rates(chemistry_data *my_chemistry,
                               photo_rate_storage *my_uvb_rates,
                               code_units *my_units);
 
+/**
+ * @brief The UV background rates for the current redshift (my_units->a_value),
+ * or the constant photo rates if the UV background is off.
+ */
+int crackle_get_uvb_rates(chemistry_data *my_chemistry,
+                          chemistry_data_storage *my_rates,
+                          photo_rate_storage *my_uvb_rates,
+                          code_units *my_units)
+{
+
+  my_uvb_rates->k24 = my_uvb_rates->k25 = my_uvb_rates->k26 =
+    my_uvb_rates->k27 = my_uvb_rates->k28 = my_uvb_rates->k29 =
+    my_uvb_rates->k30 = my_uvb_rates->k31 = my_uvb_rates->piHI =
+    my_uvb_rates->piHeI = my_uvb_rates->piHeII = my_uvb_rates->crsHI =
+    my_uvb_rates->crsHeI = my_uvb_rates->crsHeII =
+    my_uvb_rates->comp_xray = my_uvb_rates->temp_xray = 0.;
+
+  if (my_chemistry->UVbackground == 1) {
+    if (update_UVbackground_rates(my_chemistry, my_rates,
+                                  my_uvb_rates, my_units) == FAIL) {
+      fprintf(stderr, "Error in update_UVbackground_rates.\n");
+      return FAIL;
+    }
+  }
+  else {
+    my_uvb_rates->k24       = my_rates->k24;
+    my_uvb_rates->k25       = my_rates->k25;
+    my_uvb_rates->k26       = my_rates->k26;
+    my_uvb_rates->k27       = my_rates->k27;
+    my_uvb_rates->k28       = my_rates->k28;
+    my_uvb_rates->k29       = my_rates->k29;
+    my_uvb_rates->k30       = my_rates->k30;
+    my_uvb_rates->k31       = my_rates->k31;
+    my_uvb_rates->piHI      = my_rates->piHI;
+    my_uvb_rates->piHeI     = my_rates->piHeI;
+    my_uvb_rates->piHeII    = my_rates->piHeII;
+    my_uvb_rates->crsHI     = my_rates->crsHI;
+    my_uvb_rates->crsHeI    = my_rates->crsHeI;
+    my_uvb_rates->crsHeII   = my_rates->crsHeII;
+    my_uvb_rates->comp_xray = my_rates->comp_xray;
+    my_uvb_rates->temp_xray = my_rates->temp_xray;
+  }
+
+  return SUCCESS;
+}
+
+/**
+ * @brief Everything the per-particle crackle calls need that depends only on
+ * the parameters, units and redshift: call once per step, then use the
+ * crackle_*_part functions.
+ *
+ * Sets my_units->temperature_units, the UV background rates and the crackle
+ * units, exactly as solve_chemistry() does for every call.
+ */
+int crackle_prepare_step(chemistry_data *my_chemistry,
+                         const chemistry_data_storage *my_rates,
+                         code_units *my_units,
+                         photo_rate_storage *my_uvb_rates,
+                         crackle_units *cunits)
+{
+  if (crackle_get_uvb_rates(my_chemistry, (chemistry_data_storage *)my_rates,
+                            my_uvb_rates, my_units) == FAIL)
+    return FAIL;
+  my_units->temperature_units = get_temperature_units(my_units);
+  set_crackle_units(my_units, my_rates, my_chemistry->Gamma, cunits);
+  return SUCCESS;
+}
+
 int local_solve_chemistry(chemistry_data *my_chemistry,
                           chemistry_data_storage *my_rates,
                           code_units *my_units,
@@ -45,39 +113,8 @@ int local_solve_chemistry(chemistry_data *my_chemistry,
 
   /* Update UV background rates. */
   photo_rate_storage my_uvb_rates;
-
-  my_uvb_rates.k24 = my_uvb_rates.k25 = my_uvb_rates.k26 =
-    my_uvb_rates.k27 = my_uvb_rates.k28 = my_uvb_rates.k29 =
-    my_uvb_rates.k30 = my_uvb_rates.k31 = my_uvb_rates.piHI =
-    my_uvb_rates.piHeI = my_uvb_rates.piHeII = my_uvb_rates.crsHI =
-    my_uvb_rates.crsHeI = my_uvb_rates.crsHeII =
-    my_uvb_rates.comp_xray = my_uvb_rates.temp_xray = 0.;
-
-  if (my_chemistry->UVbackground == 1) {
-    if (update_UVbackground_rates(my_chemistry, my_rates,
-                                  &my_uvb_rates, my_units) == FAIL) {
-      fprintf(stderr, "Error in update_UVbackground_rates.\n");
-      return FAIL;
-    }
-  }
-  else {
-    my_uvb_rates.k24       = my_rates->k24;
-    my_uvb_rates.k25       = my_rates->k25;
-    my_uvb_rates.k26       = my_rates->k26;
-    my_uvb_rates.k27       = my_rates->k27;
-    my_uvb_rates.k28       = my_rates->k28;
-    my_uvb_rates.k29       = my_rates->k29;
-    my_uvb_rates.k30       = my_rates->k30;
-    my_uvb_rates.k31       = my_rates->k31;
-    my_uvb_rates.piHI      = my_rates->piHI;
-    my_uvb_rates.piHeI     = my_rates->piHeI;
-    my_uvb_rates.piHeII    = my_rates->piHeII;
-    my_uvb_rates.crsHI     = my_rates->crsHI;
-    my_uvb_rates.crsHeI    = my_rates->crsHeI;
-    my_uvb_rates.crsHeII   = my_rates->crsHeII;
-    my_uvb_rates.comp_xray = my_rates->comp_xray;
-    my_uvb_rates.temp_xray = my_rates->temp_xray;
-  }
+  if (crackle_get_uvb_rates(my_chemistry, my_rates, &my_uvb_rates, my_units) == FAIL)
+    return FAIL;
 
   /* Check for a metal field. */
 

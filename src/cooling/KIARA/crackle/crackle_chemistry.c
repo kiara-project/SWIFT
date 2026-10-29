@@ -33,20 +33,34 @@
 
 int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, chemistry_data_storage grackle_rates, photo_rate_storage my_uvb_rates, code_units *units, double dt) 
 {
-	int iter=0;
-	double dtit=0., dtcool=0., dtsuppress=1., edot_prev=0.;
-	grackle_part_data gp, gp_old, gp_species;
-	chemistry_rate_storage my_rates;  // interpolated rates for this field
-	interp_struct interpolation;
+	grackle_part_data gp;
 	crackle_units cunits;
 
 	/* Copy to grackle_part_data */
 	copy_grackle_fields_to_part(p, &gp, chemistry);
+	/* Set up various unit conversions etc */
+	set_crackle_units(units, &grackle_rates, chemistry->Gamma, &cunits);
+
+	const int ierr = crackle_solve_part(&gp, chemistry, &grackle_rates, &my_uvb_rates, units, &cunits, dt);
+
+	/* Copy from grackle_part_data */
+	copy_grackle_fields_from_part(p, &gp, chemistry);
+
+	return ierr;
+}
+
+int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *my_uvb_rates, code_units *units, const crackle_units *cunits_in, double dt)
+{
+	int iter=0;
+	double dtit=0., dtcool=0., dtsuppress=1., edot_prev=0.;
+	grackle_part_data gp = *gp_io, gp_old, gp_species;
+	chemistry_rate_storage my_rates;  // interpolated rates for this field
+	interp_struct interpolation;
+	const crackle_units cunits = *cunits_in;
+
 
 	check_hydrogen(&gp, 0);
 
-	/* Set up various unit conversions etc */
-	set_crackle_units(units, grackle_rates, chemistry->Gamma, &cunits);
 
 	/* Compute some basic properties, save T at start */
 	set_rhot(&gp, units, chemistry);
@@ -57,7 +71,7 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
 	if (gp.isrf_habing < 0.) gp.isrf_habing = 0.;
 
 	/* initialize inteprolation of chemistry rate tables for this particle */
-	init_temperature_interpolation(&gp, chemistry, &interpolation, &cunits, &grackle_rates, &my_uvb_rates);
+	init_temperature_interpolation(&gp, chemistry, &interpolation, &cunits, grackle_rates, my_uvb_rates);
 
 	while (dtcool < dt) {
 	    //if (gp.tgas < 100.) gp.verbose = 1;
@@ -68,10 +82,10 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
 	    /* Set up cooling/heating rates interpolation */
 	    setup_temperature_interpolation(gp.logtem, chemistry, &interpolation);
 	    /* Get interpolated chemistry rates for this particle */
-	    lookup_chemistry_coeffs(chemistry->primordial_chemistry, &grackle_rates, &my_rates, &interpolation);
+	    lookup_chemistry_coeffs(chemistry->primordial_chemistry, grackle_rates, &my_rates, &interpolation);
 	    /* In the first iteration we need edot for the timestep; afterwards we use the effective edot of the previous iteration */
 	    if (iter == 0) {
-	        compute_edot(&gp, chemistry, &grackle_rates, &my_rates, &my_uvb_rates, &interpolation, units, &cunits, ism_flag);
+	        compute_edot(&gp, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);
 	    }
 	    /* Species rates for the timestep must be recomputed every iteration, else a large initial rate keeps dtit tiny all step */
 	    gp.HIdot = compute_HIdot(chemistry->primordial_chemistry, &gp, chemistry, &my_rates, units);
@@ -100,14 +114,14 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
 
 	    /* Energy update with step-averaged species: 2nd-order L-stable Rosenbrock (ROS2) step, stable even when dtit is much
 	     * longer than the thermal relaxation time (e.g. near thermal equilibrium, where |edot| << individual heating/cooling terms) */
-	    evolve_energy_ros2(&gp, gp_old.internal_energy, dtit, chemistry, &grackle_rates, &my_rates, &my_uvb_rates, &interpolation, units, &cunits, ism_flag);
+	    evolve_energy_ros2(&gp, gp_old.internal_energy, dtit, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);
 
 	    /* Species rates at the mid-step temperature for the second species half-step */
 	    grackle_part_data gp_mid = gp;
 	    gp_mid.internal_energy = 0.5 * (gp_old.internal_energy + gp.internal_energy);
 	    set_rhot(&gp_mid, units, chemistry);
 	    setup_temperature_interpolation(gp_mid.logtem, chemistry, &interpolation);
-	    lookup_chemistry_coeffs(chemistry->primordial_chemistry, &grackle_rates, &my_rates, &interpolation);
+	    lookup_chemistry_coeffs(chemistry->primordial_chemistry, grackle_rates, &my_rates, &interpolation);
 
 	    /* Do iteration again using step-averaged species densities; only need 1/2 iteration for species */
 	    evolve_hydrogen(&gp, &gp, chemistry, &my_rates, 0.5 * dtit);  
@@ -151,9 +165,8 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
 	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dt - dtcool);
 	}
 
-	/* Copy from grackle_part_data */
-	copy_grackle_fields_from_part(p, &gp, chemistry);
 	check_hydrogen(&gp, 99);
+	*gp_io = gp;
 
 	return 1;
 }
@@ -801,27 +814,35 @@ void save_species_data(grackle_part_data *gp_orig, grackle_part_data *gp_target)
 void crackle_cooling_time(grackle_field_data *p, chemistry_data *chemistry, chemistry_data_storage grackle_rates, photo_rate_storage my_uvb_rates, code_units *units, gr_float *tcool)
 {
 	grackle_part_data gp[1];
-	chemistry_rate_storage my_rates;  // interpolated rates for this field
-	interp_struct interpolation;
 	crackle_units cunits;
 
 	/* Copy to grackle_part_data */
 	copy_grackle_fields_to_part(p, gp, chemistry);
+	/* Set up various unit conversions etc */
+	set_crackle_units(units, &grackle_rates, chemistry->Gamma, &cunits);
+
+	crackle_cooling_time_part(gp, chemistry, &grackle_rates, &my_uvb_rates, units, &cunits, tcool);
+}
+
+void crackle_cooling_time_part(grackle_part_data *gp, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *my_uvb_rates, code_units *units, const crackle_units *cunits_in, gr_float *tcool)
+{
+	chemistry_rate_storage my_rates;  // interpolated rates for this field
+	interp_struct interpolation;
+	const crackle_units cunits = *cunits_in;
+
 	/* Compute some basic properties */
 	set_rhot(gp, units, chemistry);
-	/* Set up various unit conversions etc */
-	set_crackle_units(units, grackle_rates, chemistry->Gamma, &cunits);
 	/* initialize inteprolation of chemistry rate tables for this particle */
-	init_temperature_interpolation(gp, chemistry, &interpolation, &cunits, &grackle_rates, &my_uvb_rates);
+	init_temperature_interpolation(gp, chemistry, &interpolation, &cunits, grackle_rates, my_uvb_rates);
 	/* Set up cooling/heating rates interpolation */
 	setup_temperature_interpolation(gp->logtem, chemistry, &interpolation);
 	/* Get interpolated chemistry rates for this particle */
-	lookup_chemistry_coeffs(chemistry->primordial_chemistry, &grackle_rates, &my_rates, &interpolation);  
+	lookup_chemistry_coeffs(chemistry->primordial_chemistry, grackle_rates, &my_rates, &interpolation);  
 	/* ISM flag: see whether we should be forming dust and evolving H2 */
 	int ism_flag = (gp->isrf_habing >= 0.);
 	if (gp->isrf_habing < 0.) gp->isrf_habing = 0.;
 	/* Compute rate of change of thermal energy */
-	compute_edot(gp, chemistry, &grackle_rates, &my_rates, &my_uvb_rates, &interpolation, units, &cunits, ism_flag);  
+	compute_edot(gp, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);  
 
 	*tcool = gp->internal_energy * gp->density / (gp->edot+tiny);
 	return;
@@ -833,6 +854,14 @@ void crackle_temperature(grackle_field_data *p, chemistry_data *chemistry, code_
 
 	/* Copy to grackle_part_data */
 	copy_grackle_fields_to_part(p, &gp, chemistry);
+
+	crackle_temperature_part(&gp, chemistry, units, temp);
+}
+
+void crackle_temperature_part(grackle_part_data *gp_in, chemistry_data *chemistry, code_units *units, gr_float *temp)
+{
+	grackle_part_data gp = *gp_in;
+
 	/* Compute some basic properties */
 	set_rhot(&gp, units, chemistry);
 
