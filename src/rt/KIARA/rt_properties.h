@@ -622,17 +622,20 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
 }
 
 /**
- * @brief Update the RT properties at the start of a step (currently the
- * grackle units, for the new expansion factor).
+ * @brief Update the RT properties at the start of a step (the grackle
+ * units, and what crackle needs, for the new expansion factor).
  *
  * @param rtp The #rt_props.
  * @param us The internal #unit_system.
  * @param cosmo The current cosmological model.
  */
+void rt_tchem_prepare_step(struct rt_props *rtp);
+
 __attribute__((always_inline)) INLINE static void rt_props_update(
     struct rt_props *rtp, const struct unit_system *us,
     struct cosmology *cosmo) {
   update_grackle_units_cosmo(&(rtp->grackle_units), us, cosmo);
+  rt_tchem_prepare_step(rtp);
 }
 
 /**

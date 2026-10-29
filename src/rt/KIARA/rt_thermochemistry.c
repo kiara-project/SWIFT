@@ -36,6 +36,180 @@ extern chemistry_data *grackle_data;
  * thermochemistry related functions.
  */
 
+/*! What crackle needs at the current expansion factor for the RT chemistry
+ * instance (UV background rates and crackle units), set by
+ * rt_tchem_prepare_step() in rt_props_update() and read-only during the
+ * step. Kept out of #rt_props so that the restart files are unchanged. */
+static struct {
+  photo_rate_storage uvb_rates;
+  crackle_units cunits;
+} rt_crackle_step;
+
+/**
+ * @brief Compute what crackle needs at the current expansion factor for the
+ * RT chemistry instance (once per step, instead of once per particle).
+ *
+ * @param rtp The #rt_props (its grackle units have the current a).
+ */
+void rt_tchem_prepare_step(struct rt_props *rtp) {
+  if (crackle_prepare_step(&rtp->grackle_chemistry_data,
+                           &rtp->grackle_chemistry_rates, &rtp->grackle_units,
+                           &rt_crackle_step.uvb_rates,
+                           &rt_crackle_step.cunits) == 0)
+    error("Error in crackle_prepare_step.");
+}
+
+/**
+ * @brief Run the RT chemistry instance of crackle on a particle through
+ * Grackle's field arrays (the Phase 1 path, kept for validation).
+ *
+ * @param p Particle to work on (updated in mode 0).
+ * @param xp Pointer to the particle' extended data (updated in mode 0).
+ * @param rt_props RT properties struct.
+ * @param cosmo The current cosmological model.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param us The internal system of units.
+ * @param dt The time-step (mode 0).
+ * @param iact_rates The RT interaction rates (zeroed in the subgrid ISM).
+ * @param species (return) HI, HII, HeI, HeII, HeIII, e- densities after the
+ * call.
+ * @param mode 0: solve the chemistry over dt; 1: cooling time.
+ * @return The new internal energy (mode 0) or the cooling time (mode 1).
+ */
+static gr_float rt_tchem_crackle_fields(
+    struct part *restrict p, struct xpart *restrict xp,
+    struct rt_props *rt_props, const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    const struct unit_system *restrict us, const double dt,
+    gr_float iact_rates[5], gr_float species[6], const int mode) {
+
+  gr_float species_densities[N_SPECIES] = {0.};
+  grackle_field_data data;
+  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, 0.,
+                          species_densities, iact_rates, 0);
+
+#ifdef CRACKLE_VALIDATE
+  struct crackle_validate_state crv;
+  crackle_validate_save(&crv, &rt_props->grackle_units, &data,
+                        species_densities, N_SPECIES, iact_rates, 5);
+#endif
+  gr_float result = 0.;
+  if (mode == 0) {
+    if (local_solve_chemistry(&rt_props->grackle_chemistry_data,
+                              &rt_props->grackle_chemistry_rates,
+                              &rt_props->grackle_units, &data, dt) == 0)
+      error("Error in solve_chemistry.");
+  } else {
+    if (local_calculate_cooling_time(&rt_props->grackle_chemistry_data,
+                                     &rt_props->grackle_chemistry_rates,
+                                     &rt_props->grackle_units, &data,
+                                     &result) == 0)
+      error("Error in calculate_cooling_time.");
+  }
+#ifdef CRACKLE_VALIDATE
+  crackle_validate_check(&crv, crackle_validate_local, mode, dt,
+                         species_densities, iact_rates, result, p->id);
+#endif
+
+  if (mode == 0) {
+    cooling_copy_from_grackle(&data, p, xp, cooling, species_densities[12]);
+    result = data.internal_energy[0];
+  }
+  species[0] = data.HI_density[0];
+  species[1] = data.HII_density[0];
+  species[2] = data.HeI_density[0];
+  species[3] = data.HeII_density[0];
+  species[4] = data.HeIII_density[0];
+  species[5] = data.e_density[0];
+
+  cooling_grackle_free_data(&data);
+  return result;
+}
+
+/**
+ * @brief Run the RT chemistry instance of crackle directly on a particle.
+ *
+ * Same arguments and results as rt_tchem_crackle_fields().
+ */
+static gr_float rt_tchem_crackle_direct(
+    struct part *restrict p, struct xpart *restrict xp,
+    struct rt_props *rt_props, const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling, const double dt,
+    gr_float iact_rates[5], gr_float species[6], const int mode) {
+
+  grackle_part_data gp;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, dt, 0., iact_rates, 0);
+
+  /* A private copy, as crackle may write the temperature units */
+  code_units units = rt_props->grackle_units;
+  gr_float result = 0.;
+  if (mode == 0) {
+    if (crackle_solve_part(&gp, &rt_props->grackle_chemistry_data,
+                           &rt_props->grackle_chemistry_rates,
+                           &rt_crackle_step.uvb_rates, &units,
+                           &rt_crackle_step.cunits, dt) == 0)
+      error("Error in crackle_solve_part.");
+    cooling_copy_from_crackle(&gp, p, xp, cooling);
+    result = gp.internal_energy;
+  } else {
+    crackle_cooling_time_part(&gp, &rt_props->grackle_chemistry_data,
+                              &rt_props->grackle_chemistry_rates,
+                              &rt_crackle_step.uvb_rates, &units,
+                              &rt_crackle_step.cunits, &result);
+  }
+  species[0] = gp.HI_density;
+  species[1] = gp.HII_density;
+  species[2] = gp.HeI_density;
+  species[3] = gp.HeII_density;
+  species[4] = gp.HeIII_density;
+  species[5] = gp.e_density;
+  return result;
+}
+
+/**
+ * @brief Run the RT chemistry instance of crackle on a particle.
+ *
+ * Directly on the particle, except with CRACKLE_VALIDATE (comparison with
+ * an external library), which goes through the field arrays; with
+ * CRACKLE_VALIDATE_DIRECT both paths are run and must agree bit for bit.
+ * Same arguments and results as rt_tchem_crackle_fields().
+ */
+static gr_float rt_tchem_crackle(struct part *restrict p,
+                                 struct xpart *restrict xp,
+                                 struct rt_props *rt_props,
+                                 const struct cosmology *restrict cosmo,
+                                 const struct cooling_function_data
+                                     *restrict cooling,
+                                 const struct unit_system *restrict us,
+                                 const double dt, gr_float iact_rates[5],
+                                 gr_float species[6], const int mode) {
+#if defined(CRACKLE_VALIDATE)
+  return rt_tchem_crackle_fields(p, xp, rt_props, cosmo, cooling, us, dt,
+                                 iact_rates, species, mode);
+#elif defined(CRACKLE_VALIDATE_DIRECT)
+  struct part p_ref = *p;
+  struct xpart xp_ref = *xp;
+  gr_float iact_ref[5], species_ref[6];
+  memcpy(iact_ref, iact_rates, sizeof(iact_ref));
+  const gr_float result_ref =
+      rt_tchem_crackle_fields(&p_ref, &xp_ref, rt_props, cosmo, cooling, us,
+                              dt, iact_ref, species_ref, mode);
+  const gr_float result = rt_tchem_crackle_direct(
+      p, xp, rt_props, cosmo, cooling, dt, iact_rates, species, mode);
+  if (memcmp(species, species_ref, sizeof(species_ref)) != 0)
+    error(
+        "crackle direct validation (RT): species differ, id=%lld mode=%d "
+        "HI %.17g/%.17g e %.17g/%.17g",
+        p->id, mode, species[0], species_ref[0], species[5], species_ref[5]);
+  cooling_crackle_validate_direct(p, &p_ref, xp, &xp_ref, iact_rates, iact_ref,
+                                  result, result_ref, 10 + mode);
+  return result;
+#else
+  return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt,
+                                 iact_rates, species, mode);
+#endif
+}
+
 /**
  * @brief initialize particle quantities relevant for the thermochemistry.
  *
@@ -154,58 +328,27 @@ INLINE void rt_do_thermochemistry(
   const float u_old = internal_energy;
 #endif
 
-  /* initialize data to send to grackle */
-  gr_float *species_densities;
-  species_densities = (gr_float *)calloc(N_SPECIES, sizeof(gr_float));
-  grackle_field_data data;
+  /* The interaction rates are computed with zero species densities, as
+   * before (the species array was filled only afterwards) */
+  gr_float species_zero[6] = {0., 0., 0., 0., 0., 0.};
 
   /* load particle information from particle to grackle data */
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
 
-  /* TODO: put the iact_rates to the cooling grackle data. */
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
-      iact_rates, radiation_energy_density, species_densities,
+      iact_rates, radiation_energy_density, species_zero,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
       rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
-  /* TODO: currently manually add iact_rates in grackle data field here. */
-  data.RT_heating_rate = &iact_rates[0];
-  data.RT_HI_ionization_rate = &iact_rates[1];
-  data.RT_HeI_ionization_rate = &iact_rates[2];
-  data.RT_HeII_ionization_rate = &iact_rates[3];
-  data.RT_H2_dissociation_rate = &iact_rates[4];
+  /* solve chemistry; species_new gets the HI, HII, HeI, HeII, HeIII and e-
+   * densities after the step */
+  gr_float species_new[6];
+  internal_energy_phys = rt_tchem_crackle(p, xp, rt_props, cosmo, cooling, us,
+                                          dt, iact_rates, species_new, 0);
 
-  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, 0.,
-                          species_densities, iact_rates, 0);
-
-  /* solve chemistry */
-  /* Note: `grackle_rates` is a global variable defined by grackle itself.
-   * Using a manually allocd and initialized variable here fails with MPI
-   * for some reason. */
-#ifdef CRACKLE_VALIDATE
-  struct crackle_validate_state crv;
-  crackle_validate_save(&crv, &rt_props->grackle_units, &data,
-                        species_densities, N_SPECIES, iact_rates, 5);
-#endif
-  if (local_solve_chemistry(&rt_props->grackle_chemistry_data,
-                            &rt_props->grackle_chemistry_rates,
-                            &rt_props->grackle_units, &data, dt) == 0)
-    error("Error in solve_chemistry.");
-#ifdef CRACKLE_VALIDATE
-  crackle_validate_check(&crv, crackle_validate_local, 0, dt,
-                         species_densities, iact_rates, 0., p->id);
-#endif
-
-  /* copy from grackle data to particle */
-  cooling_copy_from_grackle(&data, p, xp, cooling, species_densities[12]);
-
-  /* copy updated grackle data to particle */
-  /* update particle internal energy. Grackle had access by reference
-   * to internal_energy */
-  internal_energy_phys = data.internal_energy[0];
   const float u_new = max(internal_energy_phys, u_minimal);
 
   /* Re-do thermochemistry? */
@@ -214,8 +357,6 @@ INLINE void rt_do_thermochemistry(
     /* Note that grackle already has internal "10% rules". But sometimes, they
      * may not suffice. */
     // rt_clean_grackle_fields(&particle_grackle_data);
-    cooling_grackle_free_data(&data);
-    free(species_densities);
     rt_do_thermochemistry(p, xp, rt_props, cosmo, hydro_props, phys_const,
                           cooling, us, 0.5 * dt, 0.5 * dt_therm, depth + 1);
     rt_do_thermochemistry(p, xp, rt_props, cosmo, hydro_props, phys_const,
@@ -245,28 +386,23 @@ INLINE void rt_do_thermochemistry(
 
   /* Update mass fractions */
   const gr_float one_over_rho = 1. / density;
-  p->rt_data.tchem.mass_fraction_HI = data.HI_density[0] * one_over_rho;
-  p->rt_data.tchem.mass_fraction_HII = data.HII_density[0] * one_over_rho;
-  p->rt_data.tchem.mass_fraction_HeI = data.HeI_density[0] * one_over_rho;
-  p->rt_data.tchem.mass_fraction_HeII = data.HeII_density[0] * one_over_rho;
-  p->rt_data.tchem.mass_fraction_HeIII = data.HeIII_density[0] * one_over_rho;
+  p->rt_data.tchem.mass_fraction_HI = species_new[0] * one_over_rho;
+  p->rt_data.tchem.mass_fraction_HII = species_new[1] * one_over_rho;
+  p->rt_data.tchem.mass_fraction_HeI = species_new[2] * one_over_rho;
+  p->rt_data.tchem.mass_fraction_HeII = species_new[3] * one_over_rho;
+  p->rt_data.tchem.mass_fraction_HeIII = species_new[4] * one_over_rho;
 
   /* Update radiation fields */
-  /* First get absorption rates at the start and the end of the step */
+  /* First get absorption rates at the start and the end of the step.
+   * Note: the species array grackle updated in place was used for the
+   * "start" rates too, so both are the end-of-step rates. Kept as it was. */
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
-      absorption_rates, species_densities, rt_props->average_photon_energy,
+      absorption_rates, species_new, rt_props->average_photon_energy,
       rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
-  gr_float species_densities_new[6];
-  species_densities_new[0] = data.HI_density[0];
-  species_densities_new[1] = data.HII_density[0];
-  species_densities_new[2] = data.HeI_density[0];
-  species_densities_new[3] = data.HeII_density[0];
-  species_densities_new[4] = data.HeIII_density[0];
-  species_densities_new[5] = data.e_density[0];
   double absorption_rates_new[RT_NGROUPS];
-  rt_get_absorption_rates(absorption_rates_new, species_densities_new,
+  rt_get_absorption_rates(absorption_rates_new, species_new,
                           rt_props->average_photon_energy,
                           rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
@@ -291,9 +427,6 @@ INLINE void rt_do_thermochemistry(
                               /*callloc=*/2);
   }
 
-  /* Clean up after yourself. */
-  cooling_grackle_free_data(&data);
-  free(species_densities);
 }
 
 /**
@@ -320,10 +453,9 @@ float rt_tchem_get_tchem_time(
   /* Note: Can't pass rt_props as const struct because of grackle
    * accessinging its properties there */
 
-  /* initialize data to send to grackle */
-  gr_float *species_densities;
-  species_densities = (gr_float *)calloc(N_SPECIES, sizeof(gr_float));
-  grackle_field_data data;
+  /* The interaction rates are computed with zero species densities, as
+   * before (the species array was filled only afterwards) */
+  gr_float species_zero[6] = {0., 0., 0., 0., 0., 0.};
 
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
@@ -331,43 +463,15 @@ float rt_tchem_get_tchem_time(
 
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
-      iact_rates, radiation_energy_density, species_densities,
+      iact_rates, radiation_energy_density, species_zero,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
       rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
-  /* load particle information from particle to grackle data */
-  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, 0., 0.,
-                          species_densities, iact_rates, 0);
-
-  /* TODO: currently manually add iact_rates in grackle data field here. */
-  data.RT_heating_rate = &iact_rates[0];
-  data.RT_HI_ionization_rate = &iact_rates[1];
-  data.RT_HeI_ionization_rate = &iact_rates[2];
-  data.RT_HeII_ionization_rate = &iact_rates[3];
-  data.RT_H2_dissociation_rate = &iact_rates[4];
-
-  /* Compute 'cooling' time */
-  /* Note: grackle_rates is a global variable defined by grackle itself.
-   * Using a manually allocd and initialized variable here fails with MPI
-   * for some reason. */
-  gr_float tchem_time;
-#ifdef CRACKLE_VALIDATE
-  struct crackle_validate_state crv;
-  crackle_validate_save(&crv, &rt_props->grackle_units, &data,
-                        species_densities, N_SPECIES, iact_rates, 5);
-#endif
-  if (local_calculate_cooling_time(
-          &rt_props->grackle_chemistry_data, &rt_props->grackle_chemistry_rates,
-          &rt_props->grackle_units, &data, &tchem_time) == 0)
-    error("Error in calculate_cooling_time.");
-#ifdef CRACKLE_VALIDATE
-  crackle_validate_check(&crv, crackle_validate_local, 1, 0.,
-                         species_densities, iact_rates, tchem_time, p->id);
-#endif
-
-  /* Clean up after yourself. */
-  cooling_grackle_free_data(&data);
-  free(species_densities);
+  /* Compute 'cooling' time (mode 1 leaves the particle unchanged) */
+  gr_float species[6];
+  const gr_float tchem_time =
+      rt_tchem_crackle((struct part *)p, (struct xpart *)xp, rt_props, cosmo,
+                       cooling, us, 0., iact_rates, species, 1);
 
   return (float)tchem_time;
 }

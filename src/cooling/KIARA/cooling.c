@@ -84,6 +84,9 @@ void cooling_update(const struct phys_const *phys_const,
   } else {
     cooling->units.a_value = 1. / (1. + cooling->redshift);
   }
+
+  /* Everything crackle needs that depends only on the redshift */
+  cooling_prepare_crackle_step(cooling);
 }
 
 /**
@@ -951,6 +954,311 @@ void cooling_copy_from_grackle(
  */
 void cooling_grackle_free_data(grackle_field_data *data) {}
 
+/*! What crackle needs at the current redshift (UV background rates and
+ * crackle units), set by cooling_prepare_crackle_step() in cooling_update()
+ * and read-only during the step. Kept out of #cooling_function_data so that
+ * the restart files are unchanged; it is recomputed after a restart. */
+static struct {
+  photo_rate_storage uvb_rates;
+  crackle_units cunits;
+} cooling_crackle_step;
+
+/**
+ * @brief Everything crackle needs that depends only on the parameters, units
+ * and redshift (temperature units, UV background rates, crackle units).
+ *
+ * Called in cooling_update (every step) and after initialising crackle.
+ *
+ * @param cooling The #cooling_function_data used in the run.
+ */
+void cooling_prepare_crackle_step(struct cooling_function_data *cooling) {
+  if (crackle_prepare_step(&cooling->chemistry, &grackle_rates, &cooling->units,
+                           &cooling_crackle_step.uvb_rates,
+                           &cooling_crackle_step.cunits) == 0)
+    error("Error in crackle_prepare_step.");
+}
+
+/**
+ * @brief Fill the crackle state of a particle directly from the particle.
+ *
+ * This gives crackle exactly the inputs that cooling_copy_to_grackle() and
+ * crackle's copy from the grackle_field_data give it, without the
+ * intermediate arrays.
+ *
+ * @param gp The crackle particle state to fill.
+ * @param cosmo The current cosmological model.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature (used outside the subgrid ISM).
+ * @param iact_rates The RT interaction rates (zeroed in the subgrid ISM).
+ * @param mode 0 solve, 1 cooling time, 2 temperature.
+ */
+void cooling_copy_to_crackle(grackle_part_data *gp,
+                             const struct cosmology *restrict cosmo,
+                             const struct cooling_function_data *restrict
+                                 cooling,
+                             const struct part *p, const struct xpart *xp,
+                             const double dt, const double T_warm,
+                             gr_float *iact_rates, int mode) {
+
+  const chemistry_data *chemistry = &cooling->chemistry;
+
+  crackle_init_part(gp);
+
+  /* A single particle; grid_end < 0 turns the UVB off (cooling times) */
+  gp->grid_rank = GRACKLE_RANK;
+  gp->grid_dimension = GRACKLE_NPART;
+  gp->grid_start = 0;
+  gp->grid_end = (mode == 1) ? -1 : GRACKLE_NPART - 1;
+
+  /* Density, internal energy (physical), floor temperature and heating rate,
+   * as in cooling_copy_to_grackle() */
+  double T_subgrid = cooling_get_subgrid_temperature(p, xp);
+  gr_float rho, u, T_floor, heating;
+  if (mode == 1) {
+    rho = hydro_get_physical_density(p, cosmo);
+    u = hydro_get_physical_internal_energy(p, xp, cosmo);
+    T_floor = cooling->T_CMB_0 * (1.f + cosmo->z);
+    heating = 0.f;
+  } else if (p->cooling_data.subgrid_temp == 0. ||
+             p->cooling_data.subgrid_fcold <= 1.e-6) {
+    rho = hydro_get_physical_density(p, cosmo);
+    u = hydro_get_physical_internal_energy(p, xp, cosmo);
+    T_floor = T_warm;
+    heating =
+        hydro_get_physical_internal_energy_dt(p, cosmo) * cooling->dudt_units;
+  } else {
+    rho = cooling_get_subgrid_density(p, xp);
+    u = cooling_convert_temp_to_u(T_subgrid, xp->cooling_data.e_frac, cooling,
+                                  p, xp);
+    T_floor = cooling->T_CMB_0 * (1.f + cosmo->z);
+    heating = 0.f;
+    if (cooling->ism_adiabatic_heating_method == 1) {
+      heating +=
+          hydro_get_physical_internal_energy_dt(p, cosmo) * cooling->dudt_units;
+    }
+  }
+  gp->density = rho;
+  gp->internal_energy = u;
+  gp->temperature_floor = T_floor;
+  if (chemistry->use_specific_heating_rate)
+    gp->specific_heating_rate = heating;
+  else
+    gp->specific_heating_rate = 0.;
+  if (chemistry->use_volumetric_heating_rate)
+    error("crackle: a volumetric heating rate is not supported");
+  gp->volumetric_heating_rate = 0.;
+
+  /* The x velocity slot holds the particle ID (for crackle's debugging) */
+  const gr_float x_velocity = (int)p->id;
+  gp->x_velocity = x_velocity;
+  gp->y_velocity = xp->v_full[1] * cosmo->a_inv;
+  gp->z_velocity = xp->v_full[2] * cosmo->a_inv;
+  gp->id = (int)x_velocity;
+
+  /* Primordial species */
+  gp->HI_density = xp->cooling_data.HI_frac * rho;
+  gp->HII_density = xp->cooling_data.HII_frac * rho;
+  gp->HeI_density = xp->cooling_data.HeI_frac * rho;
+  gp->HeII_density = xp->cooling_data.HeII_frac * rho;
+  gp->HeIII_density = xp->cooling_data.HeIII_frac * rho;
+  gp->e_density = xp->cooling_data.e_frac * rho;
+  gp->HM_density = xp->cooling_data.HM_frac * rho;
+  if (chemistry->primordial_chemistry >= 2) {
+    gp->H2I_density = xp->cooling_data.H2I_frac * rho;
+    gp->H2II_density = xp->cooling_data.H2II_frac * rho;
+  } else {
+    gp->H2I_density = 0.;
+    gp->H2II_density = 0.;
+  }
+  if (chemistry->primordial_chemistry >= 3)
+    error("crackle does not work with primordial_chemistry >= 3");
+  gp->DI_density = 0.;
+  gp->DII_density = 0.;
+  gp->HDI_density = 0.;
+
+  /* In the subgrid ISM, RT photons are absorbed by the cold clouds only
+   * (see rt_do_thermochemistry_with_subgrid), and the warm medium is taken
+   * to be ionized: no RT heating and ionisation in the subgrid ISM */
+  if (p->cooling_data.subgrid_temp > 0.f) {
+    for (int i = 0; i < 5; i++) iact_rates[i] = 0.f;
+  }
+  /* Passed whatever this instance's use_radiative_transfer, as in the field
+   * path: the KIARA-RT chemistry instance uses them, and the cooling one may
+   * have them off */
+  gp->RT_heating_rate = iact_rates[0];
+  gp->RT_HI_ionization_rate = iact_rates[1];
+  gp->RT_HeI_ionization_rate = iact_rates[2];
+  gp->RT_HeII_ionization_rate = iact_rates[3];
+  gp->RT_H2_dissociation_rate = iact_rates[4];
+
+  gp->metal_density =
+      chemistry_get_total_metal_mass_fraction_for_cooling(p) * rho;
+
+  /* Dust model, ISRF and H2 shielding length (as cooling_copy_to_grackle2) */
+  gr_float isrf = 0., L_shield = 0., dust_density = 0., SNe_density = 0.;
+  gr_float gas_metals[chemistry_element_count] = {0.};
+  gr_float dust_metals[chemistry_element_count] = {0.};
+  if (cooling->use_grackle_dust_evol == 1) {
+    dust_density = p->cooling_data.dust_mass / p->mass * rho;
+    SNe_density = p->feedback_data.SNe_ThisTimeStep * dt / p->mass * rho;
+    if (p->cooling_data.subgrid_temp == 0.f) {
+      isrf = -1.f;
+    } else {
+      isrf = p->cooling_data.G0;
+    }
+    const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
+                                  p->rho_gradient[1] * p->rho_gradient[1] +
+                                  p->rho_gradient[2] * p->rho_gradient[2];
+    const double rho_grad_norm_inv =
+        (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
+    const double rho_com = hydro_get_comoving_density(p);
+    double L_eff_com = rho_com * rho_grad_norm_inv;
+    const double L_eff_com_max = kernel_gamma * p->h;
+    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
+    L_eff_com = fmin(L_eff_com, L_eff_com_max);
+    L_eff_com = fmax(L_eff_com, L_eff_com_min);
+    L_shield = L_eff_com * cooling->units.a_value;
+    for (int i = 0; i < chemistry_element_count; i++) {
+      gas_metals[i] =
+          max(p->chemistry_data.metal_mass_fraction[i] * rho, 0.);
+      dust_metals[i] =
+          max(p->cooling_data.dust_mass_fraction[i] * dust_density, 0);
+    }
+  }
+  if (chemistry->H2_custom_shielding == 2) {
+    if (cooling->use_grackle_dust_evol != 1)
+      error("crackle: H2_custom_shielding = 2 needs the dust model");
+    gp->H2_self_shielding_length = L_shield;
+  } else if (chemistry->H2_custom_shielding == 1) {
+    error("crackle: H2_custom_shielding = 1 is not supported");
+  } else {
+    gp->H2_self_shielding_length = 0.;
+    gp->H2_custom_shielding_factor = 0.;
+  }
+  if (chemistry->use_isrf_field)
+    gp->isrf_habing = isrf;
+  else
+    gp->isrf_habing = 0.;
+  if (chemistry->use_dust_evol) {
+    gp->dust_density = dust_density;
+    for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+      gp->gas_metalDensity[i] = gas_metals[i + 1];
+      gp->dust_metalDensity[i] = dust_metals[i + 1];
+    }
+    gp->SNe_density = SNe_density;
+  } else {
+    gp->dust_density = 0.;
+    gp->SNe_density = 0.;
+    for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+      gp->gas_metalDensity[i] = 0.;
+      gp->dust_metalDensity[i] = 0.;
+    }
+  }
+
+  /* Never pass a non-finite value to crackle */
+  const gr_float check[] = {rho,
+                            u,
+                            T_floor,
+                            heating,
+                            gp->y_velocity,
+                            gp->z_velocity,
+                            gp->HI_density,
+                            gp->HII_density,
+                            gp->HeI_density,
+                            gp->HeII_density,
+                            gp->HeIII_density,
+                            gp->e_density,
+                            gp->HM_density,
+                            gp->H2I_density,
+                            gp->H2II_density,
+                            gp->metal_density,
+                            dust_density,
+                            SNe_density,
+                            isrf,
+                            L_shield};
+  for (size_t i = 0; i < sizeof(check) / sizeof(check[0]); i++) {
+    if (!cooling_value_is_finite(check[i]))
+      error("Passing a non-finite value to crackle! id=%lld i=%zu value=%g",
+            p->id, i, check[i]);
+  }
+  for (int i = 0; i < chemistry_element_count; i++) {
+    if (!cooling_value_is_finite(gas_metals[i]) ||
+        !cooling_value_is_finite(dust_metals[i]))
+      error("Passing a non-finite metal density to crackle! id=%lld i=%d",
+            p->id, i);
+  }
+}
+
+/**
+ * @brief Copy the evolved species (and dust/metals) from the crackle state
+ * back to the particle.
+ *
+ * Gives the particle exactly what crackle's copy to the grackle_field_data
+ * and cooling_copy_from_grackle() give it.
+ *
+ * @param gp The crackle particle state after the solve.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param cooling The #cooling_function_data used in the run.
+ */
+void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
+                               struct xpart *xp,
+                               const struct cooling_function_data *restrict
+                                   cooling) {
+
+  const gr_float rho = gp->density;
+  double rhoinv = 1.f / rho;
+
+  /* Primordial species */
+  xp->cooling_data.HI_frac = gp->HI_density * rhoinv;
+  xp->cooling_data.HII_frac = gp->HII_density * rhoinv;
+  xp->cooling_data.HeI_frac = gp->HeI_density * rhoinv;
+  xp->cooling_data.HeII_frac = gp->HeII_density * rhoinv;
+  xp->cooling_data.HeIII_frac = gp->HeIII_density * rhoinv;
+  xp->cooling_data.e_frac = gp->e_density * rhoinv;
+  xp->cooling_data.HM_frac = gp->HM_density * rhoinv;
+  xp->cooling_data.H2I_frac = gp->H2I_density * rhoinv;
+  xp->cooling_data.H2II_frac = gp->H2II_density * rhoinv;
+
+  /* Dust model */
+  if (cooling->use_grackle_dust_evol == 1) {
+    p->chemistry_data.metal_mass_fraction_total = gp->metal_density * rhoinv;
+    for (int i = 1; i < chemistry_element_count; i++)
+      p->chemistry_data.metal_mass_fraction[i] =
+          gp->gas_metalDensity[i - 1] * rhoinv;
+
+    /* Dust temperature used by crackle (unchanged if not computed) */
+    if (gp->tdust > 0.) p->cooling_data.dust_temperature = gp->tdust;
+
+    p->cooling_data.dust_mass = gp->dust_density * p->mass * rhoinv;
+    if (p->cooling_data.dust_mass > 0.5 * p->mass) {
+      warning("DUST > METALS Mg=%g Zg=%g mdust=%g mmet=%g\n", p->mass,
+              chemistry_get_total_metal_mass_fraction_for_cooling(p),
+              p->cooling_data.dust_mass,
+              p->mass * chemistry_get_total_metal_mass_fraction_for_cooling(p));
+    }
+    p->cooling_data.dust_mass_fraction[0] = 0.f;
+    if (gp->dust_density > 0.f) {
+      rhoinv = 1. / gp->dust_density;
+      /* no Helium metal density */
+      assert(gp->dust_metalDensity[0] == 0.);
+      for (int i = 1; i < chemistry_element_count; i++) {
+        p->cooling_data.dust_mass_fraction[i] =
+            gp->dust_metalDensity[i - 1] * rhoinv;
+        p->cooling_data.dust_mass_fraction[0] +=
+            p->cooling_data.dust_mass_fraction[i];
+      }
+    } else {
+      for (int i = 1; i < chemistry_element_count; i++) {
+        p->cooling_data.dust_mass_fraction[i] = 0.f;
+      }
+    }
+  }
+}
+
 /**
  * @brief Renomalize individual H and He species to account for
  * changes made to total H,He in other parts of code
@@ -1023,7 +1331,7 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
  *
  * @return desired quantity based on mode
  */
-gr_float cooling_grackle_driver(
+static gr_float cooling_grackle_driver_fields(
     const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us,
     const struct cosmology *restrict cosmo,
@@ -1064,10 +1372,6 @@ gr_float cooling_grackle_driver(
     xp->cooling_data.HII_frac *= non_H2_factor;
     xp->cooling_data.HM_frac *= non_H2_factor;
   }*/
-
-  /* Renomalize H,He species to account for any changes due to chemistry,
-   * stellar evol, etc */
-  cooling_normalize_primordial_species(p, xp);
 
   /* load particle information from particle to grackle data */
   cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, T_warm,
@@ -1155,6 +1459,187 @@ gr_float cooling_grackle_driver(
   cooling_grackle_free_data(&data);
 
   return return_value;
+}
+
+/**
+ * @brief Run crackle directly on the particle (modes 0-2), without the
+ * grackle_field_data arrays.
+ *
+ * @param cosmo The #cosmology.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle extra data
+ * @param iact_rates The RT heating and ionisation rates passed to crackle.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param mode 0=energy, 1=cooling time, 2=temperature
+ *
+ * @return desired quantity based on mode
+ */
+static gr_float cooling_crackle_driver(
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
+    double dt, double T_warm, int mode) {
+
+  /* The units with the temperature units of the current step */
+  code_units units = cooling->units;
+  chemistry_data *chemistry = (chemistry_data *)&cooling->chemistry;
+
+  grackle_part_data gp;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, dt, T_warm, iact_rates,
+                          mode);
+
+  gr_float return_value = 0.f;
+  switch (mode) {
+    case 0:
+      /* solve chemistry, advance thermal energy by dt */
+      if (crackle_solve_part(&gp, chemistry, &grackle_rates,
+                             &cooling_crackle_step.uvb_rates, &units,
+                             &cooling_crackle_step.cunits, fabs(dt)) == 0) {
+        error("Error in crackle_solve_part.");
+      }
+      cooling_copy_from_crackle(&gp, p, xp, cooling);
+      return_value = gp.internal_energy;
+      break;
+
+    case 1:
+      /* compute cooling time */
+      crackle_cooling_time_part(&gp, chemistry, &grackle_rates,
+                                &cooling_crackle_step.uvb_rates, &units,
+                                &cooling_crackle_step.cunits, &return_value);
+      break;
+
+    case 2:
+      /* compute temperature */
+      crackle_temperature_part(&gp, chemistry, &units, &return_value);
+      break;
+
+    default:
+      error("crackle driver: unknown mode %d", mode);
+  }
+
+  return return_value;
+}
+
+#ifdef CRACKLE_VALIDATE_DIRECT
+/**
+ * @brief Stop if the direct crackle path did not reproduce the field-array
+ * path bit for bit.
+ */
+void cooling_crackle_validate_direct(
+    const struct part *p, const struct part *p_ref, const struct xpart *xp,
+    const struct xpart *xp_ref, const gr_float *iact, const gr_float *iact_ref,
+    const gr_float result, const gr_float result_ref, const int mode) {
+
+  const int diff_p = memcmp(p, p_ref, sizeof(struct part));
+  const int diff_xp = memcmp(xp, xp_ref, sizeof(struct xpart));
+  const int diff_iact =
+      (iact != NULL) ? memcmp(iact, iact_ref, 5 * sizeof(gr_float)) : 0;
+  const int diff_r = memcmp(&result, &result_ref, sizeof(gr_float));
+  if (!diff_p && !diff_xp && !diff_iact && !diff_r) return;
+
+  const unsigned char *a = (const unsigned char *)p;
+  const unsigned char *b = (const unsigned char *)p_ref;
+  for (size_t k = 0; k < sizeof(struct part); k++)
+    if (a[k] != b[k]) {
+      message("crackle direct validation: part byte %zu differs "
+              "(cooling_data at %zu, chemistry_data at %zu)",
+              k, offsetof(struct part, cooling_data),
+              offsetof(struct part, chemistry_data));
+      break;
+    }
+  a = (const unsigned char *)xp;
+  b = (const unsigned char *)xp_ref;
+  for (size_t k = 0; k < sizeof(struct xpart); k++)
+    if (a[k] != b[k]) {
+      message("crackle direct validation: xpart byte %zu differs "
+              "(cooling_data at %zu)",
+              k, offsetof(struct xpart, cooling_data));
+      break;
+    }
+  message("crackle direct validation: id=%lld mode=%d result %.17g ref %.17g; "
+          "HI %.17g/%.17g e %.17g/%.17g H2I %.17g/%.17g u_dt %.17g/%.17g "
+          "Tdust %.17g/%.17g mdust %.17g/%.17g",
+          p->id, mode, result, result_ref, xp->cooling_data.HI_frac,
+          xp_ref->cooling_data.HI_frac, xp->cooling_data.e_frac,
+          xp_ref->cooling_data.e_frac, xp->cooling_data.H2I_frac,
+          xp_ref->cooling_data.H2I_frac, p->u_dt, p_ref->u_dt,
+          p->cooling_data.dust_temperature,
+          p_ref->cooling_data.dust_temperature, p->cooling_data.dust_mass,
+          p_ref->cooling_data.dust_mass);
+  error("crackle direct validation: the direct path differs from the field "
+        "path (part %d, xpart %d, iact %d, result %d)",
+        diff_p != 0, diff_xp != 0, diff_iact != 0, diff_r != 0);
+}
+#endif
+
+/**
+ * @brief Compute the energy of a particle after dt and update the particle
+ * chemistry data, or another quantity depending on the mode.
+ *
+ * Modes 0-2 run crackle directly on the particle; modes 3 and 4 (pressure,
+ * gamma; output only) go through Grackle's field arrays. With
+ * CRACKLE_VALIDATE (comparison with an external library) everything goes
+ * through the field arrays; with CRACKLE_VALIDATE_DIRECT both paths are run
+ * and must agree bit for bit.
+ *
+ * @param phys_const The physical constants in internal units.
+ * @param us The internal system of units.
+ * @param cosmo The #cosmology.
+ * @param hydro_props The #hydro_props.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle extra data
+ * @param iact_rates The RT heating and ionisation rates passed to grackle.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param mode 0=energy, 1=cooling time, 2=temperature, 3=pressure, 4=gamma
+ *
+ * @return desired quantity based on mode
+ */
+gr_float cooling_grackle_driver(
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct hydro_props *hydro_props,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
+    double dt, double T_warm, int mode) {
+
+  /* Renomalize H,He species to account for any changes due to chemistry,
+   * stellar evol, etc */
+  cooling_normalize_primordial_species(p, xp);
+
+#if defined(CRACKLE_VALIDATE)
+  return cooling_grackle_driver_fields(phys_const, us, cosmo, hydro_props,
+                                       cooling, p, xp, iact_rates, dt, T_warm,
+                                       mode);
+#else
+  if (mode > 2)
+    return cooling_grackle_driver_fields(phys_const, us, cosmo, hydro_props,
+                                         cooling, p, xp, iact_rates, dt,
+                                         T_warm, mode);
+#ifdef CRACKLE_VALIDATE_DIRECT
+  /* Run the field path on copies, then the direct path on the particle */
+  struct part p_ref = *p;
+  struct xpart xp_ref = *xp;
+  gr_float iact_ref[5] = {0., 0., 0., 0., 0.};
+  if (iact_rates != NULL) memcpy(iact_ref, iact_rates, sizeof(iact_ref));
+  const gr_float result_ref = cooling_grackle_driver_fields(
+      phys_const, us, cosmo, hydro_props, cooling, &p_ref, &xp_ref,
+      (iact_rates != NULL) ? iact_ref : NULL, dt, T_warm, mode);
+  const gr_float result =
+      cooling_crackle_driver(cosmo, cooling, p, xp, iact_rates, dt, T_warm,
+                             mode);
+  cooling_crackle_validate_direct(p, &p_ref, xp, &xp_ref, iact_rates, iact_ref,
+                                  result, result_ref, mode);
+  return result;
+#else
+  return cooling_crackle_driver(cosmo, cooling, p, xp, iact_rates, dt, T_warm,
+                                mode);
+#endif
+#endif
 }
 
 /**
@@ -2207,6 +2692,9 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   if (initialize_chemistry_data(&cooling->units) == 0) {
     error("Error in initialize_chemistry_data.");
   }
+
+  /* What crackle needs at the current redshift (updated every step) */
+  cooling_prepare_crackle_step(cooling);
 }
 
 /**

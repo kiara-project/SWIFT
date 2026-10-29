@@ -31,6 +31,7 @@
 
 /* The grackle library itself */
 #include "crackle/grackle.h"
+#include "crackle/crackle.h"
 
 /* Local includes. */
 #include "chemistry.h"
@@ -122,6 +123,24 @@ void cooling_copy_from_grackle(
     grackle_field_data *data, struct part *p, struct xpart *xp,
     const struct cooling_function_data *restrict cooling, gr_float rho);
 void cooling_grackle_free_data(grackle_field_data *data);
+void cooling_prepare_crackle_step(struct cooling_function_data *cooling);
+void cooling_copy_to_crackle(grackle_part_data *gp,
+                             const struct cosmology *restrict cosmo,
+                             const struct cooling_function_data *restrict
+                                 cooling,
+                             const struct part *p, const struct xpart *xp,
+                             const double dt, const double T_warm,
+                             gr_float *iact_rates, int mode);
+void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
+                               struct xpart *xp,
+                               const struct cooling_function_data *restrict
+                                   cooling);
+#ifdef CRACKLE_VALIDATE_DIRECT
+void cooling_crackle_validate_direct(
+    const struct part *p, const struct part *p_ref, const struct xpart *xp,
+    const struct xpart *xp_ref, const gr_float *iact, const gr_float *iact_ref,
+    const gr_float result, const gr_float result_ref, const int mode);
+#endif
 gr_float cooling_grackle_driver(
     const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us,
