@@ -59,6 +59,7 @@ void rt_tchem_prepare_step(struct rt_props *rtp) {
     error("Error in crackle_prepare_step.");
 }
 
+#if defined(CRACKLE_VALIDATE) || defined(CRACKLE_VALIDATE_DIRECT)
 /**
  * @brief Run the RT chemistry instance of crackle on a particle through
  * Grackle's field arrays (the Phase 1 path, kept for validation).
@@ -125,6 +126,7 @@ static gr_float rt_tchem_crackle_fields(
   cooling_grackle_free_data(&data);
   return result;
 }
+#endif /* CRACKLE_VALIDATE || CRACKLE_VALIDATE_DIRECT */
 
 /**
  * @brief Run the RT chemistry instance of crackle directly on a particle.
