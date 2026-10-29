@@ -267,7 +267,20 @@ struct chemistry_part_data {
   float dv[3];
 };
 
-#define chemistry_spart_data chemistry_part_data
+/**
+ * @brief Chemical abundances traced by the #spart in the KIARA model.
+ *
+ * Only what a star needs (its composition at birth); the gas particles'
+ * diffusion and firehose fields are not carried.
+ */
+struct chemistry_spart_data {
+
+  /*! Fraction of the particle mass in a given element */
+  float metal_mass_fraction[chemistry_element_count];
+
+  /*! Fraction of the particle mass in *all* metals */
+  float metal_mass_fraction_total;
+};
 
 /**
  * @brief Chemical abundances traced by the #bpart in the KIARA model.

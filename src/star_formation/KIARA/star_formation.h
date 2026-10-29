@@ -767,7 +767,12 @@ INLINE static void star_formation_copy_properties(
   sp->split_data = xp->split_data;
 
   /* Store the chemistry struct in the star particle */
-  sp->chemistry_data = p->chemistry_data;
+  for (int elem = 0; elem < chemistry_element_count; elem++) {
+    sp->chemistry_data.metal_mass_fraction[elem] =
+        p->chemistry_data.metal_mass_fraction[elem];
+  }
+  sp->chemistry_data.metal_mass_fraction_total =
+      p->chemistry_data.metal_mass_fraction_total;
 
 #if COOLING_GRACKLE_MODE >= 2
   /* The gas metal fractions are gas-phase only (X + Y + Z + D = 1): the star
