@@ -2062,20 +2062,26 @@ void cooling_init_chemistry(
   /* Small margin so round-off in the enriched total doesn't re-trigger this
    * every step (which would reset any dust grown since) */
   if (p->cooling_data.subgrid_temp > 0.f && total_Z < 0.99f * self_Z) {
-    float Z_sun = 0.f;
-    for (int i = 1; i < 10; i++) {
-      Z_sun += cooling->chemistry.SolarAbundances[i];
+    /* Solar metal mass fraction, total and in the dust elements (the
+     * SolarAbundances array starts at He) */
+    float Z_sun = 0.f, Z_sun_dust = 0.f;
+    for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
+      Z_sun += cooling->chemistry.SolarAbundances[i - 1];
+      if (dust_element_of_chemistry(i) >= 0)
+        Z_sun_dust += cooling->chemistry.SolarAbundances[i - 1];
     }
 
     /* Distribute the self-enrichment metallicity among elements
-       assuming solar abundance ratios*/
+       assuming solar abundance ratios; init_dust_to_gas of the dust
+       elements is in dust */
     p->chemistry_data.metal_mass_fraction_total = 0.f;
-    /* Offset index for the SolarAbundaces array (starts at He -> Fe) */
-    int j = 1;
     for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
-      /* fraction of gas mass in each element */
+      const int d = dust_element_of_chemistry(i);
+
+      /* fraction of gas mass in each element (gas phase) */
+      const float f_gas = (d >= 0) ? 1.f - init_dust_to_gas : 1.f;
       p->chemistry_data.metal_mass_fraction[i] =
-          (1.f - init_dust_to_gas) * cooling->chemistry.SolarAbundances[j] *
+          f_gas * cooling->chemistry.SolarAbundances[i - 1] *
           cooling->self_enrichment_metallicity;
       p->chemistry_data.metal_mass_fraction[i] /= Z_sun;
 
@@ -2084,16 +2090,15 @@ void cooling_init_chemistry(
           p->chemistry_data.metal_mass_fraction[i];
 
       /* fraction of dust mass in each element (sums to 1) */
-      const int d = dust_element_of_chemistry(i);
       if (d >= 0)
         p->cooling_data.dust_mass_fraction[d] =
-            cooling->chemistry.SolarAbundances[j] / Z_sun;
-      j++;
+            cooling->chemistry.SolarAbundances[i - 1] / Z_sun_dust;
     }
 
-    /* Dust holds the remaining init_dust_to_gas of the self-enriched metals */
-    p->cooling_data.dust_mass =
-        init_dust_to_gas * cooling->self_enrichment_metallicity * p->mass;
+    /* Dust holds the remaining init_dust_to_gas of the dust elements */
+    p->cooling_data.dust_mass = init_dust_to_gas *
+                                cooling->self_enrichment_metallicity *
+                                (Z_sun_dust / Z_sun) * p->mass;
 
     p->chemistry_data.metal_mass_fraction[chemistry_element_He] =
         cooling->chemistry.SolarAbundances[0];

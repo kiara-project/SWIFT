@@ -49,7 +49,7 @@ enum chemistry_element {
  * delta_dust_mass). Each must be one of the #chemistry_element; changing
  * this list is all that is needed to change the dust elements.
  */
-#define KIARA_DUST_ELEMENTS(X) X(C) X(N) X(O) X(Ne) X(Mg) X(Si) X(S) X(Ca) X(Fe)
+#define KIARA_DUST_ELEMENTS(X) X(C) X(O) X(Mg) X(Si) X(S) X(Ca) X(Fe)
 
 /**
  * @brief The elements locked in dust (indices into the dust arrays).
