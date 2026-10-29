@@ -869,3 +869,7 @@ void crackle_temperature_part(grackle_part_data *gp_in, chemistry_data *chemistr
 	return;
 }
 
+void crackle_fields_to_part(grackle_field_data *fields, grackle_part_data *gp, chemistry_data *chemistry)
+{
+	copy_grackle_fields_to_part(fields, gp, chemistry);
+}

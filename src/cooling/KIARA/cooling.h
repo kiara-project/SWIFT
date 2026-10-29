@@ -136,6 +136,8 @@ void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
                                const struct cooling_function_data *restrict
                                    cooling);
 #ifdef CRACKLE_VALIDATE_DIRECT
+void cooling_crackle_override_inputs(int on);
+void cooling_crackle_compare_inputs(long long id);
 void cooling_crackle_validate_direct(
     const struct part *p, const struct part *p_ref, const struct xpart *xp,
     const struct xpart *xp_ref, const gr_float *iact, const gr_float *iact_ref,

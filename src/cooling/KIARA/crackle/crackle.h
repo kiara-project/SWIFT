@@ -354,6 +354,8 @@ int crackle_get_uvb_rates(chemistry_data *chemistry, chemistry_data_storage *gra
 int crackle_solve_part(grackle_part_data *gp, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *uvb_rates, code_units *units, const crackle_units *cunits, double dt);
 void crackle_cooling_time_part(grackle_part_data *gp, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *uvb_rates, code_units *units, const crackle_units *cunits, gr_float *tcool);
 void crackle_temperature_part(grackle_part_data *gp, chemistry_data *chemistry, code_units *units, gr_float *temp);
+/* The particle state the field-array functions build from one field element (for validation) */
+void crackle_fields_to_part(grackle_field_data *fields, grackle_part_data *gp, chemistry_data *chemistry);
 
 void evolve_internal_energy(grackle_part_data *gp, chemistry_data *chemistry, double dtit);
 

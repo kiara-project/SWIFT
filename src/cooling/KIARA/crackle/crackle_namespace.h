@@ -161,4 +161,5 @@
 #define crackle_prepare_step crk_crackle_prepare_step
 #define crackle_solve_part crk_crackle_solve_part
 #define crackle_temperature_part crk_crackle_temperature_part
+#define crackle_fields_to_part crk_crackle_fields_to_part
 #endif /* CRACKLE_NAMESPACE_H */

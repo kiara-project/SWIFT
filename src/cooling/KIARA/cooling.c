@@ -767,6 +767,122 @@ static INLINE int cooling_value_is_finite(const gr_float x) {
 #endif
 }
 
+#ifdef CRACKLE_VALIDATE_DIRECT
+/*! The crackle input state of the last field-path and direct-path calls of
+ * this thread */
+static __thread grackle_part_data crackle_dbg_gp_fields, crackle_dbg_gp_direct;
+
+/*! If set, the field path runs on these inputs instead of its own */
+static __thread int crackle_dbg_override = 0;
+
+/*! Number of crackle inputs that differed at round-off level */
+static long long crackle_dbg_n_roundoff = 0;
+
+/**
+ * @brief Give the field path the inputs of the direct path.
+ *
+ * Under -ffast-math the two copies of the input preparation may round
+ * differently (e.g. the float sum in cooling_get_inverse_mu()), so the
+ * inputs are compared to round-off separately and everything after them
+ * bit for bit.
+ */
+static void cooling_crackle_override_fields(const grackle_part_data *gp,
+                                            gr_float *sd, gr_float *iact) {
+  for (int i = 0; i < 9; i++) {
+    const gr_float v[9] = {gp->HI_density,   gp->HII_density,
+                           gp->HeI_density,  gp->HeII_density,
+                           gp->HeIII_density, gp->e_density,
+                           gp->HM_density,   gp->H2I_density,
+                           gp->H2II_density};
+    sd[i] = v[i];
+  }
+  sd[12] = gp->density;
+  sd[13] = gp->internal_energy;
+  sd[14] = gp->temperature_floor;
+  sd[15] = gp->specific_heating_rate;
+  sd[16] = gp->x_velocity;
+  sd[17] = gp->y_velocity;
+  sd[18] = gp->z_velocity;
+  sd[19] = gp->metal_density;
+  sd[20] = gp->dust_density;
+  sd[21] = gp->SNe_density;
+  sd[22] = gp->isrf_habing;
+  sd[23] = gp->H2_self_shielding_length;
+  for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+    sd[25 + i] = gp->gas_metalDensity[i];
+    sd[36 + i] = gp->dust_metalDensity[i];
+  }
+  if (iact != NULL) {
+    iact[0] = gp->RT_heating_rate;
+    iact[1] = gp->RT_HI_ionization_rate;
+    iact[2] = gp->RT_HeI_ionization_rate;
+    iact[3] = gp->RT_HeII_ionization_rate;
+    iact[4] = gp->RT_H2_dissociation_rate;
+  }
+}
+
+/**
+ * @brief Make the following cooling_copy_to_grackle() calls of this thread
+ * use the inputs of its last cooling_copy_to_crackle() call (1) or not (0).
+ */
+void cooling_crackle_override_inputs(int on) { crackle_dbg_override = on; }
+
+/**
+ * @brief Compare the crackle inputs of the field and direct paths: stop if
+ * any differs by more than round-off, count those that differ by round-off.
+ */
+void cooling_crackle_compare_inputs(long long id) {
+  const grackle_part_data *g1 = &crackle_dbg_gp_fields;
+  const grackle_part_data *g2 = &crackle_dbg_gp_direct;
+  if (g1->grid_rank != g2->grid_rank || g1->grid_end != g2->grid_end ||
+      g1->id != g2->id)
+    error("crackle direct validation: id=%lld grid/id inputs differ", id);
+  const double *d1 = &g1->density;
+  const double *d2 = &g2->density;
+  const size_t n =
+      (sizeof(grackle_part_data) - offsetof(grackle_part_data, density)) /
+      sizeof(double);
+  const size_t k_shield = (offsetof(grackle_part_data, f_shield) -
+                           offsetof(grackle_part_data, density)) /
+                          sizeof(double);
+  /* The RT rates are compared after the call (cooling_copy_to_grackle()
+   * builds them for the instance with use_radiative_transfer) */
+  const size_t k_rt0 = (offsetof(grackle_part_data, RT_heating_rate) -
+                        offsetof(grackle_part_data, density)) /
+                       sizeof(double);
+  const size_t k_rt1 = (offsetof(grackle_part_data, RT_H2_dissociation_rate) -
+                        offsetof(grackle_part_data, density)) /
+                       sizeof(double);
+  int nroundoff = 0;
+  for (size_t k = 0; k < n; k++) {
+    if (k == k_shield) continue; /* set by crackle */
+    if (k >= k_rt0 && k <= k_rt1) continue;
+    if (memcmp(&d1[k], &d2[k], sizeof(double)) == 0) continue;
+    const double a = d1[k], b = d2[k];
+    if (fabs(a - b) <= 1.e-6 * fmax(fabs(a), fabs(b))) {
+      nroundoff++;
+      continue;
+    }
+    error("crackle direct validation: id=%lld input at gp offset %zu "
+          "(density %zu, internal_energy %zu, gas_metalDensity %zu) "
+          "fields %.17g direct %.17g",
+          id, offsetof(grackle_part_data, density) + k * sizeof(double),
+          offsetof(grackle_part_data, density),
+          offsetof(grackle_part_data, internal_energy),
+          offsetof(grackle_part_data, gas_metalDensity), a, b);
+  }
+  if (nroundoff > 0) {
+    const long long n_tot =
+        atomic_add(&crackle_dbg_n_roundoff, (long long)nroundoff) + nroundoff;
+    /* Report the 1st, 2nd, 4th, 8th... */
+    if ((n_tot & (n_tot - 1)) == 0 || nroundoff > 1)
+      message("crackle direct validation: inputs differing at round-off "
+              "level so far: %lld (id=%lld, %d in this call)",
+              n_tot, id, nroundoff);
+  }
+}
+#endif
+
 /**
  * @brief Fill the grackle data for a single particle.
  *
@@ -923,6 +1039,16 @@ void cooling_copy_to_grackle(
           i, N_SPECIES, species_densities[i]);
     }
   }
+#ifdef CRACKLE_VALIDATE_DIRECT
+  /* The inputs crackle builds from these fields (with this run's cooling
+   * chemistry flags, as cooling_copy_to_crackle() uses) */
+  memset(&crackle_dbg_gp_fields, 0, sizeof(grackle_part_data));
+  crackle_fields_to_part(data, &crackle_dbg_gp_fields,
+                         (chemistry_data *)&cooling->chemistry);
+  if (crackle_dbg_override)
+    cooling_crackle_override_fields(&crackle_dbg_gp_direct, species_densities,
+                                    iact_rates);
+#endif
 }
 
 /**
@@ -953,6 +1079,7 @@ void cooling_copy_from_grackle(
  * @param data The grackle_field_data structure from grackle.
  */
 void cooling_grackle_free_data(grackle_field_data *data) {}
+
 
 /*! What crackle needs at the current redshift (UV background rates and
  * crackle units), set by cooling_prepare_crackle_step() in cooling_update()
@@ -1132,6 +1259,7 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
     if (cooling->use_grackle_dust_evol != 1)
       error("crackle: H2_custom_shielding = 2 needs the dust model");
     gp->H2_self_shielding_length = L_shield;
+    gp->H2_custom_shielding_factor = 0.; /* unused */
   } else if (chemistry->H2_custom_shielding == 1) {
     error("crackle: H2_custom_shielding = 1 is not supported");
   } else {
@@ -1190,6 +1318,9 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
       error("Passing a non-finite metal density to crackle! id=%lld i=%d",
             p->id, i);
   }
+#ifdef CRACKLE_VALIDATE_DIRECT
+  memcpy(&crackle_dbg_gp_direct, gp, sizeof(grackle_part_data));
+#endif
 }
 
 /**
@@ -1376,6 +1507,7 @@ static gr_float cooling_grackle_driver_fields(
   /* load particle information from particle to grackle data */
   cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, T_warm,
                           species_densities, iact_rates, mode);
+
 
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
@@ -1621,19 +1753,40 @@ gr_float cooling_grackle_driver(
                                          cooling, p, xp, iact_rates, dt,
                                          T_warm, mode);
 #ifdef CRACKLE_VALIDATE_DIRECT
-  /* Run the field path on copies, then the direct path on the particle */
-  struct part p_ref = *p;
-  struct xpart xp_ref = *xp;
-  gr_float iact_ref[5] = {0., 0., 0., 0., 0.};
-  if (iact_rates != NULL) memcpy(iact_ref, iact_rates, sizeof(iact_ref));
+  /* Both paths start from a snapshot of the particle, as other tasks may
+   * write parts of it (e.g. black_holes_data) while this one runs; the real
+   * update is then done by the direct path on the particle itself */
+  const struct part p_in = *p;
+  const struct xpart xp_in = *xp;
+  gr_float iact_in[5] = {0., 0., 0., 0., 0.};
+  if (iact_rates != NULL) memcpy(iact_in, iact_rates, sizeof(iact_in));
+
+  struct part p_dir = p_in;
+  struct xpart xp_dir = xp_in;
+  gr_float iact_dir[5];
+  memcpy(iact_dir, iact_in, sizeof(iact_dir));
+  const gr_float result_dir = cooling_crackle_driver(
+      cosmo, cooling, &p_dir, &xp_dir, (iact_rates != NULL) ? iact_dir : NULL,
+      dt, T_warm, mode);
+
+  /* The field path, on the inputs of the direct path */
+  struct part p_ref = p_in;
+  struct xpart xp_ref = xp_in;
+  gr_float iact_ref[5];
+  memcpy(iact_ref, iact_in, sizeof(iact_ref));
+  cooling_crackle_override_inputs(1);
   const gr_float result_ref = cooling_grackle_driver_fields(
       phys_const, us, cosmo, hydro_props, cooling, &p_ref, &xp_ref,
       (iact_rates != NULL) ? iact_ref : NULL, dt, T_warm, mode);
-  const gr_float result =
-      cooling_crackle_driver(cosmo, cooling, p, xp, iact_rates, dt, T_warm,
-                             mode);
-  cooling_crackle_validate_direct(p, &p_ref, xp, &xp_ref, iact_rates, iact_ref,
-                                  result, result_ref, mode);
+  cooling_crackle_override_inputs(0);
+
+  cooling_crackle_compare_inputs(p->id);
+  cooling_crackle_validate_direct(&p_dir, &p_ref, &xp_dir, &xp_ref,
+                                  (iact_rates != NULL) ? iact_dir : NULL,
+                                  iact_ref, result_dir, result_ref, mode);
+
+  const gr_float result = cooling_crackle_driver(cosmo, cooling, p, xp,
+                                                 iact_rates, dt, T_warm, mode);
   return result;
 #else
   return cooling_crackle_driver(cosmo, cooling, p, xp, iact_rates, dt, T_warm,

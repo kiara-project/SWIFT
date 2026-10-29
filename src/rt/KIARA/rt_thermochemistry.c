@@ -187,23 +187,44 @@ static gr_float rt_tchem_crackle(struct part *restrict p,
   return rt_tchem_crackle_fields(p, xp, rt_props, cosmo, cooling, us, dt,
                                  iact_rates, species, mode);
 #elif defined(CRACKLE_VALIDATE_DIRECT)
-  struct part p_ref = *p;
-  struct xpart xp_ref = *xp;
+  /* Both paths start from a snapshot of the particle (other tasks may write
+   * parts of it meanwhile); the real update is then done on the particle */
+  const struct part p_in = *p;
+  const struct xpart xp_in = *xp;
+  gr_float iact_in[5];
+  memcpy(iact_in, iact_rates, sizeof(iact_in));
+
+  struct part p_dir = p_in;
+  struct xpart xp_dir = xp_in;
+  gr_float iact_dir[5], species_dir[6];
+  memcpy(iact_dir, iact_in, sizeof(iact_dir));
+  const gr_float result_dir =
+      rt_tchem_crackle_direct(&p_dir, &xp_dir, rt_props, cosmo, cooling, dt,
+                              iact_dir, species_dir, mode);
+
+  /* The field path, on the inputs of the direct path (see
+   * cooling_crackle_override_inputs()) */
+  struct part p_ref = p_in;
+  struct xpart xp_ref = xp_in;
   gr_float iact_ref[5], species_ref[6];
-  memcpy(iact_ref, iact_rates, sizeof(iact_ref));
+  memcpy(iact_ref, iact_in, sizeof(iact_ref));
+  cooling_crackle_override_inputs(1);
   const gr_float result_ref =
       rt_tchem_crackle_fields(&p_ref, &xp_ref, rt_props, cosmo, cooling, us,
                               dt, iact_ref, species_ref, mode);
-  const gr_float result = rt_tchem_crackle_direct(
-      p, xp, rt_props, cosmo, cooling, dt, iact_rates, species, mode);
-  if (memcmp(species, species_ref, sizeof(species_ref)) != 0)
+  cooling_crackle_override_inputs(0);
+  cooling_crackle_compare_inputs(p->id);
+  if (memcmp(species_dir, species_ref, sizeof(species_ref)) != 0)
     error(
         "crackle direct validation (RT): species differ, id=%lld mode=%d "
         "HI %.17g/%.17g e %.17g/%.17g",
-        p->id, mode, species[0], species_ref[0], species[5], species_ref[5]);
-  cooling_crackle_validate_direct(p, &p_ref, xp, &xp_ref, iact_rates, iact_ref,
-                                  result, result_ref, 10 + mode);
-  return result;
+        p->id, mode, species_dir[0], species_ref[0], species_dir[5],
+        species_ref[5]);
+  cooling_crackle_validate_direct(&p_dir, &p_ref, &xp_dir, &xp_ref, iact_dir,
+                                  iact_ref, result_dir, result_ref, 10 + mode);
+
+  return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt,
+                                 iact_rates, species, mode);
 #else
   return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt,
                                  iact_rates, species, mode);
