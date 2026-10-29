@@ -779,18 +779,15 @@ INLINE static void star_formation_copy_properties(
    * forms from all of the gas, so add the metals locked in dust back in */
   if (p->cooling_data.dust_mass > 0.f) {
     const float D = p->cooling_data.dust_mass / hydro_get_mass(p);
-    float Z_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
       const int d = dust_element_of_chemistry(elem);
       if (d >= 0) {
         sp->chemistry_data.metal_mass_fraction[elem] +=
             D * p->cooling_data.dust_mass_fraction[d];
       }
-      if (elem != chemistry_element_H && elem != chemistry_element_He) {
-        Z_total += sp->chemistry_data.metal_mass_fraction[elem];
-      }
     }
-    sp->chemistry_data.metal_mass_fraction_total = Z_total;
+    /* All of the dust is metals */
+    sp->chemistry_data.metal_mass_fraction_total += D;
   }
 #endif
 

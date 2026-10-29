@@ -260,6 +260,7 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
   cpd->du = 0.;
   cpd->dm = 0.f;
   cpd->dm_dust = 0.f;
+  cpd->dm_Z_total = 0.f;
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     cpd->dZ_dt[elem] = 0.f;
     cpd->dm_Z[elem] = 0.f;
@@ -993,7 +994,6 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     float new_dust_mass = co->dust_mass;
     if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) new_dust_mass += ch->dm_dust;
 
-    ch->metal_mass_fraction_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; ++elem) {
       const float old_mass_Z = ch->metal_mass_fraction[elem] * m;
       /* An element-free particle can still receive that element */
@@ -1003,11 +1003,17 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
       if (Z_eps >= FIREHOSE_EPSILON_TOLERANCE) {
         ch->metal_mass_fraction[elem] = (old_mass_Z + ch->dm_Z[elem]) / m;
       }
+    }
 
-      /* Recompute Z */
-      if (elem != chemistry_element_H && elem != chemistry_element_He) {
-        ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
-      }
+    /* The total metallicity (all metals, tracked or not) is exchanged in
+     * the same way */
+    const float old_mass_Z_total = ch->metal_mass_fraction_total * m;
+    const float Z_total_eps = (old_mass_Z_total > 0.f)
+                                  ? fabs(ch->dm_Z_total) / old_mass_Z_total
+                                  : ((ch->dm_Z_total > 0.f) ? 1.f : 0.f);
+    if (Z_total_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+      ch->metal_mass_fraction_total =
+          max((old_mass_Z_total + ch->dm_Z_total) / m, 0.f);
     }
 
     if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
@@ -1140,11 +1146,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     ch->metal_mass_fraction[elem] += dZ[elem];
   }
 
-  /* Total Z is the sum of the tracked metals (as in feedback and firehose) */
-  ch->metal_mass_fraction_total = 0.f;
-  for (int elem = chemistry_element_C; elem < chemistry_element_count; elem++) {
-    ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
-  }
+  /* The total metallicity (all metals, tracked or not) diffuses as its own
+   * passive scalar */
+  ch->metal_mass_fraction_total =
+      max(ch->metal_mass_fraction_total + ch->dZ_dt_total * dt * factor, 0.f);
 
 #if COOLING_GRACKLE_MODE >= 2
   /* Diffuse dust per element as a passive scalar, then rebuild the total

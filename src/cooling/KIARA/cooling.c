@@ -1989,7 +1989,10 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
 #endif
       /* Dust mass returned to the gas phase */
       const float dust_mass_lost = dust_mass_old - p->cooling_data.dust_mass;
-      p->chemistry_data.metal_mass_fraction_total = 0.f;
+
+      /* All of the dust is metals */
+      p->chemistry_data.metal_mass_fraction_total +=
+          dust_mass_lost / hydro_get_mass(p);
 
       for (int elem = 0; elem < chemistry_element_count; ++elem) {
         if (elem == chemistry_element_H || elem == chemistry_element_He)
@@ -2011,9 +2014,6 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
         const float Z_elem_new = elem_mass_new / hydro_get_mass(p);
 
         p->chemistry_data.metal_mass_fraction[elem] = Z_elem_new;
-
-        /* Sum up to get the new Z value */
-        p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
       }
 
       /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */

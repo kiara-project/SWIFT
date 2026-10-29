@@ -820,6 +820,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     ejecta_metal_mass[elem_conv] +=
         ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction[elem];
   }
+  /* ... and all of its metals, tracked or not */
+  ejecta_metal_mass[chem5_element_Z] +=
+      ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction_total;
 
   /* Net yields can be negative (e.g. destruction of H, or of C and O by
    * hot-bottom burning, in AGB stars). For stars with almost none of an

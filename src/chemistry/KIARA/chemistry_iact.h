@@ -645,7 +645,15 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   chi->dm_dust += new_pi_dust_mass - pi_dust_mass;
   chj->dm_dust += new_pj_dust_mass - pj_dust_mass;
 
-  /* Spread individual dust elements */
+  /* Exchange the total metal mass (all metals, tracked or not) */
+  {
+    const float Zi = chi->metal_mass_fraction_total;
+    const float Zj = chj->metal_mass_fraction_total;
+    chi->dm_Z_total += (wt_ii * Zi + wt_ij * Zj) - mi * Zi;
+    chj->dm_Z_total += (wt_jj * Zj + wt_ji * Zi) - mj * Zj;
+  }
+
+  /* Exchange the individual elements */
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     /* Exchange metals */
     const float term_ii = wt_ii * chi->metal_mass_fraction[elem];

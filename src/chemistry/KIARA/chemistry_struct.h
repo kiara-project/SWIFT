@@ -277,6 +277,9 @@ struct chemistry_part_data {
   /*! Firehose exchanged metal fractions */
   float dm_Z[chemistry_element_count];
 
+  /*! Firehose exchanged metal mass (all metals) */
+  float dm_Z_total;
+
   /*! Firehose exchanged dust mass */
   float dm_dust;
 

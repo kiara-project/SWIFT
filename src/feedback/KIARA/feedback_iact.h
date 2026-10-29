@@ -748,8 +748,12 @@ feedback_do_chemical_enrichment_of_gas_around_star(
 
   /* ------ Handle metal injection from SN explosions ------ */
 
-  /* Recompute Z since we do not track all of the metals from Chem5 */
-  pj->chemistry_data.metal_mass_fraction_total = 0.f;
+  /* The total metallicity gets all of the ejected metals (chem5's total,
+   * tracked elements or not; gas phase, without the dust formed) */
+  pj->chemistry_data.metal_mass_fraction_total =
+      (pj->chemistry_data.metal_mass_fraction_total * current_mass +
+       si->feedback_data.total_metal_mass * Omega_frac) *
+      new_mass_inv;
 
   /* Update mass fraction of each tracked element  */
   for (int elem = 0; elem < chemistry_element_count; elem++) {
@@ -761,11 +765,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
 
     pj->chemistry_data.metal_mass_fraction[elem] =
         new_metal_mass * new_mass_inv;
-
-    if (elem != chemistry_element_H && elem != chemistry_element_He) {
-      pj->chemistry_data.metal_mass_fraction_total +=
-          pj->chemistry_data.metal_mass_fraction[elem];
-    }
   }
 
 #if COOLING_GRACKLE_MODE >= 2
