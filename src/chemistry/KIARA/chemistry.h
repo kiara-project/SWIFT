@@ -1025,7 +1025,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     }
 
     /* Set the new dust mass from the exchange */
-    co->dust_mass = (new_dust_mass > 0.f) ? new_dust_mass : 0.f;
+    /* A denormal dust mass counts as none (its inverse overflows; this is
+     * what the flush-to-zero of -ffast-math builds does anyway) */
+    co->dust_mass = (new_dust_mass >= FLT_MIN) ? new_dust_mass : 0.f;
     if (co->dust_mass <= 0.f) {
       for (int d = 0; d < dust_element_count; ++d) {
         co->dust_mass_fraction[d] = 0.f;
@@ -1164,7 +1166,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     if (dust_mass_elem[d] < 0.f) dust_mass_elem[d] = 0.f;
     new_dust_mass += dust_mass_elem[d];
   }
-  if (new_dust_mass > 0.f) {
+  /* A denormal dust mass counts as none (1/new_dust_mass would overflow;
+   * this is what the flush-to-zero of -ffast-math builds does anyway) */
+  if (new_dust_mass >= FLT_MIN) {
     const float inv = 1.f / new_dust_mass;
     for (int d = 0; d < dust_element_count; d++) {
       co->dust_mass_fraction[d] = dust_mass_elem[d] * inv;

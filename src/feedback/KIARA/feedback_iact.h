@@ -793,8 +793,9 @@ feedback_do_chemical_enrichment_of_gas_around_star(
     pj->cooling_data.dust_mass += pj->cooling_data.dust_mass_fraction[d];
   }
 
-  /* Compute inverse of new dust mass */
-  if (pj->cooling_data.dust_mass > 0.) {
+  /* Compute inverse of new dust mass (a denormal dust mass counts as none,
+   * as with the flush-to-zero of -ffast-math builds) */
+  if (pj->cooling_data.dust_mass >= FLT_MIN) {
     const double dust_mass_inv = 1. / pj->cooling_data.dust_mass;
 
     /* Divide by new dust mass to get the fractions */
