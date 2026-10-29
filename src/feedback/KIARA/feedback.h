@@ -501,7 +501,8 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
  * The factor is (Sigma_SFR / pivot)^slope, clipped to
  * [vwind_sigma_sfr_min_factor, vwind_sigma_sfr_max_factor]. It is 1 when the
  * scaling is off, or when the galaxy has no star-forming radius (too few
- * star-forming particles) or no SFR.
+ * star-forming particles) or no SFR. The mass loading is multiplied by
+ * factor^-vwind_sigma_sfr_eta_slope.
  *
  * @param sp The star particle.
  * @param cosmo The current cosmological model.
@@ -657,8 +658,14 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   float v_internal = feedback_compute_kick_velocity(M_star, sp->id, cosmo,
                                                     feedback_props, ti_begin);
 
-  /* Boost the wind speed by the host galaxy's SFR surface density */
-  v_internal *= feedback_sigma_sfr_velocity_factor(sp, cosmo, feedback_props);
+  /* Boost the wind speed by the host galaxy's SFR surface density, and
+   * optionally scale the mass loading inversely (eta_slope = 2 keeps
+   * eta v^2 fixed) */
+  const float sigma_sfr_factor =
+      feedback_sigma_sfr_velocity_factor(sp, cosmo, feedback_props);
+  v_internal *= sigma_sfr_factor;
+  if (feedback_props->vwind_sigma_sfr_eta_slope != 0.f)
+    eta *= powf(sigma_sfr_factor, -feedback_props->vwind_sigma_sfr_eta_slope);
 
   /* Early (non-SN) stellar feedback energy from Keller+22 eq. 10 */
   const float alpha = feedback_props->early_stellar_feedback_alpha;

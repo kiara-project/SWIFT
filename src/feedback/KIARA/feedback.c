@@ -1835,6 +1835,12 @@ void feedback_props_init(struct feedback_props *fp,
       params, "KIARAFeedback:vwind_sigma_sfr_max_factor", 2.f);
   fp->vwind_sigma_sfr_min_radius_kpc = parser_get_opt_param_float(
       params, "KIARAFeedback:vwind_sigma_sfr_min_radius_kpc", 0.25f);
+  fp->vwind_sigma_sfr_eta_slope = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_eta_slope", 0.f);
+  if (fp->vwind_sigma_sfr_eta_slope != 0.f && fp->vwind_sigma_sfr_slope == 0.f)
+    error(
+        "KIARAFeedback:vwind_sigma_sfr_eta_slope needs a non-zero "
+        "vwind_sigma_sfr_slope");
   if (fp->vwind_sigma_sfr_slope != 0.f &&
       (fp->vwind_sigma_sfr_pivot <= 0.f ||
        fp->vwind_sigma_sfr_min_factor <= 0.f ||
@@ -1936,6 +1942,9 @@ void feedback_props_init(struct feedback_props *fp,
           fp->vwind_sigma_sfr_pivot, fp->vwind_sigma_sfr_slope,
           fp->vwind_sigma_sfr_min_factor, fp->vwind_sigma_sfr_max_factor,
           fp->vwind_sigma_sfr_min_radius_kpc);
+      if (fp->vwind_sigma_sfr_eta_slope != 0.f)
+        message("Feedback mass loading scales as that factor^-%g",
+                fp->vwind_sigma_sfr_eta_slope);
     }
     message("Feedback FIRE eta normalization: %g", fp->FIRE_eta_normalization);
     message("Feedback FIRE eta break: %g", fp->FIRE_eta_break);

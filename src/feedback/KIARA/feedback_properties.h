@@ -298,6 +298,10 @@ struct feedback_props {
   /*! Floor on the galaxy's star-forming radius (physical kpc) */
   float vwind_sigma_sfr_min_radius_kpc;
 
+  /*! Slope of the mass loading with the same factor, eta -> eta
+   * factor^-eta_slope (0 = off, 2 = wind energy unchanged) */
+  float vwind_sigma_sfr_eta_slope;
+
   /*! max decoupling time is (this factor) * current Hubble time */
   float wind_decouple_time_factor;
 
