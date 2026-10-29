@@ -58,6 +58,65 @@ extern chemistry_data *grackle_data;
 #include "star_formation.h"
 #include "units.h"
 
+/* crackle's (Grackle's) element arrays (gas_metalDensity, dust_metalDensity,
+ * SolarAbundances) hold He, C, N, O, Ne, Mg, Si, S, Ca, Fe: the slot of each
+ * of chem5's elements in them, -1 if crackle does not know it */
+#define CRACKLE_SLOT_H -1
+#define CRACKLE_SLOT_He 0
+#define CRACKLE_SLOT_Li -1
+#define CRACKLE_SLOT_Be -1
+#define CRACKLE_SLOT_B -1
+#define CRACKLE_SLOT_C 1
+#define CRACKLE_SLOT_N 2
+#define CRACKLE_SLOT_O 3
+#define CRACKLE_SLOT_F -1
+#define CRACKLE_SLOT_Ne 4
+#define CRACKLE_SLOT_Na -1
+#define CRACKLE_SLOT_Mg 5
+#define CRACKLE_SLOT_Al -1
+#define CRACKLE_SLOT_Si 6
+#define CRACKLE_SLOT_P -1
+#define CRACKLE_SLOT_S 7
+#define CRACKLE_SLOT_Cl -1
+#define CRACKLE_SLOT_Ar -1
+#define CRACKLE_SLOT_K -1
+#define CRACKLE_SLOT_Ca 8
+#define CRACKLE_SLOT_Sc -1
+#define CRACKLE_SLOT_Ti -1
+#define CRACKLE_SLOT_V -1
+#define CRACKLE_SLOT_Cr -1
+#define CRACKLE_SLOT_Mn -1
+#define CRACKLE_SLOT_Fe 9
+#define CRACKLE_SLOT_Co -1
+#define CRACKLE_SLOT_Ni -1
+#define CRACKLE_SLOT_Cu -1
+#define CRACKLE_SLOT_Zn -1
+#define CRACKLE_SLOT_Ga -1
+#define CRACKLE_SLOT_Ge -1
+
+/* crackle's dust model only knows its own elements */
+#define CRACKLE_CHECK_DUST_SLOT(e)                    \
+  _Static_assert(CRACKLE_SLOT_##e >= 0, "dust element " #e \
+                                        " is not one of crackle's elements");
+KIARA_DUST_ELEMENTS(CRACKLE_CHECK_DUST_SLOT)
+#undef CRACKLE_CHECK_DUST_SLOT
+
+/**
+ * @brief The slot of a tracked element in crackle's element arrays, or -1 if
+ * crackle does not know it (it is then left unchanged by crackle).
+ *
+ * @param elem The #chemistry_element.
+ */
+__attribute__((always_inline)) INLINE static int cooling_crackle_slot(
+    const int elem) {
+  static const int slot[chemistry_element_count] = {
+#define CRACKLE_SLOT_OF(e) CRACKLE_SLOT_##e,
+      KIARA_ELEMENTS(CRACKLE_SLOT_OF)
+#undef CRACKLE_SLOT_OF
+  };
+  return slot[elem];
+}
+
 /**
  * @brief Common operations performed on the cooling function at a
  * given time-step or redshift. Predominantly used to read cooling tables
@@ -431,15 +490,18 @@ void cooling_copy_to_grackle2(
     data->H2_self_shielding_length = &species_densities[23];
 
     /* Load gas metallicities */
+    /* (by crackle slot: gas He..Fe in 25..34, dust in 36..45) */
+    for (int k = 24; k < 46; k++) species_densities[k] = 0.;
     for (int i = 0; i < chemistry_element_count; i++) {
-      species_densities[24 + i] = max(
+      const int slot = cooling_crackle_slot(i);
+      if (slot < 0) continue;
+      species_densities[25 + slot] = max(
           p->chemistry_data.metal_mass_fraction[i] * species_densities[12], 0.);
-      const int d = dust_element_of_chemistry(i);
-      species_densities[24 + chemistry_element_count + i] =
-          (d >= 0) ? max(p->cooling_data.dust_mass_fraction[d] *
-                             species_densities[20],
-                         0)
-                   : 0.;
+    }
+    for (int d = 0; d < dust_element_count; d++) {
+      const int slot = cooling_crackle_slot(chemistry_element_of_dust(d));
+      species_densities[36 + slot] =
+          max(p->cooling_data.dust_mass_fraction[d] * species_densities[20], 0);
       // if (i>0) printf("dust densities: %d %g %g
       // %g\n",i,species_densities[23+chemistry_element_count+i],species_densities[23+chemistry_element_count+i]/data->dust_density[0],p->cooling_data.dust_mass_fraction[i]*p->mass
       // / p->cooling_data.dust_mass);
@@ -639,26 +701,17 @@ void cooling_copy_from_grackle2(
   if (cooling->use_grackle_dust_evol == 1) {
     /* Load gas metallicities */
     p->chemistry_data.metal_mass_fraction_total = *data->metal_density * rhoinv;
-    p->chemistry_data.metal_mass_fraction[1] =
-        *data->He_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[2] =
-        *data->C_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[3] =
-        *data->N_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[4] =
-        *data->O_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[5] =
-        *data->Ne_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[6] =
-        *data->Mg_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[7] =
-        *data->Si_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[8] =
-        *data->S_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[9] =
-        *data->Ca_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[10] =
-        *data->Fe_gas_metalDensity * rhoinv;
+    const gr_float *rhogas[NUM_METAL_SPECIES_GRACKLE] = {
+        data->He_gas_metalDensity, data->C_gas_metalDensity,
+        data->N_gas_metalDensity,  data->O_gas_metalDensity,
+        data->Ne_gas_metalDensity, data->Mg_gas_metalDensity,
+        data->Si_gas_metalDensity, data->S_gas_metalDensity,
+        data->Ca_gas_metalDensity, data->Fe_gas_metalDensity};
+    for (int i = 0; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot >= 0)
+        p->chemistry_data.metal_mass_fraction[i] = *rhogas[slot] * rhoinv;
+    }
 
     /* Dust temperature used by crackle */
     p->cooling_data.dust_temperature = *data->dust_temperature;
@@ -688,7 +741,8 @@ void cooling_copy_from_grackle2(
 
       for (int d = 0; d < dust_element_count; d++) {
         p->cooling_data.dust_mass_fraction[d] =
-            rhodust[chemistry_element_of_dust(d) - 1] * rhoinv;
+            rhodust[cooling_crackle_slot(chemistry_element_of_dust(d))] *
+            rhoinv;
       }
     } else {
       for (int d = 0; d < dust_element_count; d++) {
@@ -1228,8 +1282,9 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
 
   /* Dust model, ISRF and H2 shielding length (as cooling_copy_to_grackle2) */
   gr_float isrf = 0., L_shield = 0., dust_density = 0., SNe_density = 0.;
-  gr_float gas_metals[chemistry_element_count] = {0.};
-  gr_float dust_metals[chemistry_element_count] = {0.};
+  /* By crackle slot */
+  gr_float gas_metals[NUM_METAL_SPECIES_GRACKLE] = {0.};
+  gr_float dust_metals[NUM_METAL_SPECIES_GRACKLE] = {0.};
   if (cooling->use_grackle_dust_evol == 1) {
     dust_density = p->cooling_data.dust_mass / p->mass * rho;
     SNe_density = p->feedback_data.SNe_ThisTimeStep * dt / p->mass * rho;
@@ -1251,11 +1306,13 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
     L_eff_com = fmax(L_eff_com, L_eff_com_min);
     L_shield = L_eff_com * cooling->units.a_value;
     for (int i = 0; i < chemistry_element_count; i++) {
-      gas_metals[i] =
-          max(p->chemistry_data.metal_mass_fraction[i] * rho, 0.);
+      const int slot = cooling_crackle_slot(i);
+      if (slot >= 0)
+        gas_metals[slot] =
+            max(p->chemistry_data.metal_mass_fraction[i] * rho, 0.);
     }
     for (int d = 0; d < dust_element_count; d++) {
-      dust_metals[chemistry_element_of_dust(d)] =
+      dust_metals[cooling_crackle_slot(chemistry_element_of_dust(d))] =
           max(p->cooling_data.dust_mass_fraction[d] * dust_density, 0);
     }
   }
@@ -1277,8 +1334,8 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
   if (chemistry->use_dust_evol) {
     gp->dust_density = dust_density;
     for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
-      gp->gas_metalDensity[i] = gas_metals[i + 1];
-      gp->dust_metalDensity[i] = dust_metals[i + 1];
+      gp->gas_metalDensity[i] = gas_metals[i];
+      gp->dust_metalDensity[i] = dust_metals[i];
     }
     gp->SNe_density = SNe_density;
   } else {
@@ -1316,7 +1373,7 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
       error("Passing a non-finite value to crackle! id=%lld i=%zu value=%g",
             p->id, i, check[i]);
   }
-  for (int i = 0; i < chemistry_element_count; i++) {
+  for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
     if (!cooling_value_is_finite(gas_metals[i]) ||
         !cooling_value_is_finite(dust_metals[i]))
       error("Passing a non-finite metal density to crackle! id=%lld i=%d",
@@ -1361,9 +1418,12 @@ void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
   /* Dust model */
   if (cooling->use_grackle_dust_evol == 1) {
     p->chemistry_data.metal_mass_fraction_total = gp->metal_density * rhoinv;
-    for (int i = 1; i < chemistry_element_count; i++)
-      p->chemistry_data.metal_mass_fraction[i] =
-          gp->gas_metalDensity[i - 1] * rhoinv;
+    for (int i = 0; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot >= 0)
+        p->chemistry_data.metal_mass_fraction[i] =
+            gp->gas_metalDensity[slot] * rhoinv;
+    }
 
     /* Dust temperature used by crackle (unchanged if not computed) */
     if (gp->tdust > 0.) p->cooling_data.dust_temperature = gp->tdust;
@@ -1379,10 +1439,11 @@ void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
       rhoinv = 1. / gp->dust_density;
       /* no Helium metal density */
       assert(gp->dust_metalDensity[0] == 0.);
-      /* crackle's element arrays start at He */
       for (int d = 0; d < dust_element_count; d++) {
         p->cooling_data.dust_mass_fraction[d] =
-            gp->dust_metalDensity[chemistry_element_of_dust(d) - 1] * rhoinv;
+            gp->dust_metalDensity[cooling_crackle_slot(
+                chemistry_element_of_dust(d))] *
+            rhoinv;
       }
     } else {
       for (int d = 0; d < dust_element_count; d++) {
@@ -2062,13 +2123,16 @@ void cooling_init_chemistry(
   /* Small margin so round-off in the enriched total doesn't re-trigger this
    * every step (which would reset any dust grown since) */
   if (p->cooling_data.subgrid_temp > 0.f && total_Z < 0.99f * self_Z) {
-    /* Solar metal mass fraction, total and in the dust elements (the
-     * SolarAbundances array starts at He) */
+    /* Solar metal mass fraction, total and in the dust elements, from
+     * crackle's SolarAbundances (elements crackle does not know are not
+     * self-enriched) */
     float Z_sun = 0.f, Z_sun_dust = 0.f;
     for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
-      Z_sun += cooling->chemistry.SolarAbundances[i - 1];
+      const int slot = cooling_crackle_slot(i);
+      if (slot < 0) continue;
+      Z_sun += cooling->chemistry.SolarAbundances[slot];
       if (dust_element_of_chemistry(i) >= 0)
-        Z_sun_dust += cooling->chemistry.SolarAbundances[i - 1];
+        Z_sun_dust += cooling->chemistry.SolarAbundances[slot];
     }
 
     /* Distribute the self-enrichment metallicity among elements
@@ -2076,12 +2140,14 @@ void cooling_init_chemistry(
        elements is in dust */
     p->chemistry_data.metal_mass_fraction_total = 0.f;
     for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot < 0) continue;
       const int d = dust_element_of_chemistry(i);
 
       /* fraction of gas mass in each element (gas phase) */
       const float f_gas = (d >= 0) ? 1.f - init_dust_to_gas : 1.f;
       p->chemistry_data.metal_mass_fraction[i] =
-          f_gas * cooling->chemistry.SolarAbundances[i - 1] *
+          f_gas * cooling->chemistry.SolarAbundances[slot] *
           cooling->self_enrichment_metallicity;
       p->chemistry_data.metal_mass_fraction[i] /= Z_sun;
 
@@ -2092,7 +2158,7 @@ void cooling_init_chemistry(
       /* fraction of dust mass in each element (sums to 1) */
       if (d >= 0)
         p->cooling_data.dust_mass_fraction[d] =
-            cooling->chemistry.SolarAbundances[i - 1] / Z_sun_dust;
+            cooling->chemistry.SolarAbundances[slot] / Z_sun_dust;
     }
 
     /* Dust holds the remaining init_dust_to_gas of the dust elements */

@@ -177,7 +177,7 @@ void feedback_dust_production_condensation(
      * (atomic C forms graphite)
      */
     dust[chemistry_element_C] =
-        fb_props->delta_AGBCOG1[chemistry_element_C] *
+        fb_props->delta_AGBCOG1[dust_element_C] *
         (sp->feedback_data.metal_mass[chemistry_element_C] -
          0.75 * sp->feedback_data.metal_mass[chemistry_element_O]);
     const double max_dust_C = fb_props->max_dust_fraction *
@@ -205,24 +205,23 @@ void feedback_dust_production_condensation(
     /* Compute dust mass created in either SNII or low-C/O AGB stars
      * (same type of dust, just different coefficients)
      */
-    for (k = chemistry_element_He; k < chemistry_element_count; k++) {
-      if (k ==
-          chemistry_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
+    for (int d = 0; d < dust_element_count; d++) {
+      k = chemistry_element_of_dust(d);
+      if (d == dust_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
         dust[k] =
             16.0 *
-            (delta_table[chemistry_element_Mg] *
+            (delta_table[dust_element_Mg] *
                  sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
-             delta_table[chemistry_element_Si] *
+             delta_table[dust_element_Si] *
                  sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
-             delta_table[chemistry_element_S] *
+             delta_table[dust_element_S] *
                  sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
-             delta_table[chemistry_element_Ca] *
+             delta_table[dust_element_Ca] *
                  sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
-             delta_table[chemistry_element_Fe] *
+             delta_table[dust_element_Fe] *
                  sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
-        dust[k] =
-            delta_table[k] * sp->feedback_data.metal_mass[k];
+        dust[k] = delta_table[d] * sp->feedback_data.metal_mass[k];
       }
 
       const double max_dust =
@@ -230,9 +229,6 @@ void feedback_dust_production_condensation(
       if (dust[k] > max_dust) {
         dust[k] = max_dust;
       }
-
-      /* Only the dust elements condense */
-      if (dust_element_of_chemistry(k) < 0) dust[k] = 0.;
 
       /* Remove dust from gas-phase metals to be distributed from star */
       sp->feedback_data.metal_mass[k] -= dust[k];
@@ -1671,60 +1667,65 @@ void feedback_props_init(struct feedback_props *fp,
   fp->b_ms = 0.04; /* binary parameter for SNIa */
 
   /* Chem5 indices to Swift */
-  fp->element_index_conversions[chemistry_element_H] = chem5_element_H;
-  fp->element_index_conversions[chemistry_element_He] = chem5_element_He;
-  fp->element_index_conversions[chemistry_element_C] = chem5_element_C;
-  fp->element_index_conversions[chemistry_element_N] = chem5_element_N;
-  fp->element_index_conversions[chemistry_element_O] = chem5_element_O;
-  fp->element_index_conversions[chemistry_element_Ne] = chem5_element_Ne;
-  fp->element_index_conversions[chemistry_element_Mg] = chem5_element_Mg;
-  fp->element_index_conversions[chemistry_element_Si] = chem5_element_Si;
-  fp->element_index_conversions[chemistry_element_S] = chem5_element_S;
-  fp->element_index_conversions[chemistry_element_Ca] = chem5_element_Ca;
-  fp->element_index_conversions[chemistry_element_Fe] = chem5_element_Fe;
+#define KIARA_ELEMENT_CONV(e) \
+  fp->element_index_conversions[chemistry_element_##e] = chem5_element_##e;
+  KIARA_ELEMENTS(KIARA_ELEMENT_CONV)
+#undef KIARA_ELEMENT_CONV
+
+  /* Report the tracked and dust elements; their order (KIARA_ELEMENTS,
+   * KIARA_DUST_ELEMENTS) is that of the particle arrays and snapshot
+   * columns */
+  if (engine_rank == 0) {
+    char list[400] = "";
+    int ordered = 1;
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      sprintf(list + strlen(list), " %s",
+              chemistry_get_element_name((enum chemistry_element)elem));
+      if (elem > 0 && fp->element_index_conversions[elem] <
+                          fp->element_index_conversions[elem - 1])
+        ordered = 0;
+    }
+    message("Tracking %d elements:%s", chemistry_element_count, list);
+    if (!ordered)
+      warning(
+          "The tracked elements (KIARA_ELEMENTS) are not in order of atomic "
+          "number; the particle arrays and snapshot columns follow the list");
+#if COOLING_GRACKLE_MODE >= 2
+    list[0] = '\0';
+    ordered = 1;
+    for (int d = 0; d < dust_element_count; d++) {
+      sprintf(list + strlen(list), " %s",
+              chemistry_get_element_name(
+                  (enum chemistry_element)chemistry_element_of_dust(d)));
+      if (d > 0 && chemistry_element_of_dust(d) < chemistry_element_of_dust(d - 1))
+        ordered = 0;
+    }
+    message("Dust in %d elements:%s", dust_element_count, list);
+    if (!ordered)
+      warning(
+          "The dust elements (KIARA_DUST_ELEMENTS) are not in the order of "
+          "KIARA_ELEMENTS; the dust arrays and snapshot columns follow the "
+          "dust list");
+#endif
+  }
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* Production tables: AGB for C/O>1, AGB for C/O<1, and SNII (ignore SNIa) */
-  fp->delta_AGBCOG1[chemistry_element_H] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_He] = 0.0; /* He could be removed */
-  fp->delta_AGBCOG1[chemistry_element_C] = 0.2;
-  fp->delta_AGBCOG1[chemistry_element_N] = 0.0; /* N could be removed */
-  fp->delta_AGBCOG1[chemistry_element_O] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Ne] = 0.0; /* Ne could be removed */
-  fp->delta_AGBCOG1[chemistry_element_Mg] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Si] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_S] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Ca] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Fe] = 0.0;
-
-  fp->delta_AGBCOL1[chemistry_element_H] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_He] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_C] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_N] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_O] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Ne] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_Mg] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Si] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_S] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Ca] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Fe] = 0.2;
+  /* Production tables: AGB for C/O>1, AGB for C/O<1, and SNII (ignore SNIa).
+   * C/O>1 AGB stars form graphite only; otherwise all the dust elements
+   * condense (O in oxides of Mg, Si, S, Ca and Fe) */
 
   /* Multiplier of the SNII condensation efficiencies (Poping+17; Simba's
    * dust model used 2) */
   const float dust_boost_factor = parser_get_opt_param_float(
       params, "KIARAFeedback:dust_boost_factor", 1.f);
 
-  fp->delta_SNII[chemistry_element_H] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_He] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_C] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_N] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_O] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Ne] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Mg] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Si] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_S] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Ca] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Fe] = 0.15 * dust_boost_factor;
+  for (int d = 0; d < dust_element_count; d++) {
+    fp->delta_AGBCOG1[d] = 0.0;
+    fp->delta_AGBCOL1[d] = 0.2;
+    fp->delta_SNII[d] = 0.15 * dust_boost_factor;
+  }
+  fp->delta_AGBCOG1[dust_element_C] = 0.2;
+  fp->delta_AGBCOL1[dust_element_C] = 0.0;
 #endif
 
   /* chem5 operation modes ------------------------------------------------- */

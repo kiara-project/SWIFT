@@ -28,6 +28,7 @@
 #include <float.h>
 #include <math.h>
 #include <signal.h>
+#include <string.h>
 
 /* Local includes. */
 #include "chemistry_struct.h"
@@ -206,11 +207,25 @@ firehose_end_ambient_quantities(struct part *restrict p,
 __attribute__((always_inline)) INLINE static const char *
 chemistry_get_element_name(enum chemistry_element elem) {
 
-  static const char *chemistry_element_names[chemistry_element_count] = {
-      "Hydrogen",  "Helium",  "Carbon", "Nitrogen", "Oxygen", "Neon",
-      "Magnesium", "Silicon", "Sulfur", "Calcium",  "Iron"};
+  static const char *symbols[chemistry_element_count] = {
+#define KIARA_ELEMENT_SYMBOL(e) #e,
+      KIARA_ELEMENTS(KIARA_ELEMENT_SYMBOL)
+#undef KIARA_ELEMENT_SYMBOL
+  };
+  static const char *chem5_symbols[] = {
+#define KIARA_CHEM5_SYMBOL(e, name) #e,
+      KIARA_CHEM5_ELEMENTS(KIARA_CHEM5_SYMBOL)
+#undef KIARA_CHEM5_SYMBOL
+  };
+  static const char *chem5_names[] = {
+#define KIARA_CHEM5_NAME(e, name) #name,
+      KIARA_CHEM5_ELEMENTS(KIARA_CHEM5_NAME)
+#undef KIARA_CHEM5_NAME
+  };
 
-  return chemistry_element_names[elem];
+  for (size_t i = 0; i < sizeof(chem5_symbols) / sizeof(chem5_symbols[0]); i++)
+    if (strcmp(symbols[elem], chem5_symbols[i]) == 0) return chem5_names[i];
+  return symbols[elem];
 }
 
 /**
@@ -615,8 +630,13 @@ static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
       sprintf(buffer, "KIARAChemistry:init_abundance_%s",
               chemistry_get_element_name((enum chemistry_element)elem));
 
-      data->initial_metal_mass_fraction[elem] =
-          parser_get_param_float(parameter_file, buffer);
+      /* H and He are required; a metal not given starts at zero */
+      if (elem == chemistry_element_H || elem == chemistry_element_He)
+        data->initial_metal_mass_fraction[elem] =
+            parser_get_param_float(parameter_file, buffer);
+      else
+        data->initial_metal_mass_fraction[elem] =
+            parser_get_opt_param_float(parameter_file, buffer, 0.f);
     }
 
     /* Let's check that things make sense (broadly) */

@@ -26,22 +26,45 @@
 #define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
 
 /**
+ * @brief All the elements chem5 computes yields for (symbol, name), in the
+ * order of its tables.
+ */
+#define KIARA_CHEM5_ELEMENTS(X)                                              \
+  X(H, Hydrogen) X(He, Helium) X(Li, Lithium) X(Be, Beryllium) X(B, Boron) \
+  X(C, Carbon) X(N, Nitrogen) X(O, Oxygen) X(F, Fluorine) X(Ne, Neon)      \
+  X(Na, Sodium) X(Mg, Magnesium) X(Al, Aluminium) X(Si, Silicon)           \
+  X(P, Phosphorus) X(S, Sulfur) X(Cl, Chlorine) X(Ar, Argon)               \
+  X(K, Potassium) X(Ca, Calcium) X(Sc, Scandium) X(Ti, Titanium)           \
+  X(V, Vanadium) X(Cr, Chromium) X(Mn, Manganese) X(Fe, Iron)              \
+  X(Co, Cobalt) X(Ni, Nickel) X(Cu, Copper) X(Zn, Zinc) X(Ga, Gallium)     \
+  X(Ge, Germanium)
+
+/**
+ * @brief The elements tracked individually, by symbol (any of
+ * #KIARA_CHEM5_ELEMENTS).
+ *
+ * Edit this list to change the elements (compile-time; not restart
+ * compatible). H and He must come first, in that order; every other element
+ * is a metal. Fe is required ([Fe/H] of the SNIa yields), and so are the dust
+ * elements (KIARA_DUST_ELEMENTS); leaving one of them out is a compile
+ * error. The total metallicity includes all of chem5's metals, whichever are
+ * tracked. Each element costs 12 bytes per gas particle and 12 per star.
+ */
+#define KIARA_ELEMENTS(X) \
+  X(H) X(He) X(C) X(N) X(O) X(Ne) X(Mg) X(Si) X(S) X(Ca) X(Fe)
+
+/**
  * @brief The individual elements traced in the KIARA model.
  */
 enum chemistry_element {
-  chemistry_element_H = 0,
-  chemistry_element_He,
-  chemistry_element_C,
-  chemistry_element_N,
-  chemistry_element_O,
-  chemistry_element_Ne,
-  chemistry_element_Mg,
-  chemistry_element_Si,
-  chemistry_element_S,
-  chemistry_element_Ca,
-  chemistry_element_Fe,
+#define KIARA_ELEMENT_ENUM(e) chemistry_element_##e,
+  KIARA_ELEMENTS(KIARA_ELEMENT_ENUM)
+#undef KIARA_ELEMENT_ENUM
   chemistry_element_count
 };
+
+_Static_assert(chemistry_element_H == 0 && chemistry_element_He == 1,
+               "KIARA_ELEMENTS must start with H, He");
 
 /**
  * @brief The elements that can be locked in dust, in the order of the

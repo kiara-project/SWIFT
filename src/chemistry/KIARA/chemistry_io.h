@@ -226,9 +226,26 @@ INLINE static void chemistry_write_flavour(hid_t h_grp, hid_t h_grp_columns,
                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   H5Dwrite(dset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, element_names[0]);
   H5Dclose(dset);
+  H5Sclose(space);
+
+#if COOLING_GRACKLE_MODE >= 2
+  /* The dust elements (columns of DustMassFractions) */
+  char dust_names[dust_element_count][element_name_length];
+  for (int d = 0; d < dust_element_count; ++d) {
+    sprintf(dust_names[d], "%s",
+            chemistry_get_element_name(
+                (enum chemistry_element)chemistry_element_of_dust(d)));
+  }
+  hsize_t dust_dims[1] = {dust_element_count};
+  space = H5Screate_simple(1, dust_dims, NULL);
+  dset = H5Dcreate(h_grp_columns, "DustMassFractions", type, space,
+                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  H5Dwrite(dset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, dust_names[0]);
+  H5Dclose(dset);
+  H5Sclose(space);
+#endif
 
   H5Tclose(type);
-  H5Sclose(space);
 }
 #endif
 

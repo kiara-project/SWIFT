@@ -55,41 +55,13 @@ enum kiara_metal_boosting {
   kiara_metal_boosting_both
 };
 
-/* Chem5 tracks A LOT of elements but we will just map the standard 11 back */
+/* Chem5 computes yields for all of these; the tracked ones (KIARA_ELEMENTS)
+ * are mapped back to the particles, and Z holds all the metals */
 enum chem5_element {
   chem5_element_Z = 0,
-  chem5_element_H,
-  chem5_element_He,
-  chem5_element_Li,
-  chem5_element_Be,
-  chem5_element_B,
-  chem5_element_C,
-  chem5_element_N,
-  chem5_element_O,
-  chem5_element_F,
-  chem5_element_Ne,
-  chem5_element_Na,
-  chem5_element_Mg,
-  chem5_element_Al,
-  chem5_element_Si,
-  chem5_element_P,
-  chem5_element_S,
-  chem5_element_Cl,
-  chem5_element_Ar,
-  chem5_element_K,
-  chem5_element_Ca,
-  chem5_element_Sc,
-  chem5_element_Ti,
-  chem5_element_V,
-  chem5_element_Cr,
-  chem5_element_Mn,
-  chem5_element_Fe,
-  chem5_element_Co,
-  chem5_element_Ni,
-  chem5_element_Cu,
-  chem5_element_Zn,
-  chem5_element_Ga,
-  chem5_element_Ge,
+#define KIARA_CHEM5_ENUM(e, name) chem5_element_##e,
+  KIARA_CHEM5_ELEMENTS(KIARA_CHEM5_ENUM)
+#undef KIARA_CHEM5_ENUM
   chem5_element_unknown,
   chem5_element_count,
   chem5_dummy1,
@@ -173,8 +145,7 @@ struct feedback_props {
 
   struct feedback_tables tables;
 
-  /* Conversion indices from Chem5 to Swift */
-  /* 0-Z, 2-He, 6-C , 7-N, 8-O, 10-Ne, 12-Mg, 14-Si, 26-Fe */
+  /* The chem5 element of each tracked element */
   int element_index_conversions[chemistry_element_count];
 
   /* Location of feedback tables */
@@ -416,14 +387,14 @@ struct feedback_props {
 #if COOLING_GRACKLE_MODE >= 2
   /* ------------ Dust Efficiency Tables --------------- */
 
-  /*! dust condensation efficiency for C/O>1 */
-  double delta_AGBCOG1[chemistry_element_count];
+  /*! dust condensation efficiency for C/O>1, by #dust_element */
+  double delta_AGBCOG1[dust_element_count];
 
-  /*! dust condensation efficiency for C/O<1 */
-  double delta_AGBCOL1[chemistry_element_count];
+  /*! dust condensation efficiency for C/O<1, by #dust_element */
+  double delta_AGBCOL1[dust_element_count];
 
-  /*! dust condensation efficiency from SNII */
-  double delta_SNII[chemistry_element_count];
+  /*! dust condensation efficiency from SNII, by #dust_element */
+  double delta_SNII[dust_element_count];
 
   /*! max fraction of metals locked into dust */
   float max_dust_fraction;
