@@ -41,7 +41,7 @@
 #include <math.h>
 
 /* The grackle library itself */
-#include <grackle.h>
+#include "crackle/grackle.h"
 extern chemistry_data *grackle_data;
 
 /* Local includes. */

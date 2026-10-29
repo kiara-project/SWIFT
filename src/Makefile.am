@@ -38,6 +38,9 @@ MPI_FLAGS = -DWITH_MPI $(PARMETIS_INCS) $(METIS_INCS)
 # Build the libswiftsim library and a convenience library just for the gravity tasks
 lib_LTLIBRARIES = libswiftsim.la
 noinst_LTLIBRARIES = libgrav.la
+if HAVEKIARACOOLING
+noinst_LTLIBRARIES += libcrackle.la
+endif
 # Build a MPI-enabled version too?
 if HAVEMPI
 lib_LTLIBRARIES += libswiftsim_mpi.la
@@ -486,6 +489,20 @@ nobase_noinst_HEADERS += cooling/PS2020/cooling_tables.h cooling/PS2020/cooling_
 nobase_noinst_HEADERS += cooling/PS2020/cooling_properties.h cooling/PS2020/cooling_debug.h
 nobase_noinst_HEADERS += cooling/KIARA/cooling.h cooling/KIARA/cooling_struct.h
 nobase_noinst_HEADERS += cooling/KIARA/cooling_io.h cooling/KIARA/cooling_properties.h cooling/KIARA/cooling_debug.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle_aux.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle_dust.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle_interpolation.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/crackle_namespace.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/grackle.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/grackle_types.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/grackle_float.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/grackle_chemistry_data.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/grackle_macros.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/grackle_rate_functions.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/index_helper.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/phys_constants.h
+nobase_noinst_HEADERS += cooling/KIARA/crackle/cie_thin_cooling_rate_tables.h
 nobase_noinst_HEADERS += cooling/TREECOOL/cooling.h cooling/TREECOOL/cooling_struct.h
 nobase_noinst_HEADERS += cooling/TREECOOL/cooling_io.h cooling/TREECOOL/cooling_rates.h
 nobase_noinst_HEADERS += cooling/TREECOOL/cooling_tables.h
@@ -610,18 +627,47 @@ libgrav_mpi_la_SOURCES = runner_doiact_grav.c runner_doiact_long_range_grav.c
 libgrav_mpi_la_CFLAGS = $(AM_CFLAGS) $(MPI_FLAGS) $(GRAVITY_CFLAGS) -DWITH_MPI
 libgrav_mpi_la_LDFLAGS = $(AM_LDFLAGS) $(MPI_LIBS) $(EXTRA_LIBS)
 
+# The built-in crackle library (KIARA cooling), compiled with the flags of the
+# Grackle build it was validated against (gcc -O2, no fast-math, no LTO, no
+# -march), so that it reproduces it bit for bit. Note the target-specific
+# CFLAGS replaces the global CFLAGS for these objects only.
+CRACKLE_DIR = cooling/KIARA/crackle
+libcrackle_la_SOURCES = $(CRACKLE_DIR)/solve_chemistry.c \
+        $(CRACKLE_DIR)/calculate_cooling_time.c \
+        $(CRACKLE_DIR)/calculate_temperature.c \
+        $(CRACKLE_DIR)/calculate_pressure.c \
+        $(CRACKLE_DIR)/calculate_gamma.c \
+        $(CRACKLE_DIR)/initialize_chemistry_data.c \
+        $(CRACKLE_DIR)/initialize_rates.c \
+        $(CRACKLE_DIR)/rate_functions.c \
+        $(CRACKLE_DIR)/initialize_cloudy_data.c \
+        $(CRACKLE_DIR)/initialize_UVbackground_data.c \
+        $(CRACKLE_DIR)/update_UVbackground_rates.c \
+        $(CRACKLE_DIR)/set_default_chemistry_parameters.c \
+        $(CRACKLE_DIR)/grackle_units.c \
+        $(CRACKLE_DIR)/index_helper.c \
+        $(CRACKLE_DIR)/dynamic_api.c
+libcrackle_la_CFLAGS = $(HDF5_CPPFLAGS) -DLINUX -DH5_USE_16_API \
+        -DOMIT_LEGACY_INTERNAL_GRACKLE_FUNC -I$(srcdir)/$(CRACKLE_DIR) \
+        -include $(srcdir)/$(CRACKLE_DIR)/crackle_namespace.h
+CRACKLE_CFLAGS = -O2 -fPIC
+$(libcrackle_la_OBJECTS): CFLAGS = $(CRACKLE_CFLAGS)
+if HAVEKIARACOOLING
+CRACKLE_LIB = libcrackle.la
+endif
+
 # Sources and flags for regular library
 libswiftsim_la_SOURCES = $(AM_SOURCES)
 libswiftsim_la_CFLAGS = $(AM_CFLAGS)
 libswiftsim_la_LDFLAGS = $(AM_LDFLAGS) $(EXTRA_LIBS) -version-info 0:0:0
-libswiftsim_la_LIBADD = $(GRACKLE_LIBS) $(VELOCIRAPTOR_LIBS) libgrav.la
+libswiftsim_la_LIBADD = $(GRACKLE_LIBS) $(VELOCIRAPTOR_LIBS) libgrav.la $(CRACKLE_LIB)
 
 # Sources and flags for MPI library
 libswiftsim_mpi_la_SOURCES = $(AM_SOURCES)
 libswiftsim_mpi_la_CFLAGS = $(AM_CFLAGS) $(MPI_FLAGS)
 libswiftsim_mpi_la_LDFLAGS = $(AM_LDFLAGS) $(MPI_LIBS) $(EXTRA_LIBS) -version-info 0:0:0
 libswiftsim_mpi_la_SHORTNAME = mpi
-libswiftsim_mpi_la_LIBADD = $(GRACKLE_LIBS) $(VELOCIRAPTOR_LIBS) $(MPI_LIBS) libgrav_mpi.la
+libswiftsim_mpi_la_LIBADD = $(GRACKLE_LIBS) $(VELOCIRAPTOR_LIBS) $(MPI_LIBS) libgrav_mpi.la $(CRACKLE_LIB)
 
 # Versioning. If any sources change then update the version_string.h file with
 # the current git revision and package version.
@@ -652,3 +698,5 @@ BUILT_SOURCES = version_string.h
 
 #  And distribute the built files.
 EXTRA_DIST = version_string.h version_string.h.in
+EXTRA_DIST += cooling/KIARA/crackle/crackle_chemistry.c cooling/KIARA/crackle/grackle_chemistry_data_fields.def
+EXTRA_DIST += cooling/KIARA/crackle/README.md cooling/KIARA/crackle/LICENSE.grackle cooling/KIARA/crackle/LICENSE.crackle

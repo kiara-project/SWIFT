@@ -27,7 +27,7 @@
 #include "rt_unphysical.h"
 
 /* The grackle library itself */
-#include <grackle.h>
+#include "../../cooling/KIARA/crackle/grackle.h"
 extern chemistry_data *grackle_data;
 
 /**

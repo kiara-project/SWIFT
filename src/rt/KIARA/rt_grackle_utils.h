@@ -25,7 +25,7 @@
 /* need hydro gamma */
 #include "hydro.h"
 
-#include <grackle.h>
+#include "../../cooling/KIARA/crackle/grackle.h"
 
 /* need to rework (and check) code if changed */
 #define FIELD_SIZE 1

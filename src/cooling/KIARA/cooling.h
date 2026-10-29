@@ -30,7 +30,7 @@
 #include <math.h>
 
 /* The grackle library itself */
-#include <grackle.h>
+#include "crackle/grackle.h"
 
 /* Local includes. */
 #include "chemistry.h"

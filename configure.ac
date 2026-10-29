@@ -1559,6 +1559,16 @@ AC_SUBST([GRACKLE_LIBS])
 AC_SUBST([GRACKLE_INCS])
 AM_CONDITIONAL([HAVEGRACKLE],[test -n "$GRACKLE_LIBS"])
 
+# Compare the built-in crackle (KIARA cooling) with an external Grackle/crackle
+# library on every call, aborting at the first difference (needs --with-grackle).
+AC_ARG_ENABLE([crackle-validate],
+   [AS_HELP_STRING([--enable-crackle-validate],
+     [Run the external Grackle library alongside the built-in crackle of the KIARA cooling and check that they agree bit for bit @<:@yes/no@:>@]
+   )],
+   [enable_crackle_validate="$enableval"],
+   [enable_crackle_validate="no"]
+)
+
 # Check for Agama (All-purpose Galaxy Modelling Architecture).
 # See https://agama.software/ for details.
 # Agama is linked as a static archive (agama.a) and requires two companion
@@ -2932,9 +2942,20 @@ case "$with_cooling" in
       with_cooling_name="SIMBA (Grackle 3+ with extensions)"
    ;;
    KIARA)
-      AC_DEFINE([COOLING_KIARA], [1], [Cooling via the grackle library v3.2+ incl. dust+H2 formation])
+      AC_DEFINE([COOLING_KIARA], [1], [Cooling via the built-in crackle library incl. dust+H2 formation])
       AC_DEFINE([COOLING_GRACKLE_MODE], [2], [Cooling via Grackle mode=2])
-      with_cooling_name="KIARA (Grackle 3.2+ incl. dust+H2 formation)"
+      with_cooling_name="KIARA (built-in crackle incl. dust+H2 formation)"
+      if test "$enable_crackle_validate" = "yes"; then
+         if test "$have_grackle" != "yes"; then
+            AC_MSG_ERROR([--enable-crackle-validate needs an external Grackle library to compare with (--with-grackle=PATH)])
+         fi
+         AC_DEFINE([CRACKLE_VALIDATE], [1], [Compare the built-in crackle with the external Grackle library])
+         with_cooling_name="$with_cooling_name, validated against external Grackle"
+      elif test "$have_grackle" = "yes"; then
+         AC_MSG_NOTICE([KIARA cooling uses the built-in crackle: not linking the external Grackle library])
+         GRACKLE_LIBS=""
+         GRACKLE_INCS=""
+      fi
    ;;
    QLA)
       AC_DEFINE([COOLING_QLA], [1], [Cooling following the Quick-Lyman-alpha model])
@@ -3565,12 +3586,8 @@ case "$with_rt" in
           AC_MSG_ERROR([KIARA-RT: You need to select an RT Riemann solver (--with-rt-riemann-solver=...)])
       fi
 
-      if test "$have_grackle" != "yes"; then
-        AC_MSG_ERROR([KIARA-RT: You need the grackle library for KIARA-RT. (--with-grackle=PATH)])
-      fi
-
-      if test "$with_cooling" = "none"; then
-          AC_MSG_ERROR([KIARA-RT: You need to select a cooling module (--with-cooling=grackle_1)])
+      if test "$with_cooling" != "KIARA"; then
+          AC_MSG_ERROR([KIARA-RT: needs the KIARA cooling (built-in crackle), e.g. --with-subgrid=KIARART])
       fi
 
    ;;

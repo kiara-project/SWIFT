@@ -17,6 +17,11 @@
 /* crackle in SWIFT: rename all exported symbols (crk_ prefix) */
 #include "crackle_namespace.h"
 
+/* SWIFT uses only the local_/global API, not the legacy internal functions */
+#ifndef OMIT_LEGACY_INTERNAL_GRACKLE_FUNC
+#define OMIT_LEGACY_INTERNAL_GRACKLE_FUNC
+#endif
+
 #include "grackle_types.h"
 #include "grackle_chemistry_data.h"
 

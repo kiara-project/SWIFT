@@ -20,7 +20,7 @@
 #define SWIFT_COOLING_PROPERTIES_KIARA_H
 
 /* include grackle */
-#include <grackle.h>
+#include "crackle/grackle.h"
 
 /**
  * @file src/cooling/KIARA/cooling_properties.h
