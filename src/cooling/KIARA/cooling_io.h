@@ -454,8 +454,17 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->dust_growth_densref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_densref", 2.3e-20);
 
-  cooling->dust_growth_tauref = parser_get_opt_param_double(
+  /* The growth time-scale is fixed at 1 Gyr at dust_growth_densref, since only
+   * their product sets it; an old tauref must be folded into densref */
+  const double dust_growth_tauref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_tauref", 1.0);
+  if (dust_growth_tauref != 1.0)
+    error(
+        "KIARACooling:dust_growth_tauref is no longer used: the dust growth "
+        "time-scale is 1 Gyr at dust_growth_densref. Remove it and set "
+        "dust_growth_densref to %g (densref x tauref) for the same growth.",
+        cooling->dust_growth_densref * dust_growth_tauref);
+  cooling->dust_growth_tauref = 1.0;
 
   cooling->cold_ISM_frac = parser_get_opt_param_double(
       parameter_file, "KIARACooling:cold_ISM_frac", 1.0);

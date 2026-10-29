@@ -149,10 +149,11 @@ struct cooling_function_data {
   /*! Dust grain size (micron) */
   double dust_grainsize;
 
-  /*! Reference density for dust growth (g/cm^3) */
+  /*! Density at which the dust growth time-scale is 1 Gyr (g/cm^3) */
   double dust_growth_densref;
 
-  /*! Dust growth time-scale at the reference density (Gyr) */
+  /*! Always 1 Gyr (the growth time-scale at dust_growth_densref); kept so the
+   * struct, and so the restart files, are unchanged */
   double dust_growth_tauref;
 
   /*! For dust model, need self-enrichment up to a small metallicity to

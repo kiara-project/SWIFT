@@ -7,6 +7,7 @@
 #define DUST_CHANGE_HI 100.0  // factor by which dust density can go up in a single step
 #define DUST_CHANGE_LO 0.5  // factor by which dust density can go down in a single step
 #define T_SPUTTERING 2.e4  // Temeprature below which sputtering is negligible
+#define DUST_GROWTH_TAU_GYR 1.0  // dust growth time-scale (Gyr) at density dust_growth_densref
 
 static inline void evolve_dust(grackle_part_data *gp, chemistry_data *chemistry, code_units *units, int ism_flag, double dtit)
 {
@@ -27,7 +28,7 @@ static inline void evolve_dust(grackle_part_data *gp, chemistry_data *chemistry,
 
 	// Dust growth: metals accreted from gas to dust; only allowed when in ISM
 	if (ism_flag) {
-            tau_ref = chemistry->dust_growth_tauref * 1.e9 * sec_per_year / units->time_units;
+            tau_ref = DUST_GROWTH_TAU_GYR * 1.e9 * sec_per_year / units->time_units;
             tau_accr0 = tau_ref * (chemistry->dust_growth_densref/dens_cgs) * sqrt(gp->tdust/gp->tgas); 
             for (k=1; k<NUM_METAL_SPECIES_GRACKLE; k++){
 		//gp->dust_metalDensity[k] = fmax(gp->dust_metalDensity[k], tiny);
