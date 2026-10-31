@@ -46,13 +46,11 @@ static inline void evolve_dust(grackle_part_data *gp, chemistry_data *chemistry,
             else{
 	        const double mass_unit = units->density_units * units->length_units * units->length_units * units->length_units;
                 const double rhogas = gp->density - gp->dust_density;
-                //const double Ms100 = 6800.0*chemistry->sne_coeff*(100.0/chemistry->sne_shockspeed)*(100.0/chemistry->sne_shockspeed) * SolarMass / mass_unit;  //code units, gas mass shocked per SNe (Sedov-Taylor phase) in Simba
-		const double SN_dust_destr_rate = 22.;  // dust destruction rate per SN in Mo/Myr (Kirchschlager+24, model BH)
-		const double tdyn = 1./sqrt(6.67e-8 * dens_cgs) / (1.e6 * sec_per_year);  // assume SN remnant lasts for tdyn; convert to Myr
-		const double Ms100 = SN_dust_destr_rate * tdyn * SolarMass / (mass_unit * chemistry->dust_destruction_eff);  // dust mass destroyed per SN, in code units
+		// gas mass shocked above sne_shockspeed per SN in the Sedov-Taylor phase, ~E/v_s^2 and so independent of the ambient density (McKee 1989; as in Grackle and Simba), in code units
+		const double Ms100 = 6800.0*chemistry->sne_coeff*(100.0/chemistry->sne_shockspeed)*(100.0/chemistry->sne_shockspeed) * SolarMass / mass_unit;
                 f_shocked = min((Ms100 * gp->SNe_density) / rhogas, 1.);  // fraction of mass shock-heated
                 drhos = gp->dust_density * f_shocked * chemistry->dust_destruction_eff;  // some fraction of dust is destroyed in shocked gas
-	//if (gp->verbose) printf("dust: %g %g %g %g %g %g %g\n",gp->dust_density, Ms100 * mass_unit * chemistry->dust_destruction_eff / SolarMass, tdyn, dens_cgs, f_shocked, drhos, (gp->metal_density/(gp->metal_density+gp->dust_density)) * (gp->dust_density/tau_accr) * dtit);
+	//if (gp->verbose) printf("dust: %g %g %g %g %g %g\n",gp->dust_density, Ms100 * mass_unit / SolarMass, dens_cgs, f_shocked, drhos, (gp->metal_density/(gp->metal_density+gp->dust_density)) * (gp->dust_density/tau_accr) * dtit);
 	    }
 	    /* sputtering */
 	    if (gp->tgas > T_SPUTTERING || !ism_flag) {  // negligibly small below this temperature
