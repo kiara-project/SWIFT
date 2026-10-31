@@ -437,14 +437,18 @@ INLINE static double cooling_compute_cold_ISM_fraction(
  * @param u_subgrid Specific internal energy of the cold phase at the subgrid
  * temperature (from the cold-phase species).
  * @param cooling #cooling_function_data struct.
- * @return The physical subgrid (cold-cloud) density, capped at
- * max_subgrid_density.
+ * @return The physical subgrid (cold-cloud) density, floored at
+ * min_subgrid_density and capped at max_subgrid_density.
  */
 INLINE static double cooling_compute_subgrid_density(
     const double rho, const double u, const double u_subgrid,
     const struct cooling_function_data *cooling) {
 
   double subgrid_dens = rho * u / u_subgrid;
+
+  /* Floor at a typical cold-cloud density: clouds are bound and so denser
+   * than pressure equilibrium with a low-pressure ISM would make them */
+  subgrid_dens = fmax(subgrid_dens, cooling->min_subgrid_density);
 
   /* Cap at max value which should be something vaguely like GMC densities */
   subgrid_dens = fmin(subgrid_dens, cooling->max_subgrid_density);

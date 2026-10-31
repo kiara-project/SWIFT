@@ -331,6 +331,8 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
   message("Self Shielding flag = %i", cooling->self_shielding_method);
   message("Max subgrid density (internal units) = %g",
           cooling->max_subgrid_density);
+  message("Min subgrid density (internal units) = %g",
+          cooling->min_subgrid_density);
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);

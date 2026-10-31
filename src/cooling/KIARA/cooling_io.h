@@ -481,6 +481,17 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->max_subgrid_density /=
       units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
 
+  /* Number density rho / m_H in physical cm^-3 (as
+   * KIARAStarFormation:lognormal_critical_density); 0 = no floor */
+  cooling->min_subgrid_density =
+      parser_get_opt_param_double(
+          parameter_file, "KIARACooling:min_subgrid_number_density_cm3", 0.) *
+      1.673e-24 / units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
+  if (cooling->min_subgrid_density > cooling->max_subgrid_density)
+    error(
+        "KIARACooling:min_subgrid_number_density_cm3 is above "
+        "max_subgrid_density_g_p_cm3");
+
   cooling->subgrid_threshold_n_H_inv = parser_get_opt_param_double(
       parameter_file, "KIARACooling:subgrid_threshold_n_H_cgs", 0.13);
   /* convert to internal units, take inverse to save compute time */

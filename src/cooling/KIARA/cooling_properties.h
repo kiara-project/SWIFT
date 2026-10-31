@@ -175,6 +175,10 @@ struct cooling_function_data {
    * over-iterating in Grackle */
   double max_subgrid_density;
 
+  /*! For Grackle subgrid model, minimum (physical) cold-cloud density, which
+   * overrides pressure equilibrium when the ISM pressure is low */
+  double min_subgrid_density;
+
   /*! For Grackle subgrid model, inverse of threshold nH above which multi-phase
    * ISM model kicks in */
   double subgrid_threshold_n_H_inv;
