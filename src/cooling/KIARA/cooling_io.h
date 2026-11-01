@@ -451,6 +451,9 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->dust_grainsize = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_grainsize", 0.1);
 
+  cooling->dust_oxygen_stoichiometric_cap = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:dust_oxygen_stoichiometric_cap", 0);
+
   cooling->dust_growth_densref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_densref", 2.3e-20);
 

@@ -149,6 +149,10 @@ struct cooling_function_data {
   /*! Dust grain size (micron) */
   double dust_grainsize;
 
+  /*! Limit the oxygen in dust to the oxides of the refractory dust elements
+   * (MgO, SiO2, CaO, FeO), as grains hold O only bound to them */
+  int dust_oxygen_stoichiometric_cap;
+
   /*! Density at which the dust growth time-scale is 1 Gyr (g/cm^3) */
   double dust_growth_densref;
 

@@ -2877,6 +2877,8 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
     chemistry->dust_grainsize = cooling->dust_grainsize;
     chemistry->dust_growth_densref = cooling->dust_growth_densref;
     chemistry->dust_growth_tauref = cooling->dust_growth_tauref;
+    chemistry->dust_oxygen_stoichiometric_cap =
+        cooling->dust_oxygen_stoichiometric_cap;
     /* Enable dust temperature calculation using ISRF */
     chemistry->metal_cooling = 1;
     chemistry->dust_chemistry = 1;

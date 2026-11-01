@@ -93,6 +93,24 @@ static inline void evolve_dust(grackle_part_data *gp, chemistry_data *chemistry,
 	    /* Add up new dust densities */
 	    gp->dust_density += gp->dust_metalDensity[k];
         }
+
+	/* Grains hold oxygen only bound to refractory elements (silicates and
+	 * oxides), so limit the dust O to the oxides of the dust Mg, Si, Ca and Fe
+	 * (MgO, SiO2, CaO, FeO) and return any excess to the gas. Indices are those
+	 * of gas/dust_metalDensity: 3 = O, 5 = Mg, 6 = Si, 8 = Ca, 9 = Fe. */
+	if (chemistry->dust_oxygen_stoichiometric_cap) {
+	    const double O_dust_max = 15.999 * (gp->dust_metalDensity[5] / 24.305 +
+	                                        2. * gp->dust_metalDensity[6] / 28.085 +
+	                                        gp->dust_metalDensity[8] / 40.078 +
+	                                        gp->dust_metalDensity[9] / 55.845);
+	    const double O_excess = gp->dust_metalDensity[3] - O_dust_max;
+	    if (O_excess > 0.) {
+	        gp->dust_metalDensity[3] -= O_excess;
+	        gp->gas_metalDensity[3] += O_excess;
+	        gp->metal_density += O_excess;
+	        gp->dust_density -= O_excess;
+	    }
+	}
 	//if (gp->verbose) printf("dust: dtit=%g tau_accr=%g tau_sput=%g snerho=%g drhos=%g rhog=%g td=%g tg=%g dust=%g\n",dtit,tau_accr0,tau_sput/3.,gp->SNe_density,drhos,gp->density,gp->tdust,gp->tgas,gp->dust_density);
 	//assert(gp->dust_density == gp->dust_density);
 	//assert(gp->metal_density >= 0.);

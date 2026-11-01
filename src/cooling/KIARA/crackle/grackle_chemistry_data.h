@@ -202,6 +202,7 @@ typedef struct
   double dust_grainsize;
   double dust_growth_densref;
   double dust_growth_tauref;
+  int dust_oxygen_stoichiometric_cap; // limit dust O to oxides of the refractory dust elements
   double SolarAbundances[NUM_METAL_SPECIES_GRACKLE];
   
   /* crackle: maximum factor by which a quantity can chenge in a given step */
