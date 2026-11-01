@@ -61,20 +61,17 @@
 #define GRACKLE_HEATLIM 1000.f
 #define GRACKLE_COOLLIM 0.01f
 #define MAX_COLD_ISM_FRACTION 0.9f
-/* Minimum particle column length as a fraction of p->h.
- * Should be <= mean interparticle spacing.
- * For 48 Ngb mean spacing ~ 0.887
- * For 57 Ngb mean spacing ~ 0.837
- * For 64 Ngb mean spacing ~ 0.780
- * For 114 Ngb mean spacing ~ 0.664
+/* Minimum particle column length for self-shielding, as a fraction of the
+ * mean interparticle spacing (h / eta_neighbours, independent of the number
+ * of neighbours); cooling->min_shield_h_frac converts it to a fraction of h.
+ * Should be <= 1.
  *
  * Basically a limiter on rho / |grad rho| for a depth
  * for shielding, and how bad you think |grad rho|
  * really is at estimating the depth.
  *
- * 0.403 for 64 Ngb keeps the floor at the physical length (~0.52 mean
- * spacings) that 0.332 gave for 114 Ngb, since h scales as eta. */
-#define MIN_SHIELD_H_FRAC 0.403f
+ * 0.516 is the floor of 0.332 h used with 114 neighbours. */
+#define MIN_SHIELD_SPACING_FRAC 0.516
 
 void cooling_update(const struct phys_const *phys_const,
                     const struct cosmology *cosmo,
@@ -563,7 +560,7 @@ __attribute__((always_inline)) INLINE static float cooling_KMT_H2_fraction(
  * Based on Schauer et al. 2015 eqs 8,9.
  *
  * The H column is the physical density times an effective length
- * rho/|grad rho| limited to [MIN_SHIELD_H_FRAC h, kernel_gamma h]. H2
+ * rho/|grad rho| limited to [min_shield_h_frac h, kernel_gamma h]. H2
  * self-shielding is left to crackle.
  *
  * @param p The particle to act upon.
@@ -589,7 +586,7 @@ cooling_compute_self_shielding(const struct part *restrict p,
     const double rho_com = hydro_get_comoving_density(p);
     double L_eff_com = rho_com * rho_grad_norm_inv;
     const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
+    const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
     L_eff_com = fmin(L_eff_com, L_eff_com_max);
     L_eff_com = fmax(L_eff_com, L_eff_com_min);
     const double L_eff_in_cm = L_eff_com * a * cooling->units.length_units;

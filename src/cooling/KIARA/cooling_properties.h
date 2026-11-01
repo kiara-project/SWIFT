@@ -179,6 +179,10 @@ struct cooling_function_data {
    * overrides pressure equilibrium when the ISM pressure is low */
   double min_subgrid_density;
 
+  /*! Minimum self-shielding column length as a fraction of h:
+   * MIN_SHIELD_SPACING_FRAC mean interparticle spacings */
+  double min_shield_h_frac;
+
   /*! For Grackle subgrid model, inverse of threshold nH above which multi-phase
    * ISM model kicks in */
   double subgrid_threshold_n_H_inv;

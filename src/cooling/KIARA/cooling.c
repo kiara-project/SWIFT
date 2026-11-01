@@ -333,6 +333,7 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
           cooling->max_subgrid_density);
   message("Min subgrid density (internal units) = %g",
           cooling->min_subgrid_density);
+  message("Min self-shielding length = %g h", cooling->min_shield_h_frac);
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);
@@ -418,7 +419,7 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
  * With the dust model on, this also passes the dust density, the number of
  * SNe in this step, the interstellar radiation field G0 (-1 outside the
  * subgrid ISM), the H2 self-shielding length (rho/|grad rho|, limited to
- * [MIN_SHIELD_H_FRAC h, kernel_gamma h]) and the gas and dust element
+ * [min_shield_h_frac h, kernel_gamma h]) and the gas and dust element
  * densities, and sets the slot in which crackle returns its dust temperature.
  * Requires the metal density (species_densities[12]) to be set.
  *
@@ -484,7 +485,7 @@ void cooling_copy_to_grackle2(
     const double rho_com = hydro_get_comoving_density(p);
     double L_eff_com = rho_com * rho_grad_norm_inv;
     const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
+    const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
     L_eff_com = fmin(L_eff_com, L_eff_com_max);
     L_eff_com = fmax(L_eff_com, L_eff_com_min);
 
@@ -1303,7 +1304,7 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
     const double rho_com = hydro_get_comoving_density(p);
     double L_eff_com = rho_com * rho_grad_norm_inv;
     const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
+    const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
     L_eff_com = fmin(L_eff_com, L_eff_com_max);
     L_eff_com = fmax(L_eff_com, L_eff_com_min);
     L_shield = L_eff_com * cooling->units.a_value;
@@ -2962,6 +2963,11 @@ void cooling_init_backend(struct swift_params *parameter_file,
       phys_const->const_proton_mass /
       (hydro_props->hydrogen_mass_fraction *
        units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY));
+
+  /* Floor on the self-shielding length: the mean interparticle spacing is
+   * h / eta_neighbours */
+  cooling->min_shield_h_frac =
+      MIN_SHIELD_SPACING_FRAC / hydro_props->eta_neighbours;
 
   /* Set up the units system. */
   cooling_init_units(us, phys_const, cooling);

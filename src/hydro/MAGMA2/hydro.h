@@ -933,9 +933,9 @@ __attribute__((always_inline)) INLINE static hydro_real_t hydro_van_leer_phi(
   const hydro_real_t eta_ij = min(eta_i, eta_j);
 
   hydro_real_t damping = 1.;
-  if (eta_ij <= const_slope_limiter_eta_crit) {
+  if (eta_ij <= magma2_slope_limiter_eta_crit) {
     const hydro_real_t diff =
-        (eta_ij - const_slope_limiter_eta_crit) / const_slope_limiter_eta_fold;
+        (eta_ij - magma2_slope_limiter_eta_crit) / const_slope_limiter_eta_fold;
     damping = exp(-diff * diff);
   }
 
@@ -1899,8 +1899,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
 
   /* Too few neighbours for reliable matrix gradients: use the SPH fallback */
   const float num_ngb = p->gradients.wcount * pow_dimension(h) * kernel_norm;
-  if (num_ngb <
-      const_fallback_min_neighbour_fraction * const_kernel_target_neighbours) {
+  if (num_ngb < magma2_fallback_min_neighbours) {
     p->gradients.C_well_conditioned = 0;
     p->gradients.D_well_conditioned = 0;
     p->gradients.u_well_conditioned = 0;
