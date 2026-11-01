@@ -259,6 +259,8 @@ void feedback_dust_production_condensation(
  * @param SN_energy The SN energy in this step from chem5's own tables (SNII,
  * including hypernovae, plus SNIa), regardless of the use_*_energy_from_chem5
  * flags; in code units. Used for the wind energy budget.
+ * @param SN_energy_thermal The part of the SN energy included in
+ * ejecta_energy (per the use_*_energy_from_chem5 flags), in code units.
  * @param ejecta_mass The total ejected mass in code units.
  * @param ejecta_unprocessed The unprocessed mass in code units.
  * @param ejecta_metal_mass The metal masses for each element in
@@ -267,7 +269,7 @@ void feedback_dust_production_condensation(
 void feedback_get_ejecta_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props,
     double dt, double *N_SNe, double *ejecta_energy, double *SN_energy,
-    double *ejecta_mass, double *ejecta_unprocessed,
+    double *SN_energy_thermal, double *ejecta_mass, double *ejecta_unprocessed,
     double ejecta_metal_mass[chem5_element_count]) {
   int j, k, j1, j2, l, l1 = 0, l2 = 0, ll1 = 0, ll2 = 0, lll1 = 0, lll2 = 0;
   double SW_R, SNII_R, SNII_U, SNII_E, SNII_Z[chem5_element_count];
@@ -281,6 +283,7 @@ void feedback_get_ejecta_from_star_particle(
 
   *ejecta_energy = 0.;
   *SN_energy = 0.;
+  *SN_energy_thermal = 0.;
   *ejecta_mass = 0.;
   *ejecta_unprocessed = 0.;
   for (k = 0; k < chem5_element_count; k++) ejecta_metal_mass[k] = 0.;
@@ -642,6 +645,7 @@ void feedback_get_ejecta_from_star_particle(
       if (fb_props->with_SNII_energy_from_chem5) {
         *ejecta_energy = SWn * fb_props->E_sw;
         *ejecta_energy += sp->mass_init * SNII_ENE;
+        *SN_energy_thermal += sp->mass_init * SNII_ENE;
       }
       /* SNII (and hypernova) energy from the chem5 tables */
       *SN_energy = max(0., sp->mass_init * SNII_ENE);
@@ -665,6 +669,7 @@ void feedback_get_ejecta_from_star_particle(
         /* SNIa always contribute */
         if (fb_props->with_SNIa_energy_from_chem5 == 1) {
           *ejecta_energy += SNn * fb_props->E_sn1;
+          *SN_energy_thermal += SNn * fb_props->E_sn1;
         }
         /* SNIa contribute if age < with_SNIa_energy_from_chem5 */
         else if (fb_props->with_SNIa_energy_from_chem5 > 10.) {
@@ -672,6 +677,7 @@ void feedback_get_ejecta_from_star_particle(
               (age / fb_props->time_to_yr) * fb_props->time_to_Myr;
           if (age_in_Myr < fb_props->with_SNIa_energy_from_chem5) {
             *ejecta_energy += SNn * fb_props->E_sn1;
+            *SN_energy_thermal += SNn * fb_props->E_sn1;
           }
         }
 

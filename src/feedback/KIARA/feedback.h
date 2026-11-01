@@ -41,7 +41,7 @@ double feedback_get_lum_from_star_particle(
 void feedback_get_ejecta_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props,
     double dt, double *N_SNe, double *ejecta_energy, double *SN_energy,
-    double *ejecta_mass, double *ejecta_unprocessed,
+    double *SN_energy_thermal, double *ejecta_mass, double *ejecta_unprocessed,
     double ejecta_metal_mass[chem5_element_count]);
 void feedback_dust_production_condensation(
     struct spart *sp, double star_age, const struct feedback_props *fb_props);
@@ -561,6 +561,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   double N_SNe = 0.;
   double ejecta_energy = 0.;
   double SN_energy = 0.;
+  double SN_energy_thermal = 0.;
   double ejecta_mass = 0.;
   double ejecta_unprocessed = 0.;
   double ejecta_metal_mass[chem5_element_count];
@@ -574,7 +575,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
   feedback_get_ejecta_from_star_particle(
       sp, star_age_end_step, feedback_props, dt, &N_SNe, &ejecta_energy,
-      &SN_energy, &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
+      &SN_energy, &SN_energy_thermal, &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
 
   if (!feedback_double_is_finite(ejecta_mass)) {
     for (elem = 0; elem < chem5_element_count; elem++) {
@@ -727,6 +728,10 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     float energy_boost = feedback_props->SNII_energy_multiplier;
     if (feedback_props->with_wind_energy_from_chem5) {
       E_SNII_phys = SN_energy;
+      /* This SN energy goes to the wind, so it is not also deposited as
+       * thermal energy; once the wind is complete, it is deposited
+       * thermally (per the use_*_energy_from_chem5 flags) */
+      ejecta_energy = max(ejecta_energy - SN_energy_thermal, 0.);
     } else {
       E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
       energy_boost *= energy_Z_fac;
