@@ -233,6 +233,11 @@ struct feedback_props {
   /*! Maxiumum multiple of SNII energy that is available to launch winds */
   float SNII_energy_multiplier;
 
+  /*! Wind energy budget: 1 = chem5's SNII (incl. hypernova) + SNIa energy,
+   * with no metallicity boost to the energy; 0 = 1e51 erg per SN (SNII and
+   * SNIa), times the metal_dependent_vwind boost */
+  int with_wind_energy_from_chem5;
+
   /*! For KIARA, the radius from within which to launch wind */
   float kick_radius_over_h;
 

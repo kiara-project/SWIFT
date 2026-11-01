@@ -40,8 +40,9 @@ double feedback_get_lum_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props);
 void feedback_get_ejecta_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props,
-    double dt, double *N_SNe, double *ejecta_energy, double *ejecta_mass,
-    double *ejecta_unprocessed, double ejecta_metal_mass[chem5_element_count]);
+    double dt, double *N_SNe, double *ejecta_energy, double *SN_energy,
+    double *ejecta_mass, double *ejecta_unprocessed,
+    double ejecta_metal_mass[chem5_element_count]);
 void feedback_dust_production_condensation(
     struct spart *sp, double star_age, const struct feedback_props *fb_props);
 double feedback_life_time(const struct feedback_props *fb_props, const double m,
@@ -559,6 +560,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   int elem;
   double N_SNe = 0.;
   double ejecta_energy = 0.;
+  double SN_energy = 0.;
   double ejecta_mass = 0.;
   double ejecta_unprocessed = 0.;
   double ejecta_metal_mass[chem5_element_count];
@@ -572,7 +574,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
   feedback_get_ejecta_from_star_particle(
       sp, star_age_end_step, feedback_props, dt, &N_SNe, &ejecta_energy,
-      &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
+      &SN_energy, &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
 
   if (!feedback_double_is_finite(ejecta_mass)) {
     for (elem = 0; elem < chem5_element_count; elem++) {
@@ -718,12 +720,17 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
     /* ------ SNII Energy and Wind Launch Setup ------ */
 
-    /* Total SNII energy this timestep (physical units) */
-    const double E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
-
-    /* Apply energy multiplier and metallicity scaling */
-    const float energy_boost =
-        feedback_props->SNII_energy_multiplier * energy_Z_fac;
+    /* Total SN energy this timestep (physical units): either chem5's own
+     * SNII (incl. hypernova) + SNIa energy, which carries its metallicity
+     * dependence, or 1e51 erg per SN times the metallicity boost */
+    double E_SNII_phys;
+    float energy_boost = feedback_props->SNII_energy_multiplier;
+    if (feedback_props->with_wind_energy_from_chem5) {
+      E_SNII_phys = SN_energy;
+    } else {
+      E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
+      energy_boost *= energy_Z_fac;
+    }
 
     /* Add to physical energy reservoir */
     sp->feedback_data.physical_energy_reservoir += E_SNII_phys * energy_boost;

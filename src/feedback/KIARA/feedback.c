@@ -256,6 +256,9 @@ void feedback_dust_production_condensation(
  * @param N_SNe Number of SNe (SNII and SNIa) in this step; accumulated, so
  * must be zeroed by the caller.
  * @param ejecta_energy The total ejected energy in code units.
+ * @param SN_energy The SN energy in this step from chem5's own tables (SNII,
+ * including hypernovae, plus SNIa), regardless of the use_*_energy_from_chem5
+ * flags; in code units. Used for the wind energy budget.
  * @param ejecta_mass The total ejected mass in code units.
  * @param ejecta_unprocessed The unprocessed mass in code units.
  * @param ejecta_metal_mass The metal masses for each element in
@@ -263,8 +266,9 @@ void feedback_dust_production_condensation(
  */
 void feedback_get_ejecta_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props,
-    double dt, double *N_SNe, double *ejecta_energy, double *ejecta_mass,
-    double *ejecta_unprocessed, double ejecta_metal_mass[chem5_element_count]) {
+    double dt, double *N_SNe, double *ejecta_energy, double *SN_energy,
+    double *ejecta_mass, double *ejecta_unprocessed,
+    double ejecta_metal_mass[chem5_element_count]) {
   int j, k, j1, j2, l, l1 = 0, l2 = 0, ll1 = 0, ll2 = 0, lll1 = 0, lll2 = 0;
   double SW_R, SNII_R, SNII_U, SNII_E, SNII_Z[chem5_element_count];
   double SNII_ENE, SNIa_R, SNIa_E = 0., SNIa_Z[chem5_element_count];
@@ -276,6 +280,7 @@ void feedback_get_ejecta_from_star_particle(
   dt *= fb_props->time_to_yr;
 
   *ejecta_energy = 0.;
+  *SN_energy = 0.;
   *ejecta_mass = 0.;
   *ejecta_unprocessed = 0.;
   for (k = 0; k < chem5_element_count; k++) ejecta_metal_mass[k] = 0.;
@@ -638,6 +643,8 @@ void feedback_get_ejecta_from_star_particle(
         *ejecta_energy = SWn * fb_props->E_sw;
         *ejecta_energy += sp->mass_init * SNII_ENE;
       }
+      /* SNII (and hypernova) energy from the chem5 tables */
+      *SN_energy = max(0., sp->mass_init * SNII_ENE);
       /* Number of SNII (stars of M_l2-M_u2; SW_R counts all stars above
        * M_l2, which would count these twice). Used for the wind energy and
        * the dust model within Grackle. */
@@ -654,6 +661,7 @@ void feedback_get_ejecta_from_star_particle(
       } else {
         fb = 1;
         SNn = sp->mass_init * SNIa_R;
+        *SN_energy += max(0., SNn) * fb_props->E_sn1;
         /* SNIa always contribute */
         if (fb_props->with_SNIa_energy_from_chem5 == 1) {
           *ejecta_energy += SNn * fb_props->E_sn1;
@@ -1808,6 +1816,9 @@ void feedback_props_init(struct feedback_props *fp,
   fp->SNII_energy_multiplier = parser_get_opt_param_float(
       params, "KIARAFeedback:SNII_energy_multiplier", 1.f);
 
+  fp->with_wind_energy_from_chem5 = parser_get_opt_param_int(
+      params, "KIARAFeedback:wind_energy_from_chem5", 0);
+
   fp->kick_radius_over_h = parser_get_opt_param_float(
       params, "KIARAFeedback:kick_radius_over_h", 0.5f);
 
@@ -1974,6 +1985,10 @@ void feedback_props_init(struct feedback_props *fp,
             fp->with_SNII_energy_from_chem5);
     message("Feedback use Chem5 SNIa energy: %d",
             fp->with_SNIa_energy_from_chem5);
+    message("Feedback wind energy budget: %s",
+            fp->with_wind_energy_from_chem5
+                ? "chem5 SNII+SNIa energy (no metallicity energy boost)"
+                : "1e51 erg per SN x metallicity energy boost");
   }
 }
 
