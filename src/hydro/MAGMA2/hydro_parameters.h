@@ -59,7 +59,7 @@
 #elif defined(HYDRO_DIMENSION_2D)
 #define const_kernel_target_neighbours 34.0
 #else
-#define const_kernel_target_neighbours 114.0
+#define const_kernel_target_neighbours 64.0
 #endif
 
 /* ---------- These parameters should not be changed ---------- */

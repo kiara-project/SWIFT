@@ -65,12 +65,16 @@
  * Should be <= mean interparticle spacing.
  * For 48 Ngb mean spacing ~ 0.887
  * For 57 Ngb mean spacing ~ 0.837
+ * For 64 Ngb mean spacing ~ 0.780
  * For 114 Ngb mean spacing ~ 0.664
  *
  * Basically a limiter on rho / |grad rho| for a depth
  * for shielding, and how bad you think |grad rho|
- * really is at estimating the depth. */
-#define MIN_SHIELD_H_FRAC 0.332f
+ * really is at estimating the depth.
+ *
+ * 0.403 for 64 Ngb keeps the floor at the physical length (~0.52 mean
+ * spacings) that 0.332 gave for 114 Ngb, since h scales as eta. */
+#define MIN_SHIELD_H_FRAC 0.403f
 
 void cooling_update(const struct phys_const *phys_const,
                     const struct cosmology *cosmo,
