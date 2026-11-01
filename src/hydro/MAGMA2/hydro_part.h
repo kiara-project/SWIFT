@@ -142,12 +142,12 @@ struct part {
   /*! Minimum time-step amongst neighbours */
   float dt_min;
 
-  /*! Conduction du/dt */
-  float u_dt_cond;
-
   /*! Thermal (= hydro) kick factor of the last half-kick, int dt/a^2; twice
    * this is the step length used to cap the viscosity */
   double dt_kick_therm;
+
+  /*! Conduction du/dt (after the double above to avoid a padding hole) */
+  float u_dt_cond;
 
   /*! Time derivative of the internal energy. */
   float u_dt_hydro_kick;

@@ -443,18 +443,9 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
       }
     }
 
-    /* output debug u */
-    pj->cooling_data.u_wind_before =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-
     /* Set the wind particle internal energy */
     hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
     hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
-
-    pj->cooling_data.u_wind_after =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-    pj->cooling_data.du_wind_this_step =
-        pj->cooling_data.u_wind_before - pj->cooling_data.u_wind_after;
 
 #ifdef FIREHOSE_DEBUG_CHECKS
     /* For firehose model, set initial radius of stream */
@@ -620,9 +611,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
   const double max_new_mass = current_mass * fb_props->max_mass_increase_factor;
 
   if (new_mass > max_new_mass) {
-    /* Count for logging in the snapshot. */
-    pj->feedback_data.mass_limiter_count++;
-
     /* Limit the mass growth and any other quantity below */
     delta_mass = max_new_mass - current_mass;
     Omega_frac = delta_mass / si->feedback_data.mass;
@@ -661,9 +649,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
 
     /* PHYSICAL comparison */
     if (new_u_phys > max_new_u_phys) {
-
-      /* Count for logging in the snapshot. */
-      pj->feedback_data.heating_limiter_count++;
 
       injected_energy =
           max_new_u_phys * new_mass - current_u_phys * current_mass;
@@ -732,18 +717,9 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       }
     }
 
-    /* output debug u */
-    pj->cooling_data.u_sn_before =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-
     hydro_set_physical_internal_energy(pj, xpj, cosmo, new_u_phys);
     hydro_set_drifted_physical_internal_energy(pj, cosmo, /*pfloor=*/NULL,
                                                new_u_phys);
-
-    pj->cooling_data.u_sn_after =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-    pj->cooling_data.du_sn_this_step =
-        pj->cooling_data.u_sn_before - pj->cooling_data.u_sn_after;
   } /* si->feedback_data.energy > 0.f */
 
   /* ------ Handle metal injection from SN explosions ------ */

@@ -30,8 +30,8 @@ __attribute__((always_inline)) INLINE static void cooling_debug_particle(
 
   if (xp != NULL) {
     warning("[PID%lld] cooling_xpart_data:", p->id);
-    warning("[PID%lld] radiated_energy = %.3e, time_last_event = %.3e", p->id,
-            xp->cooling_data.radiated_energy, xp->cooling_data.time_last_event);
+    warning("[PID%lld] radiated_energy = %.3e", p->id,
+            xp->cooling_data.radiated_energy);
 
 #if COOLING_GRACKLE_MODE >= 1
     warning(
@@ -53,7 +53,6 @@ __attribute__((always_inline)) INLINE static void cooling_debug_particle(
 #endif
 #endif
 #endif
-    warning("[PID%lld] metal_frac = %.3e", p->id, xp->cooling_data.metal_frac);
   }
 }
 

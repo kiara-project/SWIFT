@@ -630,10 +630,6 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   }
 #endif
 
-  /* Output internal energy before cooling grackle calculation. */
-  p->cooling_data.u_cooling_before =
-      hydro_get_physical_internal_energy(p, xp, cosmo);
-
   /* solve chemistry, update thermal energy */
   cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                              cooling, p, xp, iact_rates, dt, dt_therm,
@@ -646,11 +642,6 @@ INLINE void rt_do_thermochemistry_with_subgrid(
         (hydro_get_physical_internal_energy(p, xp, cosmo) - u_no_rt_heat);
   }
 #endif
-
-  /* Output du_dt and u  for debug. */
-  p->cooling_data.du_dt_cooling =
-      hydro_get_physical_internal_energy_dt(p, cosmo);
-  p->cooling_data.u_cooling = hydro_get_physical_internal_energy(p, xp, cosmo);
 
   /* Update cooling times this step. */
   p->cooling_data.ncool_this_step += 1;

@@ -169,7 +169,6 @@ void cooling_print_fractions(const struct xpart *restrict xp) {
 #if COOLING_GRACKLE_MODE > 2
   message("DI %g, DII %g, HDI %g", tmp.DI_frac, tmp.DII_frac, tmp.HDI_frac);
 #endif
-  message("Metal: %g", tmp.metal_frac);
 }
 
 /**
@@ -242,7 +241,6 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
                              struct xpart *restrict xp) {
 
   xp->cooling_data.radiated_energy = 0.f;
-  xp->cooling_data.time_last_event = -cooling->thermal_time;
 
   /* Initialize grackle ionization fractions */
   cooling_grackle_init_part(cooling, p, xp);
@@ -262,18 +260,6 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
 
   p->cooling_data.dust_temperature = 0.f;
 #endif
-
-  /* Initialize debug properties */
-  p->cooling_data.du_dt_cooling = 0;
-  p->cooling_data.u_cooling = 0;
-  p->cooling_data.u_chemistry = 0;
-  p->cooling_data.u_cooling_before = 0;
-  p->cooling_data.u_wind_after = 0;
-  p->cooling_data.u_wind_before = 0;
-  p->cooling_data.u_sn_after = 0;
-  p->cooling_data.u_sn_before = 0;
-  p->cooling_data.du_wind_this_step = 0;
-  p->cooling_data.du_sn_this_step = 0;
 }
 
 /**
@@ -2426,26 +2412,13 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
     /* Interaction rates for RT; not used here */
     gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
 
-    /* Output u for debug. */
-    p->cooling_data.u_cooling_before =
-        hydro_get_physical_internal_energy(p, xp, cosmo);
-
     /* Do the cooling and chemistry */
     cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                                cooling, p, xp, iact_rates, dt, dt_therm,
                                /*set_u_directly=*/0);
 
-    /* Output du_dt and u for debug. */
-    p->cooling_data.du_dt_cooling =
-        hydro_get_physical_internal_energy_dt(p, cosmo);
-    p->cooling_data.u_cooling =
-        hydro_get_physical_internal_energy(p, xp, cosmo);
-
     /* Update cooling times this step. */
     p->cooling_data.ncool_this_step += 1;
-
-    /* Record this cooling event */
-    xp->cooling_data.time_last_event = time;
   }
 
   /* The SN rate deposited by stellar feedback has now been used (for the

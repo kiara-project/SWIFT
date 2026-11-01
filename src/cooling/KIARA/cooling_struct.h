@@ -54,26 +54,6 @@ struct cooling_part_data {
 
   /*! Particle number of cooling times this hydro step */
   int ncool_this_step;
-
-  /*! Output du_dt for cooling. */
-  float du_dt_cooling;
-
-  /*! Output u for cooling. */
-  float u_cooling;
-
-  /*! Output u for chemistry. */
-  float u_chemistry;
-
-  /*! Output u for cooling. */
-  float u_cooling_before;
-
-  /*! Output u for feedback. */
-  float u_wind_before;
-  float u_wind_after;
-  float du_wind_this_step;
-  float u_sn_before;
-  float u_sn_after;
-  float du_sn_this_step;
 };
 
 /**
@@ -83,9 +63,6 @@ struct cooling_xpart_data {
 
   /*! Energy radiated away by this particle since the start of the run */
   float radiated_energy;
-
-  /*! Last time the cooling was switch off */
-  double time_last_event;
 
 /* Here all fractions are mass fractions (the electron fraction is
  * n_e m_H / rho, the grackle convention) */
@@ -132,9 +109,6 @@ struct cooling_xpart_data {
 #endif  // MODE >= 2
 
 #endif  // MODE >= 1
-
-  /*! Metal mass fraction (only printed in debugging output) */
-  float metal_frac;
 };
 
 /**
