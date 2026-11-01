@@ -207,43 +207,28 @@ struct chemistry_part_data {
   /*! Fraction of the particle mass in *all* metals */
   float metal_mass_fraction_total;
 
-  /*! Mass coming from SNIa */
-  float mass_from_SNIa;
-
-  /*! Fraction of total gas mass in metals coming from SNIa */
-  float metal_mass_fraction_from_SNIa;
-
-  /*! Mass coming from AGB */
-  float mass_from_AGB;
-
-  /*! Fraction of total gas mass in metals coming from AGB */
-  float metal_mass_fraction_from_AGB;
-
-  /*! Mass coming from SNII */
-  float mass_from_SNII;
-
-  /*! Fraction of total gas mass in metals coming from SNII */
-  float metal_mass_fraction_from_SNII;
-
-  /*! Fraction of total gas mass in Iron coming from SNIa */
-  float iron_mass_fraction_from_SNIa;
-
   /*! Diffusion coefficient */
   float diffusion_coefficient;
 
   /*! Variation of the total metal mass */
   float dZ_dt_total;
 
-  /*! Variation of the metal mass by element */
-  float dZ_dt[chemistry_element_count];
+  /* The shear tensor is only used in the density loop (it gives the
+   * diffusion coefficient in chemistry_end_density) and dZ_dt only in the
+   * force loop and chemistry_end_force, so they share memory. dZ_dt is
+   * zeroed at the end of chemistry_end_density. */
+  union {
+    /*! Velocity shear tensor in internal and physical units. */
+    float shear_tensor[3][3];
+
+    /*! Variation of the metal mass by element */
+    float dZ_dt[chemistry_element_count];
+  };
 
 #if COOLING_GRACKLE_MODE >= 2
   /*! Variation of the dust mass (per unit gas mass) by dust element */
   float dZ_dust_dt[dust_element_count];
 #endif
-
-  /*! Velocity shear tensor in internal and physical units. */
-  float shear_tensor[3][3];
 
 #if COOLING_GRACKLE_MODE >= 2
   /*! SFR density (physical) within smoothing kernel needed for G0 calculation
@@ -318,27 +303,6 @@ struct chemistry_bpart_data {
 
   /*! Mass in *all* metals */
   float metal_mass_total;
-
-  /*! Mass coming from SNIa */
-  float mass_from_SNIa;
-
-  /*! Mass coming from AGB */
-  float mass_from_AGB;
-
-  /*! Mass coming from SNII */
-  float mass_from_SNII;
-
-  /*! Metal mass coming from SNIa */
-  float metal_mass_from_SNIa;
-
-  /*! Metal mass coming from AGB */
-  float metal_mass_from_AGB;
-
-  /*! Metal mass coming from SNII */
-  float metal_mass_from_SNII;
-
-  /*! Iron mass coming from SNIa */
-  float iron_mass_from_SNIa;
 
   /*! Metallicity of converted part. */
   float formation_metallicity;

@@ -408,6 +408,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
   if (cd->use_firehose_wind_model) {
     firehose_end_ambient_quantities(p, xp, cd, cosmo);
   }
+
+  /* The shear tensor shares memory with dZ_dt and is no longer needed, so
+   * start the force-loop accumulation of dZ_dt from zero. */
+  for (int elem = 0; elem < chemistry_element_count; ++elem) {
+    cpd->dZ_dt[elem] = 0.f;
+  }
 }
 
 /**
