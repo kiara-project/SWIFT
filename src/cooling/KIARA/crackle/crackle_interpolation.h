@@ -92,6 +92,18 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
 	}
 	my_rates->k31shield *= f_shield;
 
+	/* H2 photodissociation by the local ISRF (G0 in Habing units, ISM only), with the same H2 self-shielding
+	 * and dust shielding exp(-sigma_d N_H) (Sternberg+14). N_H uses the H2 shielding length with the particle's
+	 * hydrogen density; the dust cross-section scales with the dust-to-gas ratio. */
+	if (chemistry->H2_isrf_dissociation && gp->isrf_habing > 0. && chemistry->H2_self_shielding > 0
+	    && chemistry->H2_custom_shielding == 2) {
+	    const double N_H = cunits->dom * gp->rhoH * gp->H2_self_shielding_length * cunits->length_to_cgs;
+	    const double tau_d = chemistry->H2_dust_shielding_cross_section * N_H
+	                         * gp->dust2gas / chemistry->local_dust_to_gas_ratio;
+	    my_rates->k31shield += chemistry->H2_isrf_dissociation_rate * gp->isrf_habing * f_shield * exp(-tau_d)
+	                           * cunits->time_to_cgs;
+	}
+
 	/* Do atomic self-shielding, if required */
 	if (chemistry->self_shielding_method == 0 || (chemistry->UVbackground == 0 && chemistry->use_radiative_transfer == 0)) return f_shield;
 

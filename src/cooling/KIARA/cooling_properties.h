@@ -153,6 +153,21 @@ struct cooling_function_data {
    * (MgO, SiO2, CaO, FeO), as grains hold O only bound to them */
   int dust_oxygen_stoichiometric_cap;
 
+  /*! H2 photodissociation by the ISRF G0, self- and dust-shielded (0 = off:
+   * only the UVB dissociates H2) */
+  int H2_isrf_dissociation;
+
+  /*! Unshielded ISRF H2 photodissociation rate per Habing unit of G0 (s^-1) */
+  double H2_isrf_dissociation_rate;
+
+  /*! LW dust absorption cross-section per H nucleus at the local dust-to-gas
+   * ratio (cm^2), for the dust shielding of the ISRF */
+  double H2_dust_shielding_cross_section;
+
+  /*! H2 shielding column from the particle's mean density, rather than the
+   * subgrid cold-cloud density, times the shielding length */
+  int H2_shield_mean_density;
+
   /*! Density at which the dust growth time-scale is 1 Gyr (g/cm^3) */
   double dust_growth_densref;
 

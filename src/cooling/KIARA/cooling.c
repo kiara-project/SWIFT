@@ -320,6 +320,11 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
   message("Min subgrid density (internal units) = %g",
           cooling->min_subgrid_density);
   message("Min self-shielding length = %g h", cooling->min_shield_h_frac);
+  message("H2 ISRF photodissociation = %d (rate %g s^-1 per G0, dust sigma %g "
+          "cm^2); shielding column at mean density = %d",
+          cooling->H2_isrf_dissociation, cooling->H2_isrf_dissociation_rate,
+          cooling->H2_dust_shielding_cross_section,
+          cooling->H2_shield_mean_density);
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);
@@ -399,6 +404,48 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
 
 #if COOLING_GRACKLE_MODE >= 2
 /**
+ * @brief The H2 self-shielding length passed to crackle (physical internal
+ * units).
+ *
+ * The length is rho/|grad rho|, limited to [min_shield_h_frac h, kernel_gamma
+ * h]. crackle multiplies it by the density it evolves, which for subgrid ISM
+ * particles is the cold-cloud density. With H2_shield_mean_density the length
+ * is scaled by rho_mean / rho_subgrid, so the column is the particle's mean
+ * density times the length (the gas column across the particle), not a
+ * cloud-density column over kpc scales.
+ *
+ * @param p The #part.
+ * @param cooling The #cooling_function_data used in the run.
+ */
+static double cooling_H2_shielding_length(
+    const struct part *p, const struct cooling_function_data *cooling) {
+  const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
+                                p->rho_gradient[1] * p->rho_gradient[1] +
+                                p->rho_gradient[2] * p->rho_gradient[2];
+  const double rho_grad_norm_inv =
+      (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
+  const double rho_com = hydro_get_comoving_density(p);
+  double L_eff_com = rho_com * rho_grad_norm_inv;
+  const double L_eff_com_max = kernel_gamma * p->h;
+  const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
+  L_eff_com = fmin(L_eff_com, L_eff_com_max);
+  L_eff_com = fmax(L_eff_com, L_eff_com_min);
+  double L = L_eff_com * cooling->units.a_value;
+
+  /* crackle evolves subgrid particles at the cold-cloud density (see
+   * cooling_copy_to_grackle) */
+  const int subgrid = p->cooling_data.subgrid_temp > 0. &&
+                      p->cooling_data.subgrid_fcold > 1.e-6 &&
+                      p->cooling_data.subgrid_dens > 0.f;
+  if (cooling->H2_shield_mean_density && subgrid) {
+    const double a = cooling->units.a_value;
+    const double rho_phys = rho_com / (a * a * a);
+    L *= rho_phys / p->cooling_data.subgrid_dens;
+  }
+  return L;
+}
+
+/**
  * @brief Copy the H2 species and the dust-model inputs of a particle to the
  * grackle data.
  *
@@ -463,19 +510,7 @@ void cooling_copy_to_grackle2(
 
     data->isrf_habing = &species_densities[22];
 
-    const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
-                                  p->rho_gradient[1] * p->rho_gradient[1] +
-                                  p->rho_gradient[2] * p->rho_gradient[2];
-    const double rho_grad_norm_inv =
-        (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
-    const double rho_com = hydro_get_comoving_density(p);
-    double L_eff_com = rho_com * rho_grad_norm_inv;
-    const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
-    L_eff_com = fmin(L_eff_com, L_eff_com_max);
-    L_eff_com = fmax(L_eff_com, L_eff_com_min);
-
-    species_densities[23] = L_eff_com * cooling->units.a_value;
+    species_densities[23] = cooling_H2_shielding_length(p, cooling);
     data->H2_self_shielding_length = &species_densities[23];
 
     /* Load gas metallicities */
@@ -1282,18 +1317,7 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
     } else {
       isrf = p->cooling_data.G0;
     }
-    const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
-                                  p->rho_gradient[1] * p->rho_gradient[1] +
-                                  p->rho_gradient[2] * p->rho_gradient[2];
-    const double rho_grad_norm_inv =
-        (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
-    const double rho_com = hydro_get_comoving_density(p);
-    double L_eff_com = rho_com * rho_grad_norm_inv;
-    const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
-    L_eff_com = fmin(L_eff_com, L_eff_com_max);
-    L_eff_com = fmax(L_eff_com, L_eff_com_min);
-    L_shield = L_eff_com * cooling->units.a_value;
+    L_shield = cooling_H2_shielding_length(p, cooling);
     for (int i = 0; i < chemistry_element_count; i++) {
       const int slot = cooling_crackle_slot(i);
       if (slot >= 0)
@@ -2852,6 +2876,10 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
     chemistry->dust_growth_tauref = cooling->dust_growth_tauref;
     chemistry->dust_oxygen_stoichiometric_cap =
         cooling->dust_oxygen_stoichiometric_cap;
+    chemistry->H2_isrf_dissociation = cooling->H2_isrf_dissociation;
+    chemistry->H2_isrf_dissociation_rate = cooling->H2_isrf_dissociation_rate;
+    chemistry->H2_dust_shielding_cross_section =
+        cooling->H2_dust_shielding_cross_section;
     /* Enable dust temperature calculation using ISRF */
     chemistry->metal_cooling = 1;
     chemistry->dust_chemistry = 1;

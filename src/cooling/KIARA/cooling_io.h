@@ -454,6 +454,21 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->dust_oxygen_stoichiometric_cap = parser_get_opt_param_int(
       parameter_file, "KIARACooling:dust_oxygen_stoichiometric_cap", 0);
 
+  cooling->H2_isrf_dissociation = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:H2_isrf_dissociation", 0);
+
+  /* Sternberg+14: 5.8e-11 s^-1 for the Draine field, which is 1.71 Habing */
+  cooling->H2_isrf_dissociation_rate = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:H2_isrf_dissociation_rate_cgs", 3.4e-11);
+
+  /* Sternberg+14: 1.9e-21 cm^2 per H at solar metallicity */
+  cooling->H2_dust_shielding_cross_section = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:H2_dust_shielding_cross_section_cgs",
+      1.9e-21);
+
+  cooling->H2_shield_mean_density = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:H2_shield_mean_density", 0);
+
   cooling->dust_growth_densref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_densref", 2.3e-20);
 
