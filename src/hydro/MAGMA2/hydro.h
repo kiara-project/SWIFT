@@ -591,7 +591,6 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   /* Init ncool at beginning of each hydro steps. */
   p->cooling_data.ncool_this_step = 0;
-  p->dt_therm_debug = 0;
   p->u_dt_hydro_kick = 0;
   p->u_full_hydro_kick_before = 0;
   p->u_full_hydro_kick_after = 0;
@@ -1897,6 +1896,18 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     p->gradients.velocity_hessian[j][2][1] = velocity_hessian[j][2][1];
     p->gradients.velocity_hessian[j][2][2] = velocity_hessian[j][2][2];
   }
+
+  /* Too few neighbours for reliable matrix gradients: use the SPH fallback */
+  const float num_ngb = p->gradients.wcount * pow_dimension(h) * kernel_norm;
+  if (num_ngb <
+      const_fallback_min_neighbour_fraction * const_kernel_target_neighbours) {
+    p->gradients.C_well_conditioned = 0;
+    p->gradients.D_well_conditioned = 0;
+    p->gradients.u_well_conditioned = 0;
+#ifdef MAGMA2_DEBUG_CHECKS
+    p->debug.low_ngb_fallback_count++;
+#endif
+  }
 }
 
 /**
@@ -2269,7 +2280,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   /* Integrate the internal energy forward in time */
   const float delta_u = p->u_dt * dt_therm;
 
-  p->dt_therm_debug = dt_therm;
+  p->dt_kick_therm = dt_therm;
   p->u_dt_hydro_kick = hydro_get_physical_internal_energy_dt(p, cosmo);
   p->u_hydro_kick_before = hydro_get_drifted_physical_internal_energy(p, cosmo);
   p->u_full_hydro_kick_before =
@@ -2364,6 +2375,9 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   xp->v_full[2] = p->v[2];
   xp->u_full = p->u;
 
+  /* No kick yet, so no step length for the viscosity cap */
+  p->dt_kick_therm = 0.;
+
   p->gradients.C_well_conditioned = 1;
   p->gradients.D_well_conditioned = 1;
   p->gradients.u_well_conditioned = 1;
@@ -2373,6 +2387,7 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->debug.C_ill_conditioned_count = 0;
   p->debug.D_ill_conditioned_count = 0;
   p->debug.u_ill_conditioned_count = 0;
+  p->debug.low_ngb_fallback_count = 0;
   for (int i = 0; i < 3; i++) {
     p->debug.correction_matrix[i][0] = 0.;
     p->debug.correction_matrix[i][1] = 0.;

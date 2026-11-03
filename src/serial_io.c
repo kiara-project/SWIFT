@@ -1789,8 +1789,9 @@ void write_output_serial(struct engine *e,
               io_field_is_named_column(h_file, list[i].name);
 
           if (compression_level != compression_do_not_write) {
-            const size_t N_first =
-                !e->s->with_zoom_region ? Nparticles : N_in_cells[ptype];
+            const size_t N_first = !e->s->with_zoom_region
+                                       ? Nparticles
+                                       : (size_t)N_in_cells[ptype];
             const long long offset_first = !e->s->with_zoom_region
                                                ? offset[ptype]
                                                : offset_in_cells[ptype];
