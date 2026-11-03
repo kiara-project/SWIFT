@@ -168,6 +168,10 @@ struct cooling_function_data {
    * subgrid cold-cloud density, times the shielding length */
   int H2_shield_mean_density;
 
+  /*! Limit the subgrid ISM molecular fraction to the part of the particle's
+   * column shielded by the Sternberg+14 atomic layer */
+  int H2_sternberg_limit;
+
   /*! Density at which the dust growth time-scale is 1 Gyr (g/cm^3) */
   double dust_growth_densref;
 

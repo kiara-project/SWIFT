@@ -49,6 +49,29 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
 	return ierr;
 }
 
+/* Sternberg+14 limit on the molecular fraction of subgrid ISM gas. The atomic layer that shields a cloud's
+ * molecular interior from the ISRF has column N_HI = ln(alphaG/2 + 1) / sigma_g (their eq. 40, beamed field),
+ * with alphaG = 1.54 I_UV (100 cm^-3 / n) / [1 + (2.64 sigma')^0.5] (eq. 51; I_UV in Draine-field units = G0 / 1.71
+ * Habing, n the cloud H density, sigma' the dust-to-gas ratio relative to local_dust_to_gas_ratio, which sets both
+ * sigma_g = 1.9e-21 sigma' cm^2 and the H2 formation rate, so it cancels from alphaG except in the bracket). The
+ * particle's gas column N_H (its mean density times the H2 shielding length) has the same layer on its far side, so
+ * at most 1 - N_HI / N_H of its hydrogen is molecular; any H2 above this is returned to HI. */
+static void apply_sternberg_h2_limit(grackle_part_data *gp, const chemistry_data *chemistry, const crackle_units *cunits)
+{
+	if (gp->isrf_habing <= 0. || gp->rhoH <= 0. || gp->H2I_density <= 0. || gp->dust2gas <= tiny) return;
+	const double sigma_rel = gp->dust2gas / chemistry->local_dust_to_gas_ratio;
+	const double I_UV = gp->isrf_habing / 1.71;
+	const double alphaG = 1.54 * I_UV * (100. / fmax(gp->nH, tiny)) / (1. + sqrt(2.64 * sigma_rel));
+	const double N_HI = log(0.5 * alphaG + 1.) / (chemistry->H2_dust_shielding_cross_section * sigma_rel);
+	const double N_H = cunits->dom * gp->rhoH * gp->H2_self_shielding_length * cunits->length_to_cgs;
+	const double fH2_max = fmax(1. - N_HI / fmax(N_H, tiny), 0.);
+	const double excess = gp->H2I_density - fH2_max * gp->rhoH;
+	if (excess > 0.) {
+	    gp->H2I_density -= excess;
+	    gp->HI_density += excess;
+	}
+}
+
 int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, const photo_rate_storage *my_uvb_rates, code_units *units, const crackle_units *cunits_in, double dt)
 {
 	int iter=0;
@@ -163,6 +186,13 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, dt - dtcool); 
 	    evolve_elements(&gp, &gp_old, chemistry);
 	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dt - dtcool);
+	}
+
+	/* Limit the molecular fraction to the Sternberg+14 shielded interior */
+	if (chemistry->H2_sternberg_limit && ism_flag && chemistry->primordial_chemistry >= 2
+	    && chemistry->H2_custom_shielding == 2) {
+	    apply_sternberg_h2_limit(&gp, chemistry, &cunits);
+	    set_rhot(&gp, units, chemistry);
 	}
 
 	check_hydrogen(&gp, 99);

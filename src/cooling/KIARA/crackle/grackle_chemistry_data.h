@@ -206,6 +206,7 @@ typedef struct
   int H2_isrf_dissociation; // H2 photodissociation by the ISRF (isrf_habing), self- and dust-shielded
   double H2_isrf_dissociation_rate; // unshielded rate per Habing unit of G0 (s^-1)
   double H2_dust_shielding_cross_section; // LW dust absorption cross-section per H at local_dust_to_gas_ratio (cm^2)
+  int H2_sternberg_limit; // limit the ISM molecular fraction to the Sternberg+14 shielded interior of its column
   double SolarAbundances[NUM_METAL_SPECIES_GRACKLE];
   
   /* crackle: maximum factor by which a quantity can chenge in a given step */

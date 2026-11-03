@@ -221,6 +221,7 @@ ENTRY(dust_oxygen_stoichiometric_cap, INT, 0)
 ENTRY(H2_isrf_dissociation, INT, 0)
 ENTRY(H2_isrf_dissociation_rate, DOUBLE, 3.4e-11)
 ENTRY(H2_dust_shielding_cross_section, DOUBLE, 1.9e-21)
+ENTRY(H2_sternberg_limit, INT, 0)
 ENTRY(dust_growth_tauref, DOUBLE, 1.0)
 
 /* maximum number of subcycle iterations for solve_chemistry */

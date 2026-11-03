@@ -325,6 +325,8 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
           cooling->H2_isrf_dissociation, cooling->H2_isrf_dissociation_rate,
           cooling->H2_dust_shielding_cross_section,
           cooling->H2_shield_mean_density);
+  message("H2 Sternberg+14 molecular-fraction limit = %d",
+          cooling->H2_sternberg_limit);
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);
@@ -2880,6 +2882,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
     chemistry->H2_isrf_dissociation_rate = cooling->H2_isrf_dissociation_rate;
     chemistry->H2_dust_shielding_cross_section =
         cooling->H2_dust_shielding_cross_section;
+    chemistry->H2_sternberg_limit = cooling->H2_sternberg_limit;
     /* Enable dust temperature calculation using ISRF */
     chemistry->metal_cooling = 1;
     chemistry->dust_chemistry = 1;

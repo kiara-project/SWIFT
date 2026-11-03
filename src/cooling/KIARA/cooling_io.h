@@ -469,6 +469,9 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->H2_shield_mean_density = parser_get_opt_param_int(
       parameter_file, "KIARACooling:H2_shield_mean_density", 0);
 
+  cooling->H2_sternberg_limit = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:H2_sternberg_limit", 0);
+
   cooling->dust_growth_densref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_densref", 2.3e-20);
 
