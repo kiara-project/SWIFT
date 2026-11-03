@@ -2562,10 +2562,13 @@ static int fof_gas_is_galaxy_gas(const struct fof_props *props,
  * @param gas_mass The galaxy (ISM) gas mass.
  * @param sfr The galaxy star formation rate.
  * @param sfr_radius The galaxy SFR-weighted rms radius (comoving).
+ * @param centre_distance The particle's distance from the galaxy's centre of
+ * mass (comoving).
  */
 static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
                                 const float stellar_mass, const float gas_mass,
-                                const float sfr, const float sfr_radius) {
+                                const float sfr, const float sfr_radius,
+                                const float centre_distance) {
 
   struct fof_galaxy_data *gd = NULL;
   if (gp->type == swift_type_gas) {
@@ -2582,6 +2585,7 @@ static void fof_set_galaxy_data(const struct space *s, const struct gpart *gp,
   gd->gas_mass = gas_mass;
   gd->specific_sfr = (stellar_mass > 0.f) ? sfr / stellar_mass : 0.f;
   gd->sfr_radius = sfr_radius;
+  gd->centre_distance = centre_distance;
 }
 #endif
 
@@ -3143,7 +3147,7 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     if (gparts[i].fof_data.group_id == group_id_default) {
 #ifdef WITH_FOF_GALAXIES
       /* Not in a galaxy: clear any host-galaxy data from earlier calls */
-      fof_set_galaxy_data(s, &gparts[i], 0.f, 0.f, 0.f, 0.f);
+      fof_set_galaxy_data(s, &gparts[i], 0.f, 0.f, 0.f, 0.f, 0.f);
 #endif
       continue;
     }
@@ -3189,7 +3193,7 @@ void fof_calc_group_mass(struct fof_props *props, const struct space *s,
     /* Load the host-galaxy data into particles of various types (the sSFR
      * is zero in a galaxy without stars) */
     fof_set_galaxy_data(s, &gparts[i], stellar_mass[index], gas_mass[index],
-                        star_formation_rate[index], sfr_radius[index]);
+                        star_formation_rate[index], sfr_radius[index], r);
 #endif
   }
 

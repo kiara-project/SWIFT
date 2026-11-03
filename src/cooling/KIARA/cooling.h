@@ -782,6 +782,28 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     G0 = cooling_G0_from_FIRE(p, xp, rho, T_warm, cooling);
   }
 #endif
+#ifdef WITH_FOF_GALAXIES
+  else if (cooling->G0_computation_method == 7) {
+    /* Mix of the local SFR density (as method 1) and a galaxy-scale field:
+     * the galaxy's SFR as a source at its centre of mass, softened over its
+     * SFR radius, falling as 1 / (r^2 + r_sfr^2) (physical) */
+    fH2_shield = cooling_compute_self_shielding(p, cooling);
+    const double G0_local =
+        fH2_shield * p->chemistry_data.local_sfr_density * cooling->G0_factor1;
+    double G0_galaxy = 0.;
+    const double sfr_galaxy = ssfr * mstar;
+    if (sfr_galaxy > 0.) {
+      const double a = cooling->units.a_value;
+      const double r = p->galaxy_data.centre_distance * a;
+      const double r_sfr =
+          fmax(p->galaxy_data.sfr_radius * a, cooling->G0_softening_min);
+      G0_galaxy =
+          cooling->G0_factor_galaxy * sfr_galaxy / (r * r + r_sfr * r_sfr);
+    }
+    G0 = cooling->G0_local_fraction * G0_local +
+         (1. - cooling->G0_local_fraction) * G0_galaxy;
+  }
+#endif
   else {
     error("G0_computation_method %d not recognized\n",
           cooling->G0_computation_method);

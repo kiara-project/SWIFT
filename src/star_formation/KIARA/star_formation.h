@@ -814,6 +814,7 @@ INLINE static void star_formation_copy_properties(
   sp->galaxy_data.gas_mass = p->galaxy_data.gas_mass;
   sp->galaxy_data.specific_sfr = p->galaxy_data.specific_sfr;
   sp->galaxy_data.sfr_radius = p->galaxy_data.sfr_radius;
+  sp->galaxy_data.centre_distance = p->galaxy_data.centre_distance;
 
   /* Slightly displace spawned particle to avoid zeros */
   if (1) {

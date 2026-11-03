@@ -2721,6 +2721,20 @@ void cooling_init_units(const struct unit_system *us,
   /* Calibrated to an SN rate of 0.015 per year for MW (BC Reed 2005);
    * multiplies the SN rate in internal units */
   cooling->G0_factorSNe = 1.6f / (0.015f * time_to_yr);
+
+  /* Method 7 galaxy term, G0 = G0_factor_galaxy SFR / (r^2 + r_sfr^2): the
+   * galaxy's young stars as a source softened over its SFR radius, normalised
+   * to G0 = 1.6 at the MW solar circle (SFR 1.65 Msun/yr, Licquia & Newman
+   * 2015; R0 = 8.2 kpc; SFR-weighted rms radius ~6.4 kpc, i.e. sqrt(6) times
+   * a 2.6 kpc exponential disc), so implicitly with the MW's attenuation. The
+   * softening is at least 0.5 kpc (galaxies with too few SF particles have no
+   * SFR radius). */
+  const double length_to_kpc = length_to_pc * 1.e-3;
+  const double sfr_mw = 1.65, r0_mw = 8.2, rsfr_mw = 6.4;
+  cooling->G0_factor_galaxy = 1.6 * (r0_mw * r0_mw + rsfr_mw * rsfr_mw) /
+                              sfr_mw * mass_to_solar_mass / time_to_yr /
+                              (length_to_kpc * length_to_kpc);
+  cooling->G0_softening_min = 0.5 / length_to_kpc;
 }
 
 /**

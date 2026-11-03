@@ -135,6 +135,17 @@ struct cooling_function_data {
   /*! G0 per unit SN rate (internal units), normalised to the MW SN rate */
   double G0_factorSNe;
 
+  /*! G0 per unit galaxy SFR / distance^2 (internal units), normalised to the
+   * MW at the solar circle (method 7) */
+  double G0_factor_galaxy;
+
+  /*! Method 7: minimum (physical) softening of the galaxy-scale field */
+  double G0_softening_min;
+
+  /*! Method 7: fraction of G0 from the local SFR density; the rest is from
+   * the galaxy-scale model */
+  double G0_local_fraction;
+
   /* Dust parameters passed to grackle; see sample yml file */
 
   /*! Dust destruction efficiency by SN shocks (destroyed/shocked mass) */

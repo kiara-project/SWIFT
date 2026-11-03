@@ -496,6 +496,11 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->G0_multiplier = parser_get_opt_param_double(
       parameter_file, "KIARACooling:G0_multiplier", 1.0);
 
+  cooling->G0_local_fraction = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:G0_local_fraction", 0.5);
+  if (cooling->G0_local_fraction < 0. || cooling->G0_local_fraction > 1.)
+    error("KIARACooling:G0_local_fraction must be in [0, 1]");
+
   cooling->max_subgrid_density = parser_get_opt_param_double(
       parameter_file, "KIARACooling:max_subgrid_density_g_p_cm3", FLT_MAX);
   /* convert to internal units */

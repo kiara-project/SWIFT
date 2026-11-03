@@ -75,7 +75,12 @@ INLINE static int fof_write_parts(const struct part *parts,
       "Co-moving SFR-weighted rms radius of the star-forming gas of the host "
       "galaxy, at the last galaxy FoF call (0 if too few star-forming "
       "particles)");
-  return 2;
+  list[2] = io_make_output_field(
+      "GalaxyCentreDistances", FLOAT, 1, UNIT_CONV_LENGTH, 1.f, parts,
+      galaxy_data.centre_distance,
+      "Co-moving distance from the host galaxy's centre of mass, at the last "
+      "galaxy FoF call");
+  return 3;
 #elif WITH_FOF
   list[0] = io_make_output_field_convert_part(
       "FOFGroupIDs", LONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
