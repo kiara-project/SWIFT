@@ -311,6 +311,12 @@ INLINE static void stars_get_luminosities(
   const int count_Z = eagle_stars_lum_tables_N_Z;
   const int count_ages = eagle_stars_lum_tables_N_ages;
 
+  /* No photometry tables were read (Stars:luminosity_filename not set) */
+  if (props->lum_tables_Z[0] == NULL) {
+    for (int i = 0; i < (int)luminosity_bands_count; ++i) luminosities[i] = 0.f;
+    return;
+  }
+
   /* Get star properties (all in internal units */
   const float Z =
       chemistry_get_star_total_metal_mass_fraction_for_luminosity(sp);
