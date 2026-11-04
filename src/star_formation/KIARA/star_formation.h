@@ -767,24 +767,27 @@ INLINE static void star_formation_copy_properties(
   sp->split_data = xp->split_data;
 
   /* Store the chemistry struct in the star particle */
-  sp->chemistry_data = p->chemistry_data;
+  for (int elem = 0; elem < chemistry_element_count; elem++) {
+    sp->chemistry_data.metal_mass_fraction[elem] =
+        p->chemistry_data.metal_mass_fraction[elem];
+  }
+  sp->chemistry_data.metal_mass_fraction_total =
+      p->chemistry_data.metal_mass_fraction_total;
 
 #if COOLING_GRACKLE_MODE >= 2
   /* The gas metal fractions are gas-phase only (X + Y + Z + D = 1): the star
    * forms from all of the gas, so add the metals locked in dust back in */
   if (p->cooling_data.dust_mass > 0.f) {
     const float D = p->cooling_data.dust_mass / hydro_get_mass(p);
-    float Z_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
-      if (elem != chemistry_element_H) {
+      const int d = dust_element_of_chemistry(elem);
+      if (d >= 0) {
         sp->chemistry_data.metal_mass_fraction[elem] +=
-            D * p->cooling_data.dust_mass_fraction[elem];
-      }
-      if (elem != chemistry_element_H && elem != chemistry_element_He) {
-        Z_total += sp->chemistry_data.metal_mass_fraction[elem];
+            D * p->cooling_data.dust_mass_fraction[d];
       }
     }
-    sp->chemistry_data.metal_mass_fraction_total = Z_total;
+    /* All of the dust is metals */
+    sp->chemistry_data.metal_mass_fraction_total += D;
   }
 #endif
 
@@ -810,6 +813,8 @@ INLINE static void star_formation_copy_properties(
   sp->galaxy_data.stellar_mass = p->galaxy_data.stellar_mass;
   sp->galaxy_data.gas_mass = p->galaxy_data.gas_mass;
   sp->galaxy_data.specific_sfr = p->galaxy_data.specific_sfr;
+  sp->galaxy_data.sfr_radius = p->galaxy_data.sfr_radius;
+  sp->galaxy_data.centre_distance = p->galaxy_data.centre_distance;
 
   /* Slightly displace spawned particle to avoid zeros */
   if (1) {

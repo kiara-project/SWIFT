@@ -425,6 +425,14 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
       "simulation has been run without prescribed repositioning speed.");
   num++;
 
+  list[num] = io_make_output_field(
+      "DynamicalFrictionAccelerations", FLOAT, 3, UNIT_CONV_ACCELERATION, -2.f,
+      bparts, df_accel,
+      "Gas dynamical-friction accelerations of the black holes at their last "
+      "active step (zero if the black hole was repositioned instead, or the "
+      "model is off).");
+  num++;
+
   list[num] = io_make_output_field_convert_bpart(
       "GasTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
       convert_bpart_gas_temperatures,

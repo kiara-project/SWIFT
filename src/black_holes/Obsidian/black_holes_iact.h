@@ -34,6 +34,25 @@
 #include "timestep_sync_part.h"
 #include "tracers.h"
 
+/**
+ * @brief Square of the (comoving) maximal repositioning distance of a BH.
+ *
+ * max_reposition_distance_ratio times the Plummer-equivalent baryon
+ * softening (as in EAGLE), or, with reposition_radius_from_softening = 0,
+ * times h_BH / (Plummer-equivalent factor) (the earlier Obsidian choice).
+ */
+__attribute__((always_inline)) INLINE static float
+black_holes_max_reposition_distance2(const struct bpart *bi,
+                                     const struct black_holes_props *bh_props,
+                                     const struct gravity_props *grav_props) {
+  const float l = bh_props->reposition_radius_from_softening
+                      ? grav_props->epsilon_baryon_cur
+                      : bi->h;
+  const float d = kernel_gravity_softening_plummer_equivalent_inv *
+                  bh_props->max_reposition_distance_ratio * l;
+  return d * d;
+}
+
 // #define OBSIDIAN_DEBUG_CHECKS
 
 /**
@@ -279,6 +298,18 @@ runner_iact_nonsym_bh_gas_density(
   const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
   const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
 
+  /* Gas for the dynamical friction: as for repositioning, no decoupled
+   * winds or jets and no gas with cooling shut off (an outflow must not
+   * drag the BH along with it) */
+  if (bh_props->dynamical_friction_model && !pj->decoupled &&
+      pj->feedback_data.cooling_shutoff_delay_time <= 0.f) {
+    bi->df_rho_gas += mj * wi;
+    bi->df_sound_speed_gas += mj * wi * cj;
+    bi->df_velocity_gas[0] += mj * wi * dv[0];
+    bi->df_velocity_gas[1] += mj * wi * dv[1];
+    bi->df_velocity_gas[2] += mj * wi * dv[2];
+  }
+
   /* Classify gas as hot or cold for accretion */
   const int gas_temperature_state =
       black_hole_gas_hot_or_cold(bi, pj, cosmo, bh_props);
@@ -417,12 +448,9 @@ runner_iact_nonsym_bh_gas_repos(
   const float ui = r * hi_inv;
   kernel_eval(ui, &wi);
 
-  /* (Square of) Max repositioning distance allowed based on the softening */
+  /* (Square of) Max repositioning distance allowed */
   const float max_dist_repos2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_reposition_distance_ratio *
-      bh_props->max_reposition_distance_ratio * bi->h * bi->h;
+      black_holes_max_reposition_distance2(bi, bh_props, grav_props);
 
   /* Is this gas neighbour close enough that we can consider its potential
      for repositioning? */
@@ -770,12 +798,9 @@ runner_iact_nonsym_bh_bh_repos(const float r2, const float dx[3],
 
   const float v2_pec = v2 * cosmo->a2_inv;
 
-  /* (Square of) Max repositioning distance allowed based on the softening */
+  /* (Square of) Max repositioning distance allowed */
   const float max_dist_repos2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_reposition_distance_ratio *
-      bh_props->max_reposition_distance_ratio * bi->h * bi->h;
+      black_holes_max_reposition_distance2(bi, bh_props, grav_props);
 
   /* Is this BH neighbour close enough that we can consider its potential
      for repositioning? */
@@ -1425,26 +1450,25 @@ runner_iact_nonsym_bh_gas_feedback(
     if (jet_flag) {
       const float old_dust_mass = pj->cooling_data.dust_mass;
       pj->cooling_data.dust_mass = 0.f;
-      float new_Z_total = 0.f;
-      pj->chemistry_data.metal_mass_fraction_total = 0.f;
       for (int elem = chemistry_element_He; elem < chemistry_element_count;
            ++elem) {
         const float old_metal_mass_elem =
             pj->chemistry_data.metal_mass_fraction[elem] * hydro_get_mass(pj);
+        const int d = dust_element_of_chemistry(elem);
         const float old_dust_mass_elem =
-            pj->cooling_data.dust_mass_fraction[elem] * old_dust_mass;
+            (d >= 0) ? pj->cooling_data.dust_mass_fraction[d] * old_dust_mass
+                     : 0.f;
 
         pj->chemistry_data.metal_mass_fraction[elem] =
             (old_metal_mass_elem + old_dust_mass_elem) / hydro_get_mass(pj);
-
-        if (elem != chemistry_element_H && elem != chemistry_element_He) {
-          new_Z_total += pj->chemistry_data.metal_mass_fraction[elem];
-        }
-
-        pj->cooling_data.dust_mass_fraction[elem] = 0.f;
+      }
+      for (int d = 0; d < dust_element_count; d++) {
+        pj->cooling_data.dust_mass_fraction[d] = 0.f;
       }
 
-      pj->chemistry_data.metal_mass_fraction_total = new_Z_total;
+      /* All of the dust is metals */
+      pj->chemistry_data.metal_mass_fraction_total +=
+          old_dust_mass / hydro_get_mass(pj);
     }
 #endif
 

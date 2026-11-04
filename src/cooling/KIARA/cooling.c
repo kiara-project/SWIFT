@@ -41,7 +41,8 @@
 #include <math.h>
 
 /* The grackle library itself */
-#include <grackle.h>
+#include "crackle/grackle.h"
+#include "crackle_validate.h"
 extern chemistry_data *grackle_data;
 
 /* Local includes. */
@@ -56,6 +57,65 @@ extern chemistry_data *grackle_data;
 #include "physical_constants.h"
 #include "star_formation.h"
 #include "units.h"
+
+/* crackle's (Grackle's) element arrays (gas_metalDensity, dust_metalDensity,
+ * SolarAbundances) hold He, C, N, O, Ne, Mg, Si, S, Ca, Fe: the slot of each
+ * of chem5's elements in them, -1 if crackle does not know it */
+#define CRACKLE_SLOT_H -1
+#define CRACKLE_SLOT_He 0
+#define CRACKLE_SLOT_Li -1
+#define CRACKLE_SLOT_Be -1
+#define CRACKLE_SLOT_B -1
+#define CRACKLE_SLOT_C 1
+#define CRACKLE_SLOT_N 2
+#define CRACKLE_SLOT_O 3
+#define CRACKLE_SLOT_F -1
+#define CRACKLE_SLOT_Ne 4
+#define CRACKLE_SLOT_Na -1
+#define CRACKLE_SLOT_Mg 5
+#define CRACKLE_SLOT_Al -1
+#define CRACKLE_SLOT_Si 6
+#define CRACKLE_SLOT_P -1
+#define CRACKLE_SLOT_S 7
+#define CRACKLE_SLOT_Cl -1
+#define CRACKLE_SLOT_Ar -1
+#define CRACKLE_SLOT_K -1
+#define CRACKLE_SLOT_Ca 8
+#define CRACKLE_SLOT_Sc -1
+#define CRACKLE_SLOT_Ti -1
+#define CRACKLE_SLOT_V -1
+#define CRACKLE_SLOT_Cr -1
+#define CRACKLE_SLOT_Mn -1
+#define CRACKLE_SLOT_Fe 9
+#define CRACKLE_SLOT_Co -1
+#define CRACKLE_SLOT_Ni -1
+#define CRACKLE_SLOT_Cu -1
+#define CRACKLE_SLOT_Zn -1
+#define CRACKLE_SLOT_Ga -1
+#define CRACKLE_SLOT_Ge -1
+
+/* crackle's dust model only knows its own elements */
+#define CRACKLE_CHECK_DUST_SLOT(e)                    \
+  _Static_assert(CRACKLE_SLOT_##e >= 0, "dust element " #e \
+                                        " is not one of crackle's elements");
+KIARA_DUST_ELEMENTS(CRACKLE_CHECK_DUST_SLOT)
+#undef CRACKLE_CHECK_DUST_SLOT
+
+/**
+ * @brief The slot of a tracked element in crackle's element arrays, or -1 if
+ * crackle does not know it (it is then left unchanged by crackle).
+ *
+ * @param elem The #chemistry_element.
+ */
+__attribute__((always_inline)) INLINE static int cooling_crackle_slot(
+    const int elem) {
+  static const int slot[chemistry_element_count] = {
+#define CRACKLE_SLOT_OF(e) CRACKLE_SLOT_##e,
+      KIARA_ELEMENTS(CRACKLE_SLOT_OF)
+#undef CRACKLE_SLOT_OF
+  };
+  return slot[elem];
+}
 
 /**
  * @brief Common operations performed on the cooling function at a
@@ -83,6 +143,9 @@ void cooling_update(const struct phys_const *phys_const,
   } else {
     cooling->units.a_value = 1. / (1. + cooling->redshift);
   }
+
+  /* Everything crackle needs that depends only on the redshift */
+  cooling_prepare_crackle_step(cooling);
 }
 
 /**
@@ -106,7 +169,6 @@ void cooling_print_fractions(const struct xpart *restrict xp) {
 #if COOLING_GRACKLE_MODE > 2
   message("DI %g, DII %g, HDI %g", tmp.DI_frac, tmp.DII_frac, tmp.HDI_frac);
 #endif
-  message("Metal: %g", tmp.metal_frac);
 }
 
 /**
@@ -179,7 +241,6 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
                              struct xpart *restrict xp) {
 
   xp->cooling_data.radiated_energy = 0.f;
-  xp->cooling_data.time_last_event = -cooling->thermal_time;
 
   /* Initialize grackle ionization fractions */
   cooling_grackle_init_part(cooling, p, xp);
@@ -193,24 +254,12 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
   /* Initialize dust properties */
 #if COOLING_GRACKLE_MODE >= 2
   p->cooling_data.dust_mass = 0.f;
-  for (int i = 0; i < chemistry_element_count; i++) {
-    p->cooling_data.dust_mass_fraction[i] = 0.f;
+  for (int d = 0; d < dust_element_count; d++) {
+    p->cooling_data.dust_mass_fraction[d] = 0.f;
   }
 
   p->cooling_data.dust_temperature = 0.f;
 #endif
-
-  /* Initialize debug properties */
-  p->cooling_data.du_dt_cooling = 0;
-  p->cooling_data.u_cooling = 0;
-  p->cooling_data.u_chemistry = 0;
-  p->cooling_data.u_cooling_before = 0;
-  p->cooling_data.u_wind_after = 0;
-  p->cooling_data.u_wind_before = 0;
-  p->cooling_data.u_sn_after = 0;
-  p->cooling_data.u_sn_before = 0;
-  p->cooling_data.du_wind_this_step = 0;
-  p->cooling_data.du_sn_this_step = 0;
 }
 
 /**
@@ -268,6 +317,16 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
   message("Self Shielding flag = %i", cooling->self_shielding_method);
   message("Max subgrid density (internal units) = %g",
           cooling->max_subgrid_density);
+  message("Min subgrid density (internal units) = %g",
+          cooling->min_subgrid_density);
+  message("Min self-shielding length = %g h", cooling->min_shield_h_frac);
+  message("H2 ISRF photodissociation = %d (rate %g s^-1 per G0, dust sigma %g "
+          "cm^2); shielding column at mean density = %d",
+          cooling->H2_isrf_dissociation, cooling->H2_isrf_dissociation_rate,
+          cooling->H2_dust_shielding_cross_section,
+          cooling->H2_shield_mean_density);
+  message("H2 Sternberg+14 molecular-fraction limit = %d",
+          cooling->H2_sternberg_limit);
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);
@@ -347,13 +406,55 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
 
 #if COOLING_GRACKLE_MODE >= 2
 /**
+ * @brief The H2 self-shielding length passed to crackle (physical internal
+ * units).
+ *
+ * The length is rho/|grad rho|, limited to [min_shield_h_frac h, kernel_gamma
+ * h]. crackle multiplies it by the density it evolves, which for subgrid ISM
+ * particles is the cold-cloud density. With H2_shield_mean_density the length
+ * is scaled by rho_mean / rho_subgrid, so the column is the particle's mean
+ * density times the length (the gas column across the particle), not a
+ * cloud-density column over kpc scales.
+ *
+ * @param p The #part.
+ * @param cooling The #cooling_function_data used in the run.
+ */
+static double cooling_H2_shielding_length(
+    const struct part *p, const struct cooling_function_data *cooling) {
+  const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
+                                p->rho_gradient[1] * p->rho_gradient[1] +
+                                p->rho_gradient[2] * p->rho_gradient[2];
+  const double rho_grad_norm_inv =
+      (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
+  const double rho_com = hydro_get_comoving_density(p);
+  double L_eff_com = rho_com * rho_grad_norm_inv;
+  const double L_eff_com_max = kernel_gamma * p->h;
+  const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
+  L_eff_com = fmin(L_eff_com, L_eff_com_max);
+  L_eff_com = fmax(L_eff_com, L_eff_com_min);
+  double L = L_eff_com * cooling->units.a_value;
+
+  /* crackle evolves subgrid particles at the cold-cloud density (see
+   * cooling_copy_to_grackle) */
+  const int subgrid = p->cooling_data.subgrid_temp > 0. &&
+                      p->cooling_data.subgrid_fcold > 1.e-6 &&
+                      p->cooling_data.subgrid_dens > 0.f;
+  if (cooling->H2_shield_mean_density && subgrid) {
+    const double a = cooling->units.a_value;
+    const double rho_phys = rho_com / (a * a * a);
+    L *= rho_phys / p->cooling_data.subgrid_dens;
+  }
+  return L;
+}
+
+/**
  * @brief Copy the H2 species and the dust-model inputs of a particle to the
  * grackle data.
  *
  * With the dust model on, this also passes the dust density, the number of
  * SNe in this step, the interstellar radiation field G0 (-1 outside the
  * subgrid ISM), the H2 self-shielding length (rho/|grad rho|, limited to
- * [MIN_SHIELD_H_FRAC h, kernel_gamma h]) and the gas and dust element
+ * [min_shield_h_frac h, kernel_gamma h]) and the gas and dust element
  * densities, and sets the slot in which crackle returns its dust temperature.
  * Requires the metal density (species_densities[12]) to be set.
  *
@@ -411,27 +512,22 @@ void cooling_copy_to_grackle2(
 
     data->isrf_habing = &species_densities[22];
 
-    const double rho_grad_norm2 = p->rho_gradient[0] * p->rho_gradient[0] +
-                                  p->rho_gradient[1] * p->rho_gradient[1] +
-                                  p->rho_gradient[2] * p->rho_gradient[2];
-    const double rho_grad_norm_inv =
-        (rho_grad_norm2 > 0.) ? 1. / sqrt(rho_grad_norm2) : 0.;
-    const double rho_com = hydro_get_comoving_density(p);
-    double L_eff_com = rho_com * rho_grad_norm_inv;
-    const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
-    L_eff_com = fmin(L_eff_com, L_eff_com_max);
-    L_eff_com = fmax(L_eff_com, L_eff_com_min);
-
-    species_densities[23] = L_eff_com * cooling->units.a_value;
+    species_densities[23] = cooling_H2_shielding_length(p, cooling);
     data->H2_self_shielding_length = &species_densities[23];
 
     /* Load gas metallicities */
+    /* (by crackle slot: gas He..Fe in 25..34, dust in 36..45) */
+    for (int k = 24; k < 46; k++) species_densities[k] = 0.;
     for (int i = 0; i < chemistry_element_count; i++) {
-      species_densities[24 + i] = max(
+      const int slot = cooling_crackle_slot(i);
+      if (slot < 0) continue;
+      species_densities[25 + slot] = max(
           p->chemistry_data.metal_mass_fraction[i] * species_densities[12], 0.);
-      species_densities[24 + chemistry_element_count + i] =
-          max(p->cooling_data.dust_mass_fraction[i] * species_densities[20], 0);
+    }
+    for (int d = 0; d < dust_element_count; d++) {
+      const int slot = cooling_crackle_slot(chemistry_element_of_dust(d));
+      species_densities[36 + slot] =
+          max(p->cooling_data.dust_mass_fraction[d] * species_densities[20], 0);
       // if (i>0) printf("dust densities: %d %g %g
       // %g\n",i,species_densities[23+chemistry_element_count+i],species_densities[23+chemistry_element_count+i]/data->dust_density[0],p->cooling_data.dust_mass_fraction[i]*p->mass
       // / p->cooling_data.dust_mass);
@@ -631,26 +727,17 @@ void cooling_copy_from_grackle2(
   if (cooling->use_grackle_dust_evol == 1) {
     /* Load gas metallicities */
     p->chemistry_data.metal_mass_fraction_total = *data->metal_density * rhoinv;
-    p->chemistry_data.metal_mass_fraction[1] =
-        *data->He_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[2] =
-        *data->C_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[3] =
-        *data->N_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[4] =
-        *data->O_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[5] =
-        *data->Ne_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[6] =
-        *data->Mg_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[7] =
-        *data->Si_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[8] =
-        *data->S_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[9] =
-        *data->Ca_gas_metalDensity * rhoinv;
-    p->chemistry_data.metal_mass_fraction[10] =
-        *data->Fe_gas_metalDensity * rhoinv;
+    const gr_float *rhogas[NUM_METAL_SPECIES_GRACKLE] = {
+        data->He_gas_metalDensity, data->C_gas_metalDensity,
+        data->N_gas_metalDensity,  data->O_gas_metalDensity,
+        data->Ne_gas_metalDensity, data->Mg_gas_metalDensity,
+        data->Si_gas_metalDensity, data->S_gas_metalDensity,
+        data->Ca_gas_metalDensity, data->Fe_gas_metalDensity};
+    for (int i = 0; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot >= 0)
+        p->chemistry_data.metal_mass_fraction[i] = *rhogas[slot] * rhoinv;
+    }
 
     /* Dust temperature used by crackle */
     p->cooling_data.dust_temperature = *data->dust_temperature;
@@ -665,7 +752,6 @@ void cooling_copy_from_grackle2(
               p->mass * chemistry_get_total_metal_mass_fraction_for_cooling(p));
     }
 
-    p->cooling_data.dust_mass_fraction[0] = 0.f;
     if (*data->dust_density > 0.f) {
       rhoinv = 1. / *data->dust_density;
 
@@ -679,14 +765,14 @@ void cooling_copy_from_grackle2(
       /* no Helium metal density */
       assert(rhodust[0] == 0.);
 
-      for (int i = 1; i < chemistry_element_count; i++) {
-        p->cooling_data.dust_mass_fraction[i] = rhodust[i - 1] * rhoinv;
-        p->cooling_data.dust_mass_fraction[0] +=
-            p->cooling_data.dust_mass_fraction[i];
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] =
+            rhodust[cooling_crackle_slot(chemistry_element_of_dust(d))] *
+            rhoinv;
       }
     } else {
-      for (int i = 1; i < chemistry_element_count; i++) {
-        p->cooling_data.dust_mass_fraction[i] = 0.f;
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] = 0.f;
       }
     }
   }
@@ -762,6 +848,122 @@ static INLINE int cooling_value_is_finite(const gr_float x) {
   return ((bits >> 52) & 0x7ff) != 0x7ff;
 #endif
 }
+
+#ifdef CRACKLE_VALIDATE_DIRECT
+/*! The crackle input state of the last field-path and direct-path calls of
+ * this thread */
+static __thread grackle_part_data crackle_dbg_gp_fields, crackle_dbg_gp_direct;
+
+/*! If set, the field path runs on these inputs instead of its own */
+static __thread int crackle_dbg_override = 0;
+
+/*! Number of crackle inputs that differed at round-off level */
+static long long crackle_dbg_n_roundoff = 0;
+
+/**
+ * @brief Give the field path the inputs of the direct path.
+ *
+ * Under -ffast-math the two copies of the input preparation may round
+ * differently (e.g. the float sum in cooling_get_inverse_mu()), so the
+ * inputs are compared to round-off separately and everything after them
+ * bit for bit.
+ */
+static void cooling_crackle_override_fields(const grackle_part_data *gp,
+                                            gr_float *sd, gr_float *iact) {
+  for (int i = 0; i < 9; i++) {
+    const gr_float v[9] = {gp->HI_density,   gp->HII_density,
+                           gp->HeI_density,  gp->HeII_density,
+                           gp->HeIII_density, gp->e_density,
+                           gp->HM_density,   gp->H2I_density,
+                           gp->H2II_density};
+    sd[i] = v[i];
+  }
+  sd[12] = gp->density;
+  sd[13] = gp->internal_energy;
+  sd[14] = gp->temperature_floor;
+  sd[15] = gp->specific_heating_rate;
+  sd[16] = gp->x_velocity;
+  sd[17] = gp->y_velocity;
+  sd[18] = gp->z_velocity;
+  sd[19] = gp->metal_density;
+  sd[20] = gp->dust_density;
+  sd[21] = gp->SNe_density;
+  sd[22] = gp->isrf_habing;
+  sd[23] = gp->H2_self_shielding_length;
+  for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+    sd[25 + i] = gp->gas_metalDensity[i];
+    sd[36 + i] = gp->dust_metalDensity[i];
+  }
+  if (iact != NULL) {
+    iact[0] = gp->RT_heating_rate;
+    iact[1] = gp->RT_HI_ionization_rate;
+    iact[2] = gp->RT_HeI_ionization_rate;
+    iact[3] = gp->RT_HeII_ionization_rate;
+    iact[4] = gp->RT_H2_dissociation_rate;
+  }
+}
+
+/**
+ * @brief Make the following cooling_copy_to_grackle() calls of this thread
+ * use the inputs of its last cooling_copy_to_crackle() call (1) or not (0).
+ */
+void cooling_crackle_override_inputs(int on) { crackle_dbg_override = on; }
+
+/**
+ * @brief Compare the crackle inputs of the field and direct paths: stop if
+ * any differs by more than round-off, count those that differ by round-off.
+ */
+void cooling_crackle_compare_inputs(long long id) {
+  const grackle_part_data *g1 = &crackle_dbg_gp_fields;
+  const grackle_part_data *g2 = &crackle_dbg_gp_direct;
+  if (g1->grid_rank != g2->grid_rank || g1->grid_end != g2->grid_end ||
+      g1->id != g2->id)
+    error("crackle direct validation: id=%lld grid/id inputs differ", id);
+  const double *d1 = &g1->density;
+  const double *d2 = &g2->density;
+  const size_t n =
+      (sizeof(grackle_part_data) - offsetof(grackle_part_data, density)) /
+      sizeof(double);
+  const size_t k_shield = (offsetof(grackle_part_data, f_shield) -
+                           offsetof(grackle_part_data, density)) /
+                          sizeof(double);
+  /* The RT rates are compared after the call (cooling_copy_to_grackle()
+   * builds them for the instance with use_radiative_transfer) */
+  const size_t k_rt0 = (offsetof(grackle_part_data, RT_heating_rate) -
+                        offsetof(grackle_part_data, density)) /
+                       sizeof(double);
+  const size_t k_rt1 = (offsetof(grackle_part_data, RT_H2_dissociation_rate) -
+                        offsetof(grackle_part_data, density)) /
+                       sizeof(double);
+  int nroundoff = 0;
+  for (size_t k = 0; k < n; k++) {
+    if (k == k_shield) continue; /* set by crackle */
+    if (k >= k_rt0 && k <= k_rt1) continue;
+    if (memcmp(&d1[k], &d2[k], sizeof(double)) == 0) continue;
+    const double a = d1[k], b = d2[k];
+    if (fabs(a - b) <= 1.e-6 * fmax(fabs(a), fabs(b))) {
+      nroundoff++;
+      continue;
+    }
+    error("crackle direct validation: id=%lld input at gp offset %zu "
+          "(density %zu, internal_energy %zu, gas_metalDensity %zu) "
+          "fields %.17g direct %.17g",
+          id, offsetof(grackle_part_data, density) + k * sizeof(double),
+          offsetof(grackle_part_data, density),
+          offsetof(grackle_part_data, internal_energy),
+          offsetof(grackle_part_data, gas_metalDensity), a, b);
+  }
+  if (nroundoff > 0) {
+    const long long n_tot =
+        atomic_add(&crackle_dbg_n_roundoff, (long long)nroundoff) + nroundoff;
+    /* Report the 1st, 2nd, 4th, 8th... */
+    if ((n_tot & (n_tot - 1)) == 0 || nroundoff > 1)
+      message("crackle direct validation: inputs differing at round-off "
+              "level so far: %lld (id=%lld, %d in this call)",
+              n_tot, id, nroundoff);
+  }
+}
+#endif
 
 /**
  * @brief Fill the grackle data for a single particle.
@@ -919,6 +1121,16 @@ void cooling_copy_to_grackle(
           i, N_SPECIES, species_densities[i]);
     }
   }
+#ifdef CRACKLE_VALIDATE_DIRECT
+  /* The inputs crackle builds from these fields (with this run's cooling
+   * chemistry flags, as cooling_copy_to_crackle() uses) */
+  memset(&crackle_dbg_gp_fields, 0, sizeof(grackle_part_data));
+  crackle_fields_to_part(data, &crackle_dbg_gp_fields,
+                         (chemistry_data *)&cooling->chemistry);
+  if (crackle_dbg_override)
+    cooling_crackle_override_fields(&crackle_dbg_gp_direct, species_densities,
+                                    iact_rates);
+#endif
 }
 
 /**
@@ -949,6 +1161,312 @@ void cooling_copy_from_grackle(
  * @param data The grackle_field_data structure from grackle.
  */
 void cooling_grackle_free_data(grackle_field_data *data) {}
+
+
+/*! What crackle needs at the current redshift (UV background rates and
+ * crackle units), set by cooling_prepare_crackle_step() in cooling_update()
+ * and read-only during the step. Kept out of #cooling_function_data so that
+ * the restart files are unchanged; it is recomputed after a restart. */
+static struct {
+  photo_rate_storage uvb_rates;
+  crackle_units cunits;
+} cooling_crackle_step;
+
+/**
+ * @brief Everything crackle needs that depends only on the parameters, units
+ * and redshift (temperature units, UV background rates, crackle units).
+ *
+ * Called in cooling_update (every step) and after initialising crackle.
+ *
+ * @param cooling The #cooling_function_data used in the run.
+ */
+void cooling_prepare_crackle_step(struct cooling_function_data *cooling) {
+  if (crackle_prepare_step(&cooling->chemistry, &grackle_rates, &cooling->units,
+                           &cooling_crackle_step.uvb_rates,
+                           &cooling_crackle_step.cunits) == 0)
+    error("Error in crackle_prepare_step.");
+}
+
+/**
+ * @brief Fill the crackle state of a particle directly from the particle.
+ *
+ * This gives crackle exactly the inputs that cooling_copy_to_grackle() and
+ * crackle's copy from the grackle_field_data give it, without the
+ * intermediate arrays.
+ *
+ * @param gp The crackle particle state to fill.
+ * @param cosmo The current cosmological model.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature (used outside the subgrid ISM).
+ * @param iact_rates The RT interaction rates (zeroed in the subgrid ISM).
+ * @param mode 0 solve, 1 cooling time, 2 temperature.
+ */
+void cooling_copy_to_crackle(grackle_part_data *gp,
+                             const struct cosmology *restrict cosmo,
+                             const struct cooling_function_data *restrict
+                                 cooling,
+                             const struct part *p, const struct xpart *xp,
+                             const double dt, const double T_warm,
+                             gr_float *iact_rates, int mode) {
+
+  const chemistry_data *chemistry = &cooling->chemistry;
+
+  crackle_init_part(gp);
+
+  /* A single particle; grid_end < 0 turns the UVB off (cooling times) */
+  gp->grid_rank = GRACKLE_RANK;
+  gp->grid_dimension = GRACKLE_NPART;
+  gp->grid_start = 0;
+  gp->grid_end = (mode == 1) ? -1 : GRACKLE_NPART - 1;
+
+  /* Density, internal energy (physical), floor temperature and heating rate,
+   * as in cooling_copy_to_grackle() */
+  double T_subgrid = cooling_get_subgrid_temperature(p, xp);
+  gr_float rho, u, T_floor, heating;
+  if (mode == 1) {
+    rho = hydro_get_physical_density(p, cosmo);
+    u = hydro_get_physical_internal_energy(p, xp, cosmo);
+    T_floor = cooling->T_CMB_0 * (1.f + cosmo->z);
+    heating = 0.f;
+  } else if (p->cooling_data.subgrid_temp == 0. ||
+             p->cooling_data.subgrid_fcold <= 1.e-6) {
+    rho = hydro_get_physical_density(p, cosmo);
+    u = hydro_get_physical_internal_energy(p, xp, cosmo);
+    T_floor = T_warm;
+    heating =
+        hydro_get_physical_internal_energy_dt(p, cosmo) * cooling->dudt_units;
+  } else {
+    rho = cooling_get_subgrid_density(p, xp);
+    u = cooling_convert_temp_to_u(T_subgrid, xp->cooling_data.e_frac, cooling,
+                                  p, xp);
+    T_floor = cooling->T_CMB_0 * (1.f + cosmo->z);
+    heating = 0.f;
+    if (cooling->ism_adiabatic_heating_method == 1) {
+      heating +=
+          hydro_get_physical_internal_energy_dt(p, cosmo) * cooling->dudt_units;
+    }
+  }
+  gp->density = rho;
+  gp->internal_energy = u;
+  gp->temperature_floor = T_floor;
+  if (chemistry->use_specific_heating_rate)
+    gp->specific_heating_rate = heating;
+  else
+    gp->specific_heating_rate = 0.;
+  if (chemistry->use_volumetric_heating_rate)
+    error("crackle: a volumetric heating rate is not supported");
+  gp->volumetric_heating_rate = 0.;
+
+  /* The x velocity slot holds the particle ID (for crackle's debugging) */
+  const gr_float x_velocity = (int)p->id;
+  gp->x_velocity = x_velocity;
+  gp->y_velocity = xp->v_full[1] * cosmo->a_inv;
+  gp->z_velocity = xp->v_full[2] * cosmo->a_inv;
+  gp->id = (int)x_velocity;
+
+  /* Primordial species */
+  gp->HI_density = xp->cooling_data.HI_frac * rho;
+  gp->HII_density = xp->cooling_data.HII_frac * rho;
+  gp->HeI_density = xp->cooling_data.HeI_frac * rho;
+  gp->HeII_density = xp->cooling_data.HeII_frac * rho;
+  gp->HeIII_density = xp->cooling_data.HeIII_frac * rho;
+  gp->e_density = xp->cooling_data.e_frac * rho;
+  gp->HM_density = xp->cooling_data.HM_frac * rho;
+  if (chemistry->primordial_chemistry >= 2) {
+    gp->H2I_density = xp->cooling_data.H2I_frac * rho;
+    gp->H2II_density = xp->cooling_data.H2II_frac * rho;
+  } else {
+    gp->H2I_density = 0.;
+    gp->H2II_density = 0.;
+  }
+  if (chemistry->primordial_chemistry >= 3)
+    error("crackle does not work with primordial_chemistry >= 3");
+  gp->DI_density = 0.;
+  gp->DII_density = 0.;
+  gp->HDI_density = 0.;
+
+  /* In the subgrid ISM, RT photons are absorbed by the cold clouds only
+   * (see rt_do_thermochemistry_with_subgrid), and the warm medium is taken
+   * to be ionized: no RT heating and ionisation in the subgrid ISM */
+  if (p->cooling_data.subgrid_temp > 0.f) {
+    for (int i = 0; i < 5; i++) iact_rates[i] = 0.f;
+  }
+  /* Passed whatever this instance's use_radiative_transfer, as in the field
+   * path: the KIARA-RT chemistry instance uses them, and the cooling one may
+   * have them off */
+  gp->RT_heating_rate = iact_rates[0];
+  gp->RT_HI_ionization_rate = iact_rates[1];
+  gp->RT_HeI_ionization_rate = iact_rates[2];
+  gp->RT_HeII_ionization_rate = iact_rates[3];
+  gp->RT_H2_dissociation_rate = iact_rates[4];
+
+  gp->metal_density =
+      chemistry_get_total_metal_mass_fraction_for_cooling(p) * rho;
+
+  /* Dust model, ISRF and H2 shielding length (as cooling_copy_to_grackle2) */
+  gr_float isrf = 0., L_shield = 0., dust_density = 0., SNe_density = 0.;
+  /* By crackle slot */
+  gr_float gas_metals[NUM_METAL_SPECIES_GRACKLE] = {0.};
+  gr_float dust_metals[NUM_METAL_SPECIES_GRACKLE] = {0.};
+  if (cooling->use_grackle_dust_evol == 1) {
+    dust_density = p->cooling_data.dust_mass / p->mass * rho;
+    SNe_density = p->feedback_data.SNe_ThisTimeStep * dt / p->mass * rho;
+    if (p->cooling_data.subgrid_temp == 0.f) {
+      isrf = -1.f;
+    } else {
+      isrf = p->cooling_data.G0;
+    }
+    L_shield = cooling_H2_shielding_length(p, cooling);
+    for (int i = 0; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot >= 0)
+        gas_metals[slot] =
+            max(p->chemistry_data.metal_mass_fraction[i] * rho, 0.);
+    }
+    for (int d = 0; d < dust_element_count; d++) {
+      dust_metals[cooling_crackle_slot(chemistry_element_of_dust(d))] =
+          max(p->cooling_data.dust_mass_fraction[d] * dust_density, 0);
+    }
+  }
+  if (chemistry->H2_custom_shielding == 2) {
+    if (cooling->use_grackle_dust_evol != 1)
+      error("crackle: H2_custom_shielding = 2 needs the dust model");
+    gp->H2_self_shielding_length = L_shield;
+    gp->H2_custom_shielding_factor = 0.; /* unused */
+  } else if (chemistry->H2_custom_shielding == 1) {
+    error("crackle: H2_custom_shielding = 1 is not supported");
+  } else {
+    gp->H2_self_shielding_length = 0.;
+    gp->H2_custom_shielding_factor = 0.;
+  }
+  if (chemistry->use_isrf_field)
+    gp->isrf_habing = isrf;
+  else
+    gp->isrf_habing = 0.;
+  if (chemistry->use_dust_evol) {
+    gp->dust_density = dust_density;
+    for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+      gp->gas_metalDensity[i] = gas_metals[i];
+      gp->dust_metalDensity[i] = dust_metals[i];
+    }
+    gp->SNe_density = SNe_density;
+  } else {
+    gp->dust_density = 0.;
+    gp->SNe_density = 0.;
+    for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+      gp->gas_metalDensity[i] = 0.;
+      gp->dust_metalDensity[i] = 0.;
+    }
+  }
+
+  /* Never pass a non-finite value to crackle */
+  const gr_float check[] = {rho,
+                            u,
+                            T_floor,
+                            heating,
+                            gp->y_velocity,
+                            gp->z_velocity,
+                            gp->HI_density,
+                            gp->HII_density,
+                            gp->HeI_density,
+                            gp->HeII_density,
+                            gp->HeIII_density,
+                            gp->e_density,
+                            gp->HM_density,
+                            gp->H2I_density,
+                            gp->H2II_density,
+                            gp->metal_density,
+                            dust_density,
+                            SNe_density,
+                            isrf,
+                            L_shield};
+  for (size_t i = 0; i < sizeof(check) / sizeof(check[0]); i++) {
+    if (!cooling_value_is_finite(check[i]))
+      error("Passing a non-finite value to crackle! id=%lld i=%zu value=%g",
+            p->id, i, check[i]);
+  }
+  for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
+    if (!cooling_value_is_finite(gas_metals[i]) ||
+        !cooling_value_is_finite(dust_metals[i]))
+      error("Passing a non-finite metal density to crackle! id=%lld i=%d",
+            p->id, i);
+  }
+#ifdef CRACKLE_VALIDATE_DIRECT
+  memcpy(&crackle_dbg_gp_direct, gp, sizeof(grackle_part_data));
+#endif
+}
+
+/**
+ * @brief Copy the evolved species (and dust/metals) from the crackle state
+ * back to the particle.
+ *
+ * Gives the particle exactly what crackle's copy to the grackle_field_data
+ * and cooling_copy_from_grackle() give it.
+ *
+ * @param gp The crackle particle state after the solve.
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param cooling The #cooling_function_data used in the run.
+ */
+void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
+                               struct xpart *xp,
+                               const struct cooling_function_data *restrict
+                                   cooling) {
+
+  const gr_float rho = gp->density;
+  double rhoinv = 1.f / rho;
+
+  /* Primordial species */
+  xp->cooling_data.HI_frac = gp->HI_density * rhoinv;
+  xp->cooling_data.HII_frac = gp->HII_density * rhoinv;
+  xp->cooling_data.HeI_frac = gp->HeI_density * rhoinv;
+  xp->cooling_data.HeII_frac = gp->HeII_density * rhoinv;
+  xp->cooling_data.HeIII_frac = gp->HeIII_density * rhoinv;
+  xp->cooling_data.e_frac = gp->e_density * rhoinv;
+  xp->cooling_data.HM_frac = gp->HM_density * rhoinv;
+  xp->cooling_data.H2I_frac = gp->H2I_density * rhoinv;
+  xp->cooling_data.H2II_frac = gp->H2II_density * rhoinv;
+
+  /* Dust model */
+  if (cooling->use_grackle_dust_evol == 1) {
+    p->chemistry_data.metal_mass_fraction_total = gp->metal_density * rhoinv;
+    for (int i = 0; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot >= 0)
+        p->chemistry_data.metal_mass_fraction[i] =
+            gp->gas_metalDensity[slot] * rhoinv;
+    }
+
+    /* Dust temperature used by crackle (unchanged if not computed) */
+    if (gp->tdust > 0.) p->cooling_data.dust_temperature = gp->tdust;
+
+    p->cooling_data.dust_mass = gp->dust_density * p->mass * rhoinv;
+    if (p->cooling_data.dust_mass > 0.5 * p->mass) {
+      warning("DUST > METALS Mg=%g Zg=%g mdust=%g mmet=%g\n", p->mass,
+              chemistry_get_total_metal_mass_fraction_for_cooling(p),
+              p->cooling_data.dust_mass,
+              p->mass * chemistry_get_total_metal_mass_fraction_for_cooling(p));
+    }
+    if (gp->dust_density > 0.f) {
+      rhoinv = 1. / gp->dust_density;
+      /* no Helium metal density */
+      assert(gp->dust_metalDensity[0] == 0.);
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] =
+            gp->dust_metalDensity[cooling_crackle_slot(
+                chemistry_element_of_dust(d))] *
+            rhoinv;
+      }
+    } else {
+      for (int d = 0; d < dust_element_count; d++) {
+        p->cooling_data.dust_mass_fraction[d] = 0.f;
+      }
+    }
+  }
+}
 
 /**
  * @brief Renomalize individual H and He species to account for
@@ -1022,7 +1540,7 @@ __attribute__((always_inline)) INLINE void cooling_normalize_primordial_species(
  *
  * @return desired quantity based on mode
  */
-gr_float cooling_grackle_driver(
+static gr_float cooling_grackle_driver_fields(
     const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us,
     const struct cosmology *restrict cosmo,
@@ -1064,16 +1582,20 @@ gr_float cooling_grackle_driver(
     xp->cooling_data.HM_frac *= non_H2_factor;
   }*/
 
-  /* Renomalize H,He species to account for any changes due to chemistry,
-   * stellar evol, etc */
-  cooling_normalize_primordial_species(p, xp);
-
   /* load particle information from particle to grackle data */
   cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, T_warm,
                           species_densities, iact_rates, mode);
 
+
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
+
+#ifdef CRACKLE_VALIDATE
+  /* Save the inputs, to run the external library on them after each call */
+  struct crackle_validate_state crv;
+  crackle_validate_save(&crv, &units, &data, species_densities, N_SPECIES,
+                        iact_rates, 5);
+#endif
 
   switch (mode) {
     case 0:
@@ -1081,6 +1603,10 @@ gr_float cooling_grackle_driver(
       if (solve_chemistry(&units, &data, dt) == 0) {
         error("Error in Grackle solve_chemistry.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 0, dt,
+                             species_densities, iact_rates, 0., p->id);
+#endif
       // if (solve_chemistry(&units, &data, -dt) == 0) {
       //   error("Error in Crackle solve_chemistry.");
       // }
@@ -1097,6 +1623,11 @@ gr_float cooling_grackle_driver(
       if (calculate_cooling_time(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_cooling_time.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 1, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
 
     case 2:
@@ -1104,6 +1635,11 @@ gr_float cooling_grackle_driver(
       if (calculate_temperature(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_temperature.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 2, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
 
     case 3:
@@ -1111,18 +1647,230 @@ gr_float cooling_grackle_driver(
       if (calculate_pressure(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_pressure.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 3, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
     case 4:
       /* compute gamma */
       if (calculate_gamma(&units, &data, &return_value) == 0) {
         error("Error in Grackle calculate_gamma.");
       }
+#ifdef CRACKLE_VALIDATE
+      crackle_validate_check(&crv, crackle_validate_global, 4, dt,
+                             species_densities, iact_rates, return_value,
+                             p->id);
+#endif
       break;
   }
 
   cooling_grackle_free_data(&data);
 
   return return_value;
+}
+
+/**
+ * @brief Run crackle directly on the particle (modes 0-2), without the
+ * grackle_field_data arrays.
+ *
+ * @param cosmo The #cosmology.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle extra data
+ * @param iact_rates The RT heating and ionisation rates passed to crackle.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param mode 0=energy, 1=cooling time, 2=temperature
+ *
+ * @return desired quantity based on mode
+ */
+static gr_float cooling_crackle_driver(
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
+    double dt, double T_warm, int mode) {
+
+  /* The units with the temperature units of the current step */
+  code_units units = cooling->units;
+  chemistry_data *chemistry = (chemistry_data *)&cooling->chemistry;
+
+  grackle_part_data gp;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, dt, T_warm, iact_rates,
+                          mode);
+
+  gr_float return_value = 0.f;
+  switch (mode) {
+    case 0:
+      /* solve chemistry, advance thermal energy by dt */
+      if (crackle_solve_part(&gp, chemistry, &grackle_rates,
+                             &cooling_crackle_step.uvb_rates, &units,
+                             &cooling_crackle_step.cunits, fabs(dt)) == 0) {
+        error("Error in crackle_solve_part.");
+      }
+      cooling_copy_from_crackle(&gp, p, xp, cooling);
+      return_value = gp.internal_energy;
+      break;
+
+    case 1:
+      /* compute cooling time */
+      crackle_cooling_time_part(&gp, chemistry, &grackle_rates,
+                                &cooling_crackle_step.uvb_rates, &units,
+                                &cooling_crackle_step.cunits, &return_value);
+      break;
+
+    case 2:
+      /* compute temperature */
+      crackle_temperature_part(&gp, chemistry, &units, &return_value);
+      break;
+
+    default:
+      error("crackle driver: unknown mode %d", mode);
+  }
+
+  return return_value;
+}
+
+#ifdef CRACKLE_VALIDATE_DIRECT
+/**
+ * @brief Stop if the direct crackle path did not reproduce the field-array
+ * path bit for bit.
+ */
+void cooling_crackle_validate_direct(
+    const struct part *p, const struct part *p_ref, const struct xpart *xp,
+    const struct xpart *xp_ref, const gr_float *iact, const gr_float *iact_ref,
+    const gr_float result, const gr_float result_ref, const int mode) {
+
+  const int diff_p = memcmp(p, p_ref, sizeof(struct part));
+  const int diff_xp = memcmp(xp, xp_ref, sizeof(struct xpart));
+  const int diff_iact =
+      (iact != NULL) ? memcmp(iact, iact_ref, 5 * sizeof(gr_float)) : 0;
+  const int diff_r = memcmp(&result, &result_ref, sizeof(gr_float));
+  if (!diff_p && !diff_xp && !diff_iact && !diff_r) return;
+
+  const unsigned char *a = (const unsigned char *)p;
+  const unsigned char *b = (const unsigned char *)p_ref;
+  for (size_t k = 0; k < sizeof(struct part); k++)
+    if (a[k] != b[k]) {
+      message("crackle direct validation: part byte %zu differs "
+              "(cooling_data at %zu, chemistry_data at %zu)",
+              k, offsetof(struct part, cooling_data),
+              offsetof(struct part, chemistry_data));
+      break;
+    }
+  a = (const unsigned char *)xp;
+  b = (const unsigned char *)xp_ref;
+  for (size_t k = 0; k < sizeof(struct xpart); k++)
+    if (a[k] != b[k]) {
+      message("crackle direct validation: xpart byte %zu differs "
+              "(cooling_data at %zu)",
+              k, offsetof(struct xpart, cooling_data));
+      break;
+    }
+  message("crackle direct validation: id=%lld mode=%d result %.17g ref %.17g; "
+          "HI %.17g/%.17g e %.17g/%.17g H2I %.17g/%.17g u_dt %.17g/%.17g "
+          "Tdust %.17g/%.17g mdust %.17g/%.17g",
+          p->id, mode, result, result_ref, xp->cooling_data.HI_frac,
+          xp_ref->cooling_data.HI_frac, xp->cooling_data.e_frac,
+          xp_ref->cooling_data.e_frac, xp->cooling_data.H2I_frac,
+          xp_ref->cooling_data.H2I_frac, p->u_dt, p_ref->u_dt,
+          p->cooling_data.dust_temperature,
+          p_ref->cooling_data.dust_temperature, p->cooling_data.dust_mass,
+          p_ref->cooling_data.dust_mass);
+  error("crackle direct validation: the direct path differs from the field "
+        "path (part %d, xpart %d, iact %d, result %d)",
+        diff_p != 0, diff_xp != 0, diff_iact != 0, diff_r != 0);
+}
+#endif
+
+/**
+ * @brief Compute the energy of a particle after dt and update the particle
+ * chemistry data, or another quantity depending on the mode.
+ *
+ * Modes 0-2 run crackle directly on the particle; modes 3 and 4 (pressure,
+ * gamma; output only) go through Grackle's field arrays. With
+ * CRACKLE_VALIDATE (comparison with an external library) everything goes
+ * through the field arrays; with CRACKLE_VALIDATE_DIRECT both paths are run
+ * and must agree bit for bit.
+ *
+ * @param phys_const The physical constants in internal units.
+ * @param us The internal system of units.
+ * @param cosmo The #cosmology.
+ * @param hydro_props The #hydro_props.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle extra data
+ * @param iact_rates The RT heating and ionisation rates passed to grackle.
+ * @param dt The time-step of this particle.
+ * @param T_warm The warm-ISM EoS temperature of the particle (K).
+ * @param mode 0=energy, 1=cooling time, 2=temperature, 3=pressure, 4=gamma
+ *
+ * @return desired quantity based on mode
+ */
+gr_float cooling_grackle_driver(
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct hydro_props *hydro_props,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, gr_float *iact_rates,
+    double dt, double T_warm, int mode) {
+
+  /* Renomalize H,He species to account for any changes due to chemistry,
+   * stellar evol, etc */
+  cooling_normalize_primordial_species(p, xp);
+
+#if defined(CRACKLE_VALIDATE)
+  return cooling_grackle_driver_fields(phys_const, us, cosmo, hydro_props,
+                                       cooling, p, xp, iact_rates, dt, T_warm,
+                                       mode);
+#else
+  if (mode > 2)
+    return cooling_grackle_driver_fields(phys_const, us, cosmo, hydro_props,
+                                         cooling, p, xp, iact_rates, dt,
+                                         T_warm, mode);
+#ifdef CRACKLE_VALIDATE_DIRECT
+  /* Both paths start from a snapshot of the particle, as other tasks may
+   * write parts of it (e.g. black_holes_data) while this one runs; the real
+   * update is then done by the direct path on the particle itself */
+  const struct part p_in = *p;
+  const struct xpart xp_in = *xp;
+  gr_float iact_in[5] = {0., 0., 0., 0., 0.};
+  if (iact_rates != NULL) memcpy(iact_in, iact_rates, sizeof(iact_in));
+
+  struct part p_dir = p_in;
+  struct xpart xp_dir = xp_in;
+  gr_float iact_dir[5];
+  memcpy(iact_dir, iact_in, sizeof(iact_dir));
+  const gr_float result_dir = cooling_crackle_driver(
+      cosmo, cooling, &p_dir, &xp_dir, (iact_rates != NULL) ? iact_dir : NULL,
+      dt, T_warm, mode);
+
+  /* The field path, on the inputs of the direct path */
+  struct part p_ref = p_in;
+  struct xpart xp_ref = xp_in;
+  gr_float iact_ref[5];
+  memcpy(iact_ref, iact_in, sizeof(iact_ref));
+  cooling_crackle_override_inputs(1);
+  const gr_float result_ref = cooling_grackle_driver_fields(
+      phys_const, us, cosmo, hydro_props, cooling, &p_ref, &xp_ref,
+      (iact_rates != NULL) ? iact_ref : NULL, dt, T_warm, mode);
+  cooling_crackle_override_inputs(0);
+
+  cooling_crackle_compare_inputs(p->id);
+  cooling_crackle_validate_direct(&p_dir, &p_ref, &xp_dir, &xp_ref,
+                                  (iact_rates != NULL) ? iact_dir : NULL,
+                                  iact_ref, result_dir, result_ref, mode);
+
+  const gr_float result = cooling_crackle_driver(cosmo, cooling, p, xp,
+                                                 iact_rates, dt, T_warm, mode);
+  return result;
+#else
+  return cooling_crackle_driver(cosmo, cooling, p, xp, iact_rates, dt, T_warm,
+                                mode);
+#endif
+#endif
 }
 
 /**
@@ -1256,7 +2004,10 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
 #endif
       /* Dust mass returned to the gas phase */
       const float dust_mass_lost = dust_mass_old - p->cooling_data.dust_mass;
-      p->chemistry_data.metal_mass_fraction_total = 0.f;
+
+      /* All of the dust is metals */
+      p->chemistry_data.metal_mass_fraction_total +=
+          dust_mass_lost / hydro_get_mass(p);
 
       for (int elem = 0; elem < chemistry_element_count; ++elem) {
         if (elem == chemistry_element_H || elem == chemistry_element_He)
@@ -1270,15 +2021,14 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
 
         /* This is the positive amount of metal mass to add since we
          * are losing dust mass when sputtering. */
+        const int d = dust_element_of_chemistry(elem);
         const float delta_metal_mass_elem =
-            p->cooling_data.dust_mass_fraction[elem] * dust_mass_lost;
+            (d >= 0) ? p->cooling_data.dust_mass_fraction[d] * dust_mass_lost
+                     : 0.f;
         const float elem_mass_new = elem_mass_old + delta_metal_mass_elem;
         const float Z_elem_new = elem_mass_new / hydro_get_mass(p);
 
         p->chemistry_data.metal_mass_fraction[elem] = Z_elem_new;
-
-        /* Sum up to get the new Z value */
-        p->chemistry_data.metal_mass_fraction_total += Z_elem_new;
       }
 
       /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
@@ -1388,20 +2138,37 @@ void cooling_init_chemistry(
   /* Small margin so round-off in the enriched total doesn't re-trigger this
    * every step (which would reset any dust grown since) */
   if (p->cooling_data.subgrid_temp > 0.f && total_Z < 0.99f * self_Z) {
-    float Z_sun = 0.f;
-    for (int i = 1; i < 10; i++) {
-      Z_sun += cooling->chemistry.SolarAbundances[i];
+    /* Solar metal mass fraction, total and in the dust elements, from
+     * crackle's SolarAbundances (elements crackle does not know are not
+     * self-enriched) */
+    float Z_sun = 0.f, Z_sun_dust = 0.f;
+    for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
+      const int slot = cooling_crackle_slot(i);
+      if (slot < 0) continue;
+      Z_sun += cooling->chemistry.SolarAbundances[slot];
+      if (dust_element_of_chemistry(i) >= 0)
+        Z_sun_dust += cooling->chemistry.SolarAbundances[slot];
     }
 
     /* Distribute the self-enrichment metallicity among elements
-       assuming solar abundance ratios*/
+       assuming solar abundance ratios; init_dust_to_gas of the dust
+       elements is in dust */
     p->chemistry_data.metal_mass_fraction_total = 0.f;
-    /* Offset index for the SolarAbundaces array (starts at He -> Fe) */
-    int j = 1;
     for (int i = chemistry_element_C; i < chemistry_element_count; i++) {
-      /* fraction of gas mass in each element */
+      const int slot = cooling_crackle_slot(i);
+
+      /* Elements crackle does not know keep what they have */
+      if (slot < 0) {
+        p->chemistry_data.metal_mass_fraction_total +=
+            p->chemistry_data.metal_mass_fraction[i];
+        continue;
+      }
+      const int d = dust_element_of_chemistry(i);
+
+      /* fraction of gas mass in each element (gas phase) */
+      const float f_gas = (d >= 0) ? 1.f - init_dust_to_gas : 1.f;
       p->chemistry_data.metal_mass_fraction[i] =
-          (1.f - init_dust_to_gas) * cooling->chemistry.SolarAbundances[j] *
+          f_gas * cooling->chemistry.SolarAbundances[slot] *
           cooling->self_enrichment_metallicity;
       p->chemistry_data.metal_mass_fraction[i] /= Z_sun;
 
@@ -1410,18 +2177,15 @@ void cooling_init_chemistry(
           p->chemistry_data.metal_mass_fraction[i];
 
       /* fraction of dust mass in each element (sums to 1) */
-      p->cooling_data.dust_mass_fraction[i] =
-          cooling->chemistry.SolarAbundances[j] / Z_sun;
-      j++;
+      if (d >= 0)
+        p->cooling_data.dust_mass_fraction[d] =
+            cooling->chemistry.SolarAbundances[slot] / Z_sun_dust;
     }
 
-    /* No H or He in dust; element 0 holds the sum over elements */
-    p->cooling_data.dust_mass_fraction[chemistry_element_H] = 1.f;
-    p->cooling_data.dust_mass_fraction[chemistry_element_He] = 0.f;
-
-    /* Dust holds the remaining init_dust_to_gas of the self-enriched metals */
-    p->cooling_data.dust_mass =
-        init_dust_to_gas * cooling->self_enrichment_metallicity * p->mass;
+    /* Dust holds the remaining init_dust_to_gas of the dust elements */
+    p->cooling_data.dust_mass = init_dust_to_gas *
+                                cooling->self_enrichment_metallicity *
+                                (Z_sun_dust / Z_sun) * p->mass;
 
     p->chemistry_data.metal_mass_fraction[chemistry_element_He] =
         cooling->chemistry.SolarAbundances[0];
@@ -1674,26 +2438,13 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
     /* Interaction rates for RT; not used here */
     gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
 
-    /* Output u for debug. */
-    p->cooling_data.u_cooling_before =
-        hydro_get_physical_internal_energy(p, xp, cosmo);
-
     /* Do the cooling and chemistry */
     cooling_do_grackle_cooling(phys_const, us, cosmo, hydro_props, floor_props,
                                cooling, p, xp, iact_rates, dt, dt_therm,
                                /*set_u_directly=*/0);
 
-    /* Output du_dt and u for debug. */
-    p->cooling_data.du_dt_cooling =
-        hydro_get_physical_internal_energy_dt(p, cosmo);
-    p->cooling_data.u_cooling =
-        hydro_get_physical_internal_energy(p, xp, cosmo);
-
     /* Update cooling times this step. */
     p->cooling_data.ncool_this_step += 1;
-
-    /* Record this cooling event */
-    xp->cooling_data.time_last_event = time;
   }
 
   /* The SN rate deposited by stellar feedback has now been used (for the
@@ -1970,6 +2721,20 @@ void cooling_init_units(const struct unit_system *us,
   /* Calibrated to an SN rate of 0.015 per year for MW (BC Reed 2005);
    * multiplies the SN rate in internal units */
   cooling->G0_factorSNe = 1.6f / (0.015f * time_to_yr);
+
+  /* Method 7 galaxy term, G0 = G0_factor_galaxy SFR / (r^2 + r_sfr^2): the
+   * galaxy's young stars as a source softened over its SFR radius, normalised
+   * to G0 = 1.6 at the MW solar circle (SFR 1.65 Msun/yr, Licquia & Newman
+   * 2015; R0 = 8.2 kpc; SFR-weighted rms radius ~6.4 kpc, i.e. sqrt(6) times
+   * a 2.6 kpc exponential disc), so implicitly with the MW's attenuation. The
+   * softening is at least 0.5 kpc (galaxies with too few SF particles have no
+   * SFR radius). */
+  const double length_to_kpc = length_to_pc * 1.e-3;
+  const double sfr_mw = 1.65, r0_mw = 8.2, rsfr_mw = 6.4;
+  cooling->G0_factor_galaxy = 1.6 * (r0_mw * r0_mw + rsfr_mw * rsfr_mw) /
+                              sfr_mw * mass_to_solar_mass / time_to_yr /
+                              (length_to_kpc * length_to_kpc);
+  cooling->G0_softening_min = 0.5 / length_to_kpc;
 }
 
 /**
@@ -2125,6 +2890,13 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
     chemistry->dust_grainsize = cooling->dust_grainsize;
     chemistry->dust_growth_densref = cooling->dust_growth_densref;
     chemistry->dust_growth_tauref = cooling->dust_growth_tauref;
+    chemistry->dust_oxygen_stoichiometric_cap =
+        cooling->dust_oxygen_stoichiometric_cap;
+    chemistry->H2_isrf_dissociation = cooling->H2_isrf_dissociation;
+    chemistry->H2_isrf_dissociation_rate = cooling->H2_isrf_dissociation_rate;
+    chemistry->H2_dust_shielding_cross_section =
+        cooling->H2_dust_shielding_cross_section;
+    chemistry->H2_sternberg_limit = cooling->H2_sternberg_limit;
     /* Enable dust temperature calculation using ISRF */
     chemistry->metal_cooling = 1;
     chemistry->dust_chemistry = 1;
@@ -2164,10 +2936,20 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   cooling->use_grackle_h2_form =
       cooling->use_grackle_dust_evol && COOLING_GRACKLE_MODE >= 2;
 
+#ifdef CRACKLE_VALIDATE
+  /* Initialise the external library with the same parameters */
+  crackle_validate_init(crackle_validate_global, chemistry, &cooling->units,
+                        sizeof(chemistry_data), sizeof(code_units),
+                        sizeof(grackle_field_data));
+#endif
+
   /* Initialize the chemistry object. */
   if (initialize_chemistry_data(&cooling->units) == 0) {
     error("Error in initialize_chemistry_data.");
   }
+
+  /* What crackle needs at the current redshift (updated every step) */
+  cooling_prepare_crackle_step(cooling);
 }
 
 /**
@@ -2201,6 +2983,11 @@ void cooling_init_backend(struct swift_params *parameter_file,
       phys_const->const_proton_mass /
       (hydro_props->hydrogen_mass_fraction *
        units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY));
+
+  /* Floor on the self-shielding length: the mean interparticle spacing is
+   * h / eta_neighbours */
+  cooling->min_shield_h_frac =
+      MIN_SHIELD_SPACING_FRAC / hydro_props->eta_neighbours;
 
   /* Set up the units system. */
   cooling_init_units(us, phys_const, cooling);

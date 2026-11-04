@@ -21,7 +21,7 @@
 #define SWIFT_KIARA_FEEDBACK_PROPERTIES_H
 
 /* Config parameters. */
-#include "../config.h"
+#include <config.h>
 
 /* Local includes. */
 #include "chemistry.h"
@@ -55,41 +55,13 @@ enum kiara_metal_boosting {
   kiara_metal_boosting_both
 };
 
-/* Chem5 tracks A LOT of elements but we will just map the standard 11 back */
+/* Chem5 computes yields for all of these; the tracked ones (KIARA_ELEMENTS)
+ * are mapped back to the particles, and Z holds all the metals */
 enum chem5_element {
   chem5_element_Z = 0,
-  chem5_element_H,
-  chem5_element_He,
-  chem5_element_Li,
-  chem5_element_Be,
-  chem5_element_B,
-  chem5_element_C,
-  chem5_element_N,
-  chem5_element_O,
-  chem5_element_F,
-  chem5_element_Ne,
-  chem5_element_Na,
-  chem5_element_Mg,
-  chem5_element_Al,
-  chem5_element_Si,
-  chem5_element_P,
-  chem5_element_S,
-  chem5_element_Cl,
-  chem5_element_Ar,
-  chem5_element_K,
-  chem5_element_Ca,
-  chem5_element_Sc,
-  chem5_element_Ti,
-  chem5_element_V,
-  chem5_element_Cr,
-  chem5_element_Mn,
-  chem5_element_Fe,
-  chem5_element_Co,
-  chem5_element_Ni,
-  chem5_element_Cu,
-  chem5_element_Zn,
-  chem5_element_Ga,
-  chem5_element_Ge,
+#define KIARA_CHEM5_ENUM(e, name) chem5_element_##e,
+  KIARA_CHEM5_ELEMENTS(KIARA_CHEM5_ENUM)
+#undef KIARA_CHEM5_ENUM
   chem5_element_unknown,
   chem5_element_count,
   chem5_dummy1,
@@ -173,8 +145,7 @@ struct feedback_props {
 
   struct feedback_tables tables;
 
-  /* Conversion indices from Chem5 to Swift */
-  /* 0-Z, 2-He, 6-C , 7-N, 8-O, 10-Ne, 12-Mg, 14-Si, 26-Fe */
+  /* The chem5 element of each tracked element */
   int element_index_conversions[chemistry_element_count];
 
   /* Location of feedback tables */
@@ -262,6 +233,11 @@ struct feedback_props {
   /*! Maxiumum multiple of SNII energy that is available to launch winds */
   float SNII_energy_multiplier;
 
+  /*! Wind energy budget: 1 = chem5's SNII (incl. hypernova) + SNIa energy,
+   * with no metallicity boost to the energy; 0 = 1e51 erg per SN (SNII and
+   * SNIa), times the metal_dependent_vwind boost */
+  int with_wind_energy_from_chem5;
+
   /*! For KIARA, the radius from within which to launch wind */
   float kick_radius_over_h;
 
@@ -283,6 +259,24 @@ struct feedback_props {
 
   /*! Added scatter to the wind velocities */
   float kick_velocity_scatter;
+
+  /*! Slope of the wind velocity boost with the host galaxy SFR surface
+   * density, v_w -> v_w (Sigma_SFR / pivot)^slope (0 = off) */
+  float vwind_sigma_sfr_slope;
+
+  /*! Pivot SFR surface density (Msun/yr/kpc^2) of the wind velocity boost */
+  float vwind_sigma_sfr_pivot;
+
+  /*! Minimum and maximum factors of the wind velocity boost */
+  float vwind_sigma_sfr_min_factor;
+  float vwind_sigma_sfr_max_factor;
+
+  /*! Floor on the galaxy's star-forming radius (physical kpc) */
+  float vwind_sigma_sfr_min_radius_kpc;
+
+  /*! Slope of the mass loading with the same factor, eta -> eta
+   * factor^-eta_slope (0 = off, 2 = wind energy unchanged) */
+  float vwind_sigma_sfr_eta_slope;
 
   /*! max decoupling time is (this factor) * current Hubble time */
   float wind_decouple_time_factor;
@@ -398,14 +392,14 @@ struct feedback_props {
 #if COOLING_GRACKLE_MODE >= 2
   /* ------------ Dust Efficiency Tables --------------- */
 
-  /*! dust condensation efficiency for C/O>1 */
-  double delta_AGBCOG1[chemistry_element_count];
+  /*! dust condensation efficiency for C/O>1, by #dust_element */
+  double delta_AGBCOG1[dust_element_count];
 
-  /*! dust condensation efficiency for C/O<1 */
-  double delta_AGBCOL1[chemistry_element_count];
+  /*! dust condensation efficiency for C/O<1, by #dust_element */
+  double delta_AGBCOL1[dust_element_count];
 
-  /*! dust condensation efficiency from SNII */
-  double delta_SNII[chemistry_element_count];
+  /*! dust condensation efficiency from SNII, by #dust_element */
+  double delta_SNII[dust_element_count];
 
   /*! max fraction of metals locked into dust */
   float max_dust_fraction;

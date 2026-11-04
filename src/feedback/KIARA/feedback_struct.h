@@ -41,15 +41,6 @@ struct feedback_part_data {
   /*! The ID of the star particle that is kicking this particle */
   long long kick_id;
 
-  /*! The direction vector for wind kicks */
-  float wind_direction[3];
-
-  /*! The number of times the SF mass limiter was applied */
-  int mass_limiter_count;
-
-  /*! The number of times the SF heat limiter was applied */
-  int heating_limiter_count;
-
 #if COOLING_GRACKLE_MODE >= 2
   /*! Number of SNe (of any type) going off in nearby stars */
   float SNe_ThisTimeStep;
@@ -106,18 +97,12 @@ struct feedback_spart_data {
   float wind_velocity;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Luminosity emitted by star in Habing band (912-1112 A) */
-  float lum_habing;
-
   /*! Number of SNe (of any type) going off within star during this step */
   double SNe_ThisTimeStep;
 
-  /*! Cumulative number of SNe that have gone off in this star from chem5 (for
-   * debugging) */
-  double SNe_Total;
-
-  /*! Total dust mass change for each element */
-  double delta_dust_mass[chemistry_element_count];
+  /*! Dust mass formed in each #dust_element this step (float, like the gas
+   * dust masses it is added to) */
+  float delta_dust_mass[dust_element_count];
 #endif
 
   /*! Initial stream radius for firehose model */

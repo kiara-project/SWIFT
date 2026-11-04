@@ -807,6 +807,10 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[1] = 0.f;
   bp->accreted_angular_momentum[2] = 0.f;
   bp->last_repos_vel = 0.f;
+  bp->df_accel[0] = 0.f;
+  bp->df_accel[1] = 0.f;
+  bp->df_accel[2] = 0.f;
+  bp->df_dv_max = 0.f;
   bp->radiative_luminosity = 0.f;
   bp->jet_power = 0.f;
   bp->delta_energy_this_timestep = 0.f;
@@ -863,6 +867,11 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->density.wcount_dh = 0.f;
   bp->rho_gas = 0.f;
   bp->sound_speed_gas = 0.f;
+  bp->df_rho_gas = 0.f;
+  bp->df_sound_speed_gas = 0.f;
+  bp->df_velocity_gas[0] = 0.f;
+  bp->df_velocity_gas[1] = 0.f;
+  bp->df_velocity_gas[2] = 0.f;
   bp->internal_energy_gas = 0.f;
   bp->gas_SFR = 0.f;
   bp->hot_gas_mass = 0.f;
@@ -999,7 +1008,30 @@ black_holes_reset_predicted_values(struct bpart *bp) {}
  * @param dt The time-step for this kick
  */
 __attribute__((always_inline)) INLINE static void black_holes_kick_extra(
-    struct bpart *bp, float dt) {}
+    struct bpart *bp, float dt) {
+
+  /* Gas dynamical friction (zero when the BH is repositioned instead) */
+  if (bp->df_dv_max <= 0.f) return;
+
+  float dv[3] = {bp->df_accel[0] * dt, bp->df_accel[1] * dt,
+                 bp->df_accel[2] * dt};
+  const float dv2 = dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2];
+
+  /* The drag may at most remove the BH's velocity relative to the gas */
+  if (dv2 > bp->df_dv_max * bp->df_dv_max) {
+    const float f = bp->df_dv_max / sqrtf(dv2);
+    dv[0] *= f;
+    dv[1] *= f;
+    dv[2] *= f;
+  }
+
+  bp->v[0] += dv[0];
+  bp->v[1] += dv[1];
+  bp->v[2] += dv[2];
+  bp->gpart->v_full[0] = bp->v[0];
+  bp->gpart->v_full[1] = bp->v[1];
+  bp->gpart->v_full[2] = bp->v[2];
+}
 
 /**
  * @brief Finishes the calculation of density on black holes
@@ -1027,6 +1059,16 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
    * (N.B.: bp->velocity_gas is in BH frame, in internal units). */
   bp->sound_speed_gas *= h_inv_dim * rho_inv;
   bp->internal_energy_gas *= h_inv_dim * rho_inv;
+
+  /* Dynamical-friction gas: kernel-weighted means (h factors cancel) */
+  if (bp->df_rho_gas > 0.f) {
+    const float df_w_inv = 1.f / bp->df_rho_gas;
+    bp->df_sound_speed_gas *= df_w_inv;
+    bp->df_velocity_gas[0] *= df_w_inv;
+    bp->df_velocity_gas[1] *= df_w_inv;
+    bp->df_velocity_gas[2] *= df_w_inv;
+    bp->df_rho_gas *= h_inv_dim;
+  }
 
   /* Non-weighted (no decoupled winds) properties below.
    * All mass-weighted quantities are for the hot & cold gas */
@@ -2109,6 +2151,111 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 }
 
 /**
+ * @brief Ostriker (1999) gas dynamical-friction factor, I(M) / M^2.
+ *
+ * The drag is F = 4 pi G^2 M_BH^2 rho / c_s^2 times this factor. Subsonic:
+ * I = artanh(M) - M; supersonic: I = 0.5 ln(1 - 1/M^2) + ln Lambda. The
+ * singularity at M = 1 is bridged linearly between M = 0.95 and 1.05.
+ *
+ * @param mach Mach number of the BH relative to the gas.
+ * @param coulomb_log ln(V t / r_min) of the supersonic term.
+ */
+__attribute__((always_inline)) INLINE static double black_holes_gas_df_factor(
+    const double mach, const double coulomb_log) {
+
+  const double M_lo = 0.95, M_hi = 1.05;
+
+  /* Series of (artanh(M) - M) / M^2, which cancels badly at small M */
+  if (mach < 0.1) {
+    const double m2 = mach * mach;
+    return mach * (1. / 3. + m2 * (1. / 5. + m2 / 7.));
+  }
+
+  const double f_lo =
+      (0.5 * log((1. + M_lo) / (1. - M_lo)) - M_lo) / (M_lo * M_lo);
+  const double f_hi =
+      fmax(0.5 * log(1. - 1. / (M_hi * M_hi)) + coulomb_log, 0.) /
+      (M_hi * M_hi);
+
+  if (mach < M_lo)
+    return (0.5 * log((1. + mach) / (1. - mach)) - mach) / (mach * mach);
+  if (mach > M_hi)
+    return fmax(0.5 * log(1. - 1. / (mach * mach)) + coulomb_log, 0.) /
+           (mach * mach);
+  return f_lo + (f_hi - f_lo) * (mach - M_lo) / (M_hi - M_lo);
+}
+
+/**
+ * @brief Gas dynamical friction on a black hole (Dubois et al. 2013, as in
+ * DARWIN-1, Lee et al. 2026):
+ *
+ * a = 4 pi alpha f(M) G^2 M_BH rho / c_s^2, along the gas velocity relative
+ * to the BH, with alpha = max[(rho / rho_crit)^beta, 1] and f the Ostriker
+ * factor. rho, c_s and the relative velocity are BH kernel averages over
+ * gas that is neither decoupled nor has its cooling shut off.
+ *
+ * Sets bp->df_accel and bp->df_dv_max (both zero if the model is off or the
+ * kernel gas is below the density threshold).
+ *
+ * @return 1 if the BH is in the dynamical-friction regime (and should not be
+ * repositioned), 0 otherwise.
+ */
+__attribute__((always_inline)) INLINE static int
+black_holes_compute_dynamical_friction(struct bpart *restrict bp,
+                                       const struct black_holes_props *props,
+                                       const struct phys_const *phys_const,
+                                       const struct cosmology *cosmo) {
+
+  bp->df_accel[0] = 0.f;
+  bp->df_accel[1] = 0.f;
+  bp->df_accel[2] = 0.f;
+  bp->df_dv_max = 0.f;
+
+  if (props->dynamical_friction_model == 0) return 0;
+
+  /* No (non-wind) gas or too diffuse gas: repositioning takes over */
+  const double rho_phys = bp->df_rho_gas * cosmo->a3_inv;
+  if (bp->df_rho_gas <= 0.f || rho_phys < props->df_min_rho) return 0;
+
+  const double c_s_phys = bp->df_sound_speed_gas * cosmo->a_factor_sound_speed;
+  const double u2 = bp->df_velocity_gas[0] * bp->df_velocity_gas[0] +
+                    bp->df_velocity_gas[1] * bp->df_velocity_gas[1] +
+                    bp->df_velocity_gas[2] * bp->df_velocity_gas[2];
+  if (c_s_phys <= 0. || u2 <= 0.) return 1;
+
+  /* Relative speed: internal (kick) units and physical */
+  const double u_int = sqrt(u2);
+  const double u_phys = u_int * cosmo->a_inv;
+
+  const double G = phys_const->const_newton_G;
+  const double M_BH =
+      props->df_use_dynamical_mass ? bp->mass : bp->subgrid_mass;
+
+  double alpha = 1.;
+  if (rho_phys > props->df_boost_rho_crit)
+    alpha = pow(rho_phys / props->df_boost_rho_crit, props->df_boost_exponent);
+  if (props->df_boost_max > 0.f) alpha = fmin(alpha, props->df_boost_max);
+
+  const double f_gas =
+      black_holes_gas_df_factor(u_phys / c_s_phys, props->df_coulomb_log);
+
+  const double a_phys = 4. * M_PI * alpha * f_gas * G * G * M_BH * rho_phys /
+                        (c_s_phys * c_s_phys);
+
+  /* Comoving acceleration as used by the gravity kick (a_phys = a_c / a^2),
+   * pointing along the gas velocity relative to the BH */
+  const double a_com = a_phys * cosmo->a * cosmo->a;
+  bp->df_accel[0] = a_com * bp->df_velocity_gas[0] / u_int;
+  bp->df_accel[1] = a_com * bp->df_velocity_gas[1] / u_int;
+  bp->df_accel[2] = a_com * bp->df_velocity_gas[2] / u_int;
+
+  /* Two half kicks per step: together at most the relative velocity */
+  bp->df_dv_max = 0.5f * u_int;
+
+  return 1;
+}
+
+/**
  * @brief Computes the (maximal) repositioning speed for a black hole.
  *
  * Calculated as upsilon * (m_BH / m_ref) ^ beta_m * (n_H_BH / n_ref) ^ beta_n
@@ -2158,6 +2305,16 @@ __attribute__((always_inline)) INLINE static void black_holes_end_reposition(
     struct bpart *restrict bp, const struct black_holes_props *props,
     const struct phys_const *phys_const, const struct cosmology *cosmo,
     const double dt, const integertime_t ti_begin) {
+
+  /* With the gas dynamical-friction model, a BH in dense enough gas sinks by
+   * friction and is not repositioned */
+  if (black_holes_compute_dynamical_friction(bp, props, phys_const, cosmo)) {
+    bp->reposition.min_potential = FLT_MAX;
+    bp->reposition.delta_x[0] = -FLT_MAX;
+    bp->reposition.delta_x[1] = -FLT_MAX;
+    bp->reposition.delta_x[2] = -FLT_MAX;
+    return;
+  }
 
   /* First check: did we find any eligible neighbour particle to jump to? */
   if (bp->reposition.min_potential != FLT_MAX) {
@@ -2326,6 +2483,7 @@ INLINE static void black_holes_create_from_gas(
   bp->galaxy_data.stellar_mass = p->galaxy_data.stellar_mass;
   bp->galaxy_data.gas_mass = p->galaxy_data.gas_mass;
   bp->galaxy_data.specific_sfr = p->galaxy_data.specific_sfr;
+  bp->galaxy_data.sfr_radius = p->galaxy_data.sfr_radius;
 
   /* Initial seed mass */
   bp->subgrid_mass = props->subgrid_seed_mass;
@@ -2357,6 +2515,10 @@ INLINE static void black_holes_create_from_gas(
   bp->number_of_repositions = 0;
   bp->number_of_reposition_attempts = 0;
   bp->last_repos_vel = 0.f;
+  bp->df_accel[0] = 0.f;
+  bp->df_accel[1] = 0.f;
+  bp->df_accel[2] = 0.f;
+  bp->df_dv_max = 0.f;
 
   /* No jet yet */
   bp->jet_power = 0.f;

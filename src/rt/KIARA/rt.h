@@ -722,9 +722,6 @@ __attribute__((always_inline)) INLINE static void rt_tchem(
     rt_do_thermochemistry_with_subgrid(p, xp, rt_props, cosmo, hydro_props,
                                        floor_props, phys_const, cooling, us, dt,
                                        dt_therm, 0);
-
-    /* Record this cooling event */
-    xp->cooling_data.time_last_event = time;
   } else {
     /* Note: Can't pass rt_props as const struct because of grackle
      * accessinging its properties there */

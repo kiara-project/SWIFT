@@ -21,7 +21,7 @@
 #define SWIFT_OBSIDIAN_BLACK_HOLES_PROPERTIES_H
 
 /* Config parameters. */
-#include "../config.h"
+#include <config.h>
 
 /* Local includes. */
 #include "chemistry.h"
@@ -434,6 +434,10 @@ struct black_holes_props {
   /*! Maximal distance to reposition, in units of softening length */
   float max_reposition_distance_ratio;
 
+  /*! 1: the repositioning distance is in units of the baryon softening (as
+   * in EAGLE); 0: in units of h_BH / (Plummer-equivalent factor) */
+  int reposition_radius_from_softening;
+
   /*! Switch to enable a relative velocity limit for particles to which the
    * black holes can reposition */
   int with_reposition_velocity_threshold;
@@ -468,6 +472,31 @@ struct black_holes_props {
 
   /*! Flag to only reposition if central (i.e. most massive) BH */
   int reposition_central_only;
+
+  /* ---- Properties of the gas dynamical-friction model ---------- */
+
+  /*! 0: off (repositioning only); 1: subgrid gas dynamical friction
+   * (Dubois et al. 2013 / DARWIN-1) in dense gas, repositioning elsewhere */
+  int dynamical_friction_model;
+
+  /*! Use the dynamical (particle) mass instead of the subgrid mass */
+  int df_use_dynamical_mass;
+
+  /*! Coulomb logarithm ln(V t / r_min) of the supersonic Ostriker term */
+  float df_coulomb_log;
+
+  /*! Exponent beta of the boost alpha = max[(rho / rho_crit)^beta, 1] */
+  float df_boost_exponent;
+
+  /*! Physical gas density above which the boost applies (internal units) */
+  float df_boost_rho_crit;
+
+  /*! Maximal boost alpha (<= 0: no cap, as in DARWIN) */
+  float df_boost_max;
+
+  /*! Physical kernel gas density below which the BH is repositioned instead
+   * of feeling dynamical friction (internal units) */
+  float df_min_rho;
 
   /* ---- Properties of the merger model ---------- */
 
@@ -1294,6 +1323,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       phys_const->const_solar_mass;
   bp->max_reposition_distance_ratio = parser_get_param_float(
       params, "ObsidianAGN:max_reposition_distance_ratio");
+  bp->reposition_radius_from_softening = parser_get_opt_param_int(
+      params, "ObsidianAGN:reposition_radius_from_softening", 1);
 
   bp->with_reposition_velocity_threshold = parser_get_param_int(
       params, "ObsidianAGN:with_reposition_velocity_threshold");
@@ -1422,6 +1453,38 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             units_cgs_conversion_factor(us, UNIT_CONV_MASS));
 
   bp->T_K_to_int = T_K_to_int;
+
+  /* Gas dynamical-friction model ------------------------- */
+
+  bp->dynamical_friction_model = parser_get_opt_param_int(
+      params, "ObsidianAGN:dynamical_friction_model", 0);
+  if (bp->dynamical_friction_model < 0 || bp->dynamical_friction_model > 1)
+    error("ObsidianAGN:dynamical_friction_model must be 0 or 1, not %d",
+          bp->dynamical_friction_model);
+  bp->df_use_dynamical_mass =
+      parser_get_opt_param_int(params, "ObsidianAGN:df_use_dynamical_mass", 0);
+  bp->df_coulomb_log =
+      parser_get_opt_param_float(params, "ObsidianAGN:df_coulomb_log", 3.2f);
+  bp->df_boost_exponent =
+      parser_get_opt_param_float(params, "ObsidianAGN:df_boost_exponent", 2.f);
+  const double df_boost_nH_cgs =
+      parser_get_opt_param_double(params, "ObsidianAGN:df_boost_nH_cgs", 0.1);
+  const double df_min_nH_cgs =
+      parser_get_opt_param_double(params, "ObsidianAGN:df_min_nH_cgs", 0.1);
+  if (df_boost_nH_cgs <= 0.)
+    error("ObsidianAGN:df_boost_nH_cgs must be positive");
+  bp->df_boost_rho_crit = df_boost_nH_cgs / bp->rho_to_n_cgs;
+  bp->df_boost_max =
+      parser_get_opt_param_float(params, "ObsidianAGN:df_boost_max", 0.f);
+  bp->df_min_rho = df_min_nH_cgs / bp->rho_to_n_cgs;
+
+  if (engine_rank == 0 && bp->dynamical_friction_model)
+    message(
+        "Black hole gas dynamical friction on above nH=%g cm^-3 (repositioning "
+        "below); boost (nH/%g)^%g (max %g, 0: none), ln Lambda=%g, %s mass",
+        df_min_nH_cgs, df_boost_nH_cgs, bp->df_boost_exponent, bp->df_boost_max,
+        bp->df_coulomb_log,
+        bp->df_use_dynamical_mass ? "dynamical" : "subgrid");
 
   if (engine_rank == 0) {
     message("Black holes kernel: %s with eta=%f (%.2f neighbours).",

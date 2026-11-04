@@ -40,8 +40,9 @@ double feedback_get_lum_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props);
 void feedback_get_ejecta_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props,
-    double dt, double *N_SNe, double *ejecta_energy, double *ejecta_mass,
-    double *ejecta_unprocessed, double ejecta_metal_mass[chem5_element_count]);
+    double dt, double *N_SNe, double *ejecta_energy, double *SN_energy,
+    double *SN_energy_thermal, double *ejecta_mass, double *ejecta_unprocessed,
+    double ejecta_metal_mass[chem5_element_count]);
 void feedback_dust_production_condensation(
     struct spart *sp, double star_age, const struct feedback_props *fb_props);
 double feedback_life_time(const struct feedback_props *fb_props, const double m,
@@ -204,32 +205,6 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
 }
 
 /**
- * @brief Sets the wind direction vector for feedback kicks
- *
- * @param p The #part to consider.
- * @param xp The #xpart to consider.
- * @param e The #engine.
- * @param with_cosmology Is this a cosmological simulation?
- * @param cosmo The cosmology of the simulation.
- * @param fb_props The #feedback_props feedback parameters.
- */
-__attribute__((always_inline)) INLINE static void feedback_set_wind_direction(
-    struct part *p, struct xpart *xp, const struct engine *e,
-    const int with_cosmology, const struct cosmology *cosmo,
-    const struct feedback_props *fb_props) {
-
-  p->feedback_data.wind_direction[0] =
-      p->gpart->a_grav[1] * p->gpart->v_full[2] -
-      p->gpart->a_grav[2] * p->gpart->v_full[1];
-  p->feedback_data.wind_direction[1] =
-      p->gpart->a_grav[2] * p->gpart->v_full[0] -
-      p->gpart->a_grav[0] * p->gpart->v_full[2];
-  p->feedback_data.wind_direction[2] =
-      p->gpart->a_grav[0] * p->gpart->v_full[1] -
-      p->gpart->a_grav[1] * p->gpart->v_full[0];
-}
-
-/**
  * @brief Update the properties of a particle due to feedback effects after
  * the cooling was applied.
  *
@@ -349,10 +324,12 @@ __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
   /* Zero the metal enrichment quantities */
   for (int i = 0; i < chemistry_element_count; i++) {
     sp->feedback_data.metal_mass[i] = 0.;
-#if COOLING_GRACKLE_MODE >= 2
-    sp->feedback_data.delta_dust_mass[i] = 0.;
-#endif
   }
+#if COOLING_GRACKLE_MODE >= 2
+  for (int d = 0; d < dust_element_count; d++) {
+    sp->feedback_data.delta_dust_mass[d] = 0.;
+  }
+#endif
   sp->feedback_data.total_metal_mass = 0.;
 
   /* Zero the energy to inject */
@@ -374,7 +351,6 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_spart(
   feedback_init_spart(sp);
 #if COOLING_GRACKLE_MODE >= 2
   sp->feedback_data.SNe_ThisTimeStep = 0.;
-  sp->feedback_data.SNe_Total = 0.;
 #endif
   sp->feedback_data.firehose_radius_stream = 0.f;
   sp->feedback_data.mass_to_launch = 0.f;
@@ -402,9 +378,6 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
   p->feedback_data.jet_decoupled = 0;
   p->feedback_data.cooling_shutoff_delay_time = 0.f;
   p->feedback_data.kick_id = -1;
-  p->feedback_data.mass_limiter_count = 0;
-  p->feedback_data.heating_limiter_count = 0;
-  for (int i = 0; i < 3; i++) p->feedback_data.wind_direction[i] = 0.f;
 #if COOLING_GRACKLE_MODE >= 2
   p->feedback_data.SNe_ThisTimeStep = 0.f;
 #endif
@@ -492,6 +465,49 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
 }
 
 /**
+ * @brief Factor by which to boost the wind velocity from the host galaxy's
+ * SFR surface density.
+ *
+ * Sigma_SFR = SFR / (2 pi R^2), with R^2 = (2/3) r_SF^2 the projected
+ * (random orientation) square of the SFR-weighted rms radius r_SF of the
+ * galaxy's star-forming gas, floored at vwind_sigma_sfr_min_radius_kpc.
+ * The factor is (Sigma_SFR / pivot)^slope, clipped to
+ * [vwind_sigma_sfr_min_factor, vwind_sigma_sfr_max_factor]. It is 1 when the
+ * scaling is off, or when the galaxy has no star-forming radius (too few
+ * star-forming particles) or no SFR. The mass loading is multiplied by
+ * factor^-vwind_sigma_sfr_eta_slope.
+ *
+ * @param sp The star particle.
+ * @param cosmo The current cosmological model.
+ * @param fb_props The properties of the feedback model.
+ */
+__attribute__((always_inline)) INLINE static float
+feedback_sigma_sfr_velocity_factor(const struct spart *sp,
+                                   const struct cosmology *cosmo,
+                                   const struct feedback_props *fb_props) {
+
+  if (fb_props->vwind_sigma_sfr_slope == 0.f) return 1.f;
+
+  const float sfr = sp->galaxy_data.specific_sfr * sp->galaxy_data.stellar_mass;
+  if (sp->galaxy_data.sfr_radius <= 0.f || sfr <= 0.f) return 1.f;
+
+  /* Physical radius in kpc */
+  const float r_kpc = fmaxf(
+      sp->galaxy_data.sfr_radius * cosmo->a * fb_props->length_to_kpc,
+      fb_props->vwind_sigma_sfr_min_radius_kpc);
+
+  /* Msun/yr/kpc^2; 2 pi (2/3) = 4 pi / 3 */
+  const float sfr_Msun_yr =
+      sfr * fb_props->mass_to_solar_mass / fb_props->time_to_yr;
+  const float sigma_sfr = sfr_Msun_yr / (4.18879f * r_kpc * r_kpc);
+
+  const float factor = powf(sigma_sfr / fb_props->vwind_sigma_sfr_pivot,
+                            fb_props->vwind_sigma_sfr_slope);
+  return fminf(fmaxf(factor, fb_props->vwind_sigma_sfr_min_factor),
+               fb_props->vwind_sigma_sfr_max_factor);
+}
+
+/**
  * @brief Prepare a #spart for the feedback task.
  *
  * In KIARA, this function does the stellar evolution for a #spart.
@@ -544,6 +560,8 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   int elem;
   double N_SNe = 0.;
   double ejecta_energy = 0.;
+  double SN_energy = 0.;
+  double SN_energy_thermal = 0.;
   double ejecta_mass = 0.;
   double ejecta_unprocessed = 0.;
   double ejecta_metal_mass[chem5_element_count];
@@ -557,7 +575,7 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
   feedback_get_ejecta_from_star_particle(
       sp, star_age_end_step, feedback_props, dt, &N_SNe, &ejecta_energy,
-      &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
+      &SN_energy, &SN_energy_thermal, &ejecta_mass, &ejecta_unprocessed, ejecta_metal_mass);
 
   if (!feedback_double_is_finite(ejecta_mass)) {
     for (elem = 0; elem < chem5_element_count; elem++) {
@@ -614,6 +632,15 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   /* velocity in internal units which is a^2*comoving, or a*physical */
   float v_internal = feedback_compute_kick_velocity(M_star, sp->id, cosmo,
                                                     feedback_props, ti_begin);
+
+  /* Boost the wind speed by the host galaxy's SFR surface density, and
+   * optionally scale the mass loading inversely (eta_slope = 2 keeps
+   * eta v^2 fixed) */
+  const float sigma_sfr_factor =
+      feedback_sigma_sfr_velocity_factor(sp, cosmo, feedback_props);
+  v_internal *= sigma_sfr_factor;
+  if (feedback_props->vwind_sigma_sfr_eta_slope != 0.f)
+    eta *= powf(sigma_sfr_factor, -feedback_props->vwind_sigma_sfr_eta_slope);
 
   /* Early (non-SN) stellar feedback energy from Keller+22 eq. 10 */
   const float alpha = feedback_props->early_stellar_feedback_alpha;
@@ -694,12 +721,21 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
 
     /* ------ SNII Energy and Wind Launch Setup ------ */
 
-    /* Total SNII energy this timestep (physical units) */
-    const double E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
-
-    /* Apply energy multiplier and metallicity scaling */
-    const float energy_boost =
-        feedback_props->SNII_energy_multiplier * energy_Z_fac;
+    /* Total SN energy this timestep (physical units): either chem5's own
+     * SNII (incl. hypernova) + SNIa energy, which carries its metallicity
+     * dependence, or 1e51 erg per SN times the metallicity boost */
+    double E_SNII_phys;
+    float energy_boost = feedback_props->SNII_energy_multiplier;
+    if (feedback_props->with_wind_energy_from_chem5) {
+      E_SNII_phys = SN_energy;
+      /* This SN energy goes to the wind, so it is not also deposited as
+       * thermal energy; once the wind is complete, it is deposited
+       * thermally (per the use_*_energy_from_chem5 flags) */
+      ejecta_energy = max(ejecta_energy - SN_energy_thermal, 0.);
+    } else {
+      E_SNII_phys = 1.e51 * N_SNe / feedback_props->energy_to_cgs;
+      energy_boost *= energy_Z_fac;
+    }
 
     /* Add to physical energy reservoir */
     sp->feedback_data.physical_energy_reservoir += E_SNII_phys * energy_boost;
@@ -766,6 +802,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     ejecta_metal_mass[elem_conv] +=
         ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction[elem];
   }
+  /* ... and all of its metals, tracked or not */
+  ejecta_metal_mass[chem5_element_Z] +=
+      ejecta_unprocessed * sp->chemistry_data.metal_mass_fraction_total;
 
   /* Net yields can be negative (e.g. destruction of H, or of C and O by
    * hot-bottom burning, in AGB stars). For stars with almost none of an
@@ -831,10 +870,12 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
     sp->feedback_data.total_metal_mass *= ejecta_scale;
     for (elem = 0; elem < chemistry_element_count; elem++) {
       sp->feedback_data.metal_mass[elem] *= ejecta_scale;
-#if COOLING_GRACKLE_MODE >= 2
-      sp->feedback_data.delta_dust_mass[elem] *= ejecta_scale;
-#endif
     }
+#if COOLING_GRACKLE_MODE >= 2
+    for (int d = 0; d < dust_element_count; d++) {
+      sp->feedback_data.delta_dust_mass[d] *= ejecta_scale;
+    }
+#endif
   }
 
   /* Compute the total mass to distribute */
@@ -851,7 +892,6 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   /* Update the number of SNe that have gone off, used in Grackle dust model.
      Actually stores SNe rate */
   sp->feedback_data.SNe_ThisTimeStep = N_SNe / dt;
-  sp->feedback_data.SNe_Total += N_SNe;
 #endif
 
 #ifdef SWIFT_STARS_DENSITY_CHECKS

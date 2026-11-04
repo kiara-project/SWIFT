@@ -53,14 +53,9 @@
 /*! Alpha conductivity, usually =0.05. At lower N_ngb, should be higher */
 #define const_conductivity_alpha 0.075
 
-/*! Desired number of neighbours -- CRITICAL that this matches hydro props */
-#if defined(HYDRO_DIMENSION_1D)
-#define const_kernel_target_neighbours 8.0
-#elif defined(HYDRO_DIMENSION_2D)
-#define const_kernel_target_neighbours 34.0
-#else
-#define const_kernel_target_neighbours 114.0
-#endif
+/* The number of neighbours is set by SPH:target_neighbours (or
+ * SPH:resolution_eta) at run time; the quantities that depend on it are the
+ * magma2_* variables declared below. */
 
 /* ---------- These parameters should not be changed ---------- */
 
@@ -131,21 +126,10 @@
 #ifdef hydro_props_use_double_precision
 /*! Consider matrix inversion to be ill-conditioned above this limit */
 #define const_condition_number_upper_limit 300.
-/*! Mean interparticle spacing for this kernel and neighbour number */
-#define const_kernel_mean_spacing \
-  (kernel_gamma *                 \
-   pow(4. * M_PI / (3. * (double)const_kernel_target_neighbours), 1. / 3.))
 #else
 /*! Consider matrix inversion to be ill-conditioned above this limit */
 #define const_condition_number_upper_limit 60.
-/*! Mean interparticle spacing for this kernel and neighbour number */
-#define const_kernel_mean_spacing \
-  (kernel_gamma *                 \
-   powf(4. * M_PI / (3. * (float)const_kernel_target_neighbours), 1. / 3.))
 #endif
-
-/*! eta_crit Rosswog 2020 Eq 23. Of order the mean interparticle spacing. */
-#define const_slope_limiter_eta_crit (const_kernel_mean_spacing)
 
 /*! eta_fold from Frontiere+'17 Equation 51 */
 #define const_slope_limiter_eta_fold 0.2
@@ -199,6 +183,17 @@ typedef double hydro_real_t;
 #else
 typedef float hydro_real_t;
 #endif
+
+/* Quantities set by the number of neighbours, computed from the hydro
+ * properties when they are initialised or restored (hydro_properties.c) */
+
+/*! eta_crit Rosswog 2020 Eq 23: the mean interparticle spacing in units of h,
+ * 1 / eta_neighbours */
+extern hydro_real_t magma2_slope_limiter_eta_crit;
+
+/*! Use the SPH fallback below this many neighbours,
+ * const_fallback_min_neighbour_fraction * target_neighbours */
+extern float magma2_fallback_min_neighbours;
 
 /* Viscosity */
 
