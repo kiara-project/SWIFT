@@ -28,6 +28,7 @@
 #include <float.h>
 #include <math.h>
 #include <signal.h>
+#include <string.h>
 
 /* Local includes. */
 #include "chemistry_struct.h"
@@ -206,11 +207,25 @@ firehose_end_ambient_quantities(struct part *restrict p,
 __attribute__((always_inline)) INLINE static const char *
 chemistry_get_element_name(enum chemistry_element elem) {
 
-  static const char *chemistry_element_names[chemistry_element_count] = {
-      "Hydrogen",  "Helium",  "Carbon", "Nitrogen", "Oxygen", "Neon",
-      "Magnesium", "Silicon", "Sulfur", "Calcium",  "Iron"};
+  static const char *symbols[chemistry_element_count] = {
+#define KIARA_ELEMENT_SYMBOL(e) #e,
+      KIARA_ELEMENTS(KIARA_ELEMENT_SYMBOL)
+#undef KIARA_ELEMENT_SYMBOL
+  };
+  static const char *chem5_symbols[] = {
+#define KIARA_CHEM5_SYMBOL(e, name) #e,
+      KIARA_CHEM5_ELEMENTS(KIARA_CHEM5_SYMBOL)
+#undef KIARA_CHEM5_SYMBOL
+  };
+  static const char *chem5_names[] = {
+#define KIARA_CHEM5_NAME(e, name) #name,
+      KIARA_CHEM5_ELEMENTS(KIARA_CHEM5_NAME)
+#undef KIARA_CHEM5_NAME
+  };
 
-  return chemistry_element_names[elem];
+  for (size_t i = 0; i < sizeof(chem5_symbols) / sizeof(chem5_symbols[0]); i++)
+    if (strcmp(symbols[elem], chem5_symbols[i]) == 0) return chem5_names[i];
+  return symbols[elem];
 }
 
 /**
@@ -245,12 +260,15 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
   cpd->du = 0.;
   cpd->dm = 0.f;
   cpd->dm_dust = 0.f;
+  cpd->dm_Z_total = 0.f;
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     cpd->dZ_dt[elem] = 0.f;
     cpd->dm_Z[elem] = 0.f;
-    cpd->dm_dust_Z[elem] = 0.f;
+  }
+  for (int d = 0; d < dust_element_count; ++d) {
+    cpd->dm_dust_Z[d] = 0.f;
 #if COOLING_GRACKLE_MODE >= 2
-    cpd->dZ_dust_dt[elem] = 0.f;
+    cpd->dZ_dust_dt[d] = 0.f;
 #endif
   }
 
@@ -390,6 +408,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
   if (cd->use_firehose_wind_model) {
     firehose_end_ambient_quantities(p, xp, cd, cosmo);
   }
+
+  /* The shear tensor shares memory with dZ_dt and is no longer needed, so
+   * start the force-loop accumulation of dZ_dt from zero. */
+  for (int elem = 0; elem < chemistry_element_count; ++elem) {
+    cpd->dZ_dt[elem] = 0.f;
+  }
 }
 
 /**
@@ -422,10 +446,12 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
   cpd->dZ_dt_total = 0.f;
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     cpd->dZ_dt[elem] = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-    cpd->dZ_dust_dt[elem] = 0.f;
-#endif
   }
+#if COOLING_GRACKLE_MODE >= 2
+  for (int d = 0; d < dust_element_count; ++d) {
+    cpd->dZ_dust_dt[d] = 0.f;
+  }
+#endif
 
 #if COOLING_GRACKLE_MODE >= 2
   /* No neighbours, so only the particle's own SFR contributes */
@@ -611,8 +637,13 @@ static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
       sprintf(buffer, "KIARAChemistry:init_abundance_%s",
               chemistry_get_element_name((enum chemistry_element)elem));
 
-      data->initial_metal_mass_fraction[elem] =
-          parser_get_param_float(parameter_file, buffer);
+      /* H and He are required; a metal not given starts at zero */
+      if (elem == chemistry_element_H || elem == chemistry_element_He)
+        data->initial_metal_mass_fraction[elem] =
+            parser_get_param_float(parameter_file, buffer);
+      else
+        data->initial_metal_mass_fraction[elem] =
+            parser_get_opt_param_float(parameter_file, buffer, 0.f);
     }
 
     /* Let's check that things make sense (broadly) */
@@ -939,9 +970,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
           p->cooling_data.subgrid_fcold -= f_evap;
 
           if (p->cooling_data.subgrid_fcold <= 0.f) {
-            p->cooling_data.subgrid_temp = 0.f;
-            p->cooling_data.subgrid_dens = hydro_get_physical_density(p, cosmo);
-            p->cooling_data.subgrid_fcold = 0.f;
+            /* All cold gas evaporated (so is its H2) */
+            cooling_subgrid_exit(&p->cooling_data, &xp->cooling_data,
+                                 hydro_get_physical_density(p, cosmo));
           }
         }
       }
@@ -954,10 +985,6 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
       ch->du = 0.;
     }
 
-    /* output u chemistry. */
-    p->cooling_data.u_chemistry =
-        hydro_get_physical_internal_energy(p, xp, cosmo);
-
     /* Check dust change (a dust-free particle can still receive dust) */
     float dust_eps = 0.f;
     if (co->dust_mass > 0.f) {
@@ -969,7 +996,6 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     float new_dust_mass = co->dust_mass;
     if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) new_dust_mass += ch->dm_dust;
 
-    ch->metal_mass_fraction_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; ++elem) {
       const float old_mass_Z = ch->metal_mass_fraction[elem] * m;
       /* An element-free particle can still receive that element */
@@ -979,25 +1005,34 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
       if (Z_eps >= FIREHOSE_EPSILON_TOLERANCE) {
         ch->metal_mass_fraction[elem] = (old_mass_Z + ch->dm_Z[elem]) / m;
       }
+    }
 
-      /* Recompute Z */
-      if (elem != chemistry_element_H && elem != chemistry_element_He) {
-        ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
-      }
+    /* The total metallicity (all metals, tracked or not) is exchanged in
+     * the same way */
+    const float old_mass_Z_total = ch->metal_mass_fraction_total * m;
+    const float Z_total_eps = (old_mass_Z_total > 0.f)
+                                  ? fabs(ch->dm_Z_total) / old_mass_Z_total
+                                  : ((ch->dm_Z_total > 0.f) ? 1.f : 0.f);
+    if (Z_total_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+      ch->metal_mass_fraction_total =
+          max((old_mass_Z_total + ch->dm_Z_total) / m, 0.f);
+    }
 
-      if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
-        const float old_dust_mass_Z =
-            co->dust_mass_fraction[elem] * co->dust_mass;
-        co->dust_mass_fraction[elem] =
-            (old_dust_mass_Z + ch->dm_dust_Z[elem]) / new_dust_mass;
+    if (dust_eps >= FIREHOSE_EPSILON_TOLERANCE) {
+      for (int d = 0; d < dust_element_count; ++d) {
+        const float old_dust_mass_Z = co->dust_mass_fraction[d] * co->dust_mass;
+        co->dust_mass_fraction[d] =
+            (old_dust_mass_Z + ch->dm_dust_Z[d]) / new_dust_mass;
       }
     }
 
     /* Set the new dust mass from the exchange */
-    co->dust_mass = (new_dust_mass > 0.f) ? new_dust_mass : 0.f;
+    /* A denormal dust mass counts as none (its inverse overflows; this is
+     * what the flush-to-zero of -ffast-math builds does anyway) */
+    co->dust_mass = (new_dust_mass >= FLT_MIN) ? new_dust_mass : 0.f;
     if (co->dust_mass <= 0.f) {
-      for (int elem = 0; elem < chemistry_element_count; ++elem) {
-        co->dust_mass_fraction[elem] = 0.f;
+      for (int d = 0; d < dust_element_count; ++d) {
+        co->dust_mass_fraction[d] = 0.f;
       }
 
       co->dust_mass = 0.f;
@@ -1079,7 +1114,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
           "Ztot=%g Zdust=%g.",
           p->id, dt, elem, ch->metal_mass_fraction[elem], ch->dZ_dt[elem],
           dZ[elem], ch->metal_mass_fraction_total,
-          p->cooling_data.dust_mass_fraction[elem]);
+          (dust_element_of_chemistry(elem) >= 0)
+              ? p->cooling_data
+                    .dust_mass_fraction[dust_element_of_chemistry(elem)]
+              : 0.f);
       reset_time_derivatives = true;
     }
 
@@ -1098,10 +1136,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     ch->dZ_dt_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
       ch->dZ_dt[elem] = 0.f;
-#if COOLING_GRACKLE_MODE >= 2
-      ch->dZ_dust_dt[elem] = 0.f;
-#endif
     }
+#if COOLING_GRACKLE_MODE >= 2
+    for (int d = 0; d < dust_element_count; d++) {
+      ch->dZ_dust_dt[d] = 0.f;
+    }
+#endif
     return;
   }
 
@@ -1110,11 +1150,10 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     ch->metal_mass_fraction[elem] += dZ[elem];
   }
 
-  /* Total Z is the sum of the tracked metals (as in feedback and firehose) */
-  ch->metal_mass_fraction_total = 0.f;
-  for (int elem = chemistry_element_C; elem < chemistry_element_count; elem++) {
-    ch->metal_mass_fraction_total += ch->metal_mass_fraction[elem];
-  }
+  /* The total metallicity (all metals, tracked or not) diffuses as its own
+   * passive scalar */
+  ch->metal_mass_fraction_total =
+      max(ch->metal_mass_fraction_total + ch->dZ_dt_total * dt * factor, 0.f);
 
 #if COOLING_GRACKLE_MODE >= 2
   /* Diffuse dust per element as a passive scalar, then rebuild the total
@@ -1122,25 +1161,24 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
   struct cooling_part_data *co = &p->cooling_data;
   const float m = hydro_get_mass(p);
   float new_dust_mass = 0.f;
-  float dust_mass_elem[chemistry_element_count];
-  for (int elem = chemistry_element_C; elem < chemistry_element_count; elem++) {
-    dust_mass_elem[elem] = co->dust_mass_fraction[elem] * co->dust_mass +
-                           ch->dZ_dust_dt[elem] * dt * factor * m;
-    if (dust_mass_elem[elem] < 0.f) dust_mass_elem[elem] = 0.f;
-    new_dust_mass += dust_mass_elem[elem];
+  float dust_mass_elem[dust_element_count];
+  for (int d = 0; d < dust_element_count; d++) {
+    dust_mass_elem[d] = co->dust_mass_fraction[d] * co->dust_mass +
+                        ch->dZ_dust_dt[d] * dt * factor * m;
+    if (dust_mass_elem[d] < 0.f) dust_mass_elem[d] = 0.f;
+    new_dust_mass += dust_mass_elem[d];
   }
-  if (new_dust_mass > 0.f) {
+  /* A denormal dust mass counts as none (1/new_dust_mass would overflow;
+   * this is what the flush-to-zero of -ffast-math builds does anyway) */
+  if (new_dust_mass >= FLT_MIN) {
     const float inv = 1.f / new_dust_mass;
-    co->dust_mass_fraction[chemistry_element_H] = 1.f; /* sum of fractions */
-    co->dust_mass_fraction[chemistry_element_He] = 0.f;
-    for (int elem = chemistry_element_C; elem < chemistry_element_count;
-         elem++) {
-      co->dust_mass_fraction[elem] = dust_mass_elem[elem] * inv;
+    for (int d = 0; d < dust_element_count; d++) {
+      co->dust_mass_fraction[d] = dust_mass_elem[d] * inv;
     }
     co->dust_mass = new_dust_mass;
   } else {
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      co->dust_mass_fraction[elem] = 0.f;
+    for (int d = 0; d < dust_element_count; d++) {
+      co->dust_mass_fraction[d] = 0.f;
     }
     co->dust_mass = 0.f;
   }

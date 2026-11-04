@@ -34,6 +34,25 @@
 #include "timestep_sync_part.h"
 #include "tracers.h"
 
+/**
+ * @brief Square of the (comoving) maximal repositioning distance of a BH.
+ *
+ * max_reposition_distance_ratio times the Plummer-equivalent baryon
+ * softening (as in EAGLE), or, with reposition_radius_from_softening = 0,
+ * times h_BH / (Plummer-equivalent factor) (the earlier Obsidian choice).
+ */
+__attribute__((always_inline)) INLINE static float
+black_holes_max_reposition_distance2(const struct bpart *bi,
+                                     const struct black_holes_props *bh_props,
+                                     const struct gravity_props *grav_props) {
+  const float l = bh_props->reposition_radius_from_softening
+                      ? grav_props->epsilon_baryon_cur
+                      : bi->h;
+  const float d = kernel_gravity_softening_plummer_equivalent_inv *
+                  bh_props->max_reposition_distance_ratio * l;
+  return d * d;
+}
+
 // #define OBSIDIAN_DEBUG_CHECKS
 
 /**
@@ -42,7 +61,8 @@
  * @param bi Black hole particle.
  * @param pj Gas particle being kicked.
  * @param ti_current Current integer time value (for random numbers).
- * @param dir_flag Flag to choose direction: 0=rendom, 1=L_gas, 2=L_BH.
+ * @param dir_flag Flag to choose direction: 0=random, 1=L_gas, 2=L_BH,
+ * 3=outwards, 4=BH spin axis.
  * @param dir Direction of kick (returned).
  */
 __attribute__((always_inline)) INLINE static float
@@ -100,8 +120,18 @@ black_hole_set_kick_direction(const struct bpart *bi, const struct part *pj,
       dir[2] = pj->x[2] - bi->x[2];
       break;
 
+    /* Along the BH spin axis (bipolar) */
+    case 4:
+      dir[0] = bi->jet_direction[0];
+      dir[1] = bi->jet_direction[1];
+      dir[2] = bi->jet_direction[2];
+      random_number =
+          random_unit_interval(bi->id, ti_current, random_number_BH_feedback);
+      kick_dir = (random_number > 0.5) ? 1.f : -1.f;
+      break;
+
     default:
-      error("dir_flag=%d but must be 0, 1, or 2", dir_flag);
+      error("dir_flag=%d but must be 0, 1, 2, 3 or 4", dir_flag);
       break;
   }
 
@@ -223,6 +253,17 @@ runner_iact_nonsym_bh_gas_density(
   /* Compute the kernel function; note that r cannot be optimised
    * to r2 / sqrtf(r2) because of 1 / 0 behaviour. */
   const float r = sqrtf(r2);
+
+  /* Only gas within the torque radius feeds the torque accretion */
+  int in_torque_region = 1;
+  if (bh_props->torque_accretion_max_radius_softening > 0.f) {
+    const float r_torque = bh_props->torque_accretion_max_radius_softening *
+                           grav_props->epsilon_baryon_cur /
+                           kernel_gravity_softening_plummer_equivalent;
+    bi->torque_radius = r_torque;
+    in_torque_region = (r < r_torque);
+  }
+  if (in_torque_region) bi->torque_ngb_mass += mj;
   const float hi_inv = 1.0f / hi;
   const float ui = r * hi_inv;
   kernel_deval(ui, &wi, &wi_dx);
@@ -257,6 +298,18 @@ runner_iact_nonsym_bh_gas_density(
   const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
   const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
 
+  /* Gas for the dynamical friction: as for repositioning, no decoupled
+   * winds or jets and no gas with cooling shut off (an outflow must not
+   * drag the BH along with it) */
+  if (bh_props->dynamical_friction_model && !pj->decoupled &&
+      pj->feedback_data.cooling_shutoff_delay_time <= 0.f) {
+    bi->df_rho_gas += mj * wi;
+    bi->df_sound_speed_gas += mj * wi * cj;
+    bi->df_velocity_gas[0] += mj * wi * dv[0];
+    bi->df_velocity_gas[1] += mj * wi * dv[1];
+    bi->df_velocity_gas[2] += mj * wi * dv[2];
+  }
+
   /* Classify gas as hot or cold for accretion */
   const int gas_temperature_state =
       black_hole_gas_hot_or_cold(bi, pj, cosmo, bh_props);
@@ -264,7 +317,7 @@ runner_iact_nonsym_bh_gas_density(
   if (gas_temperature_state == 1) {
     bi->hot_gas_mass += mj;
     bi->hot_gas_internal_energy += mj * uj; /* Not kernel weighted */
-  } else if (gas_temperature_state == -1) {
+  } else if (gas_temperature_state == -1 && in_torque_region) {
 #if COOLING_GRACKLE_MODE >= 2
     /* With subgrid ISM model, only allow cold dense component to be accreted */
     // bi->cold_gas_mass += mj * pj->cooling_data.subgrid_fcold *
@@ -284,7 +337,21 @@ runner_iact_nonsym_bh_gas_density(
     const int have_L_prev =
         (L_prev[0] != 0.f || L_prev[1] != 0.f || L_prev[2] != 0.f);
     const float proj = -(L_x * L_prev[0] + L_y * L_prev[1] + L_z * L_prev[2]);
-    if (!have_L_prev || proj > 0.f) bi->corot_gas_mass += m_cold;
+    const int corotating = (!have_L_prev || proj > 0.f);
+    if (corotating) bi->corot_gas_mass += m_cold;
+
+    /* Angular momentum of the accreting gas about the BH, which sets the
+     * disk direction for the spin evolution (the gas L is -L_x etc.). Use
+     * the same cold component as the torque accretion: corotating cold gas
+     * for method 0, all cold gas for methods 1 (whose disk mass is corotating
+     * minus counter-rotating) and 3. Method 2 uses all gas (below). */
+    const int method = bh_props->torque_accretion_method;
+    if (method == 1 || method == 3 || (method == 0 && corotating)) {
+      const float f_cold = m_cold / mj;
+      bi->angular_momentum_accreting_gas[0] -= f_cold * L_x;
+      bi->angular_momentum_accreting_gas[1] -= f_cold * L_y;
+      bi->angular_momentum_accreting_gas[2] -= f_cold * L_z;
+    }
 
     bi->gas_SFR += max(pj->sf_data.SFR, 0.);
     // if (bi->id == 19280572) message("BH_SFR z=%g bid=%lld pid=%lld mj=%g
@@ -304,6 +371,13 @@ runner_iact_nonsym_bh_gas_density(
   bi->angular_momentum_gas[0] -= L_x;
   bi->angular_momentum_gas[1] -= L_y;
   bi->angular_momentum_gas[2] -= L_z;
+
+  /* With the Simba-like torque accretion all gas sets the spin's disk */
+  if (bh_props->torque_accretion_method == 2) {
+    bi->angular_momentum_accreting_gas[0] -= L_x;
+    bi->angular_momentum_accreting_gas[1] -= L_y;
+    bi->angular_momentum_accreting_gas[2] -= L_z;
+  }
 
   /* Contribution to the velocity (gas w.r.t. black hole) */
   bi->velocity_gas[0] += mj * dv[0];
@@ -374,12 +448,9 @@ runner_iact_nonsym_bh_gas_repos(
   const float ui = r * hi_inv;
   kernel_eval(ui, &wi);
 
-  /* (Square of) Max repositioning distance allowed based on the softening */
+  /* (Square of) Max repositioning distance allowed */
   const float max_dist_repos2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_reposition_distance_ratio *
-      bh_props->max_reposition_distance_ratio * bi->h * bi->h;
+      black_holes_max_reposition_distance2(bi, bh_props, grav_props);
 
   /* Is this gas neighbour close enough that we can consider its potential
      for repositioning? */
@@ -727,12 +798,9 @@ runner_iact_nonsym_bh_bh_repos(const float r2, const float dx[3],
 
   const float v2_pec = v2 * cosmo->a2_inv;
 
-  /* (Square of) Max repositioning distance allowed based on the softening */
+  /* (Square of) Max repositioning distance allowed */
   const float max_dist_repos2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_reposition_distance_ratio *
-      bh_props->max_reposition_distance_ratio * bi->h * bi->h;
+      black_holes_max_reposition_distance2(bi, bh_props, grav_props);
 
   /* Is this BH neighbour close enough that we can consider its potential
      for repositioning? */
@@ -904,16 +972,20 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float dx[3],
         if (bi->mass * bh_props->mass_to_solar_mass > 1.e8)
           message(
               "BH_MERGER: z=%g bid=%lld to swallow bid=%lld: MBHi=%g MBHj=%g "
-              "Mgali=%g Mgalj=%g",
+              "Mgali=%g Mgalj=%g ai=%g aj=%g",
               cosmo->z, bi->id, bj->id,
               bi->subgrid_mass * bh_props->mass_to_solar_mass,
               bj->subgrid_mass * bh_props->mass_to_solar_mass,
               bi->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass,
-              bj->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass);
+              bj->galaxy_data.stellar_mass * bh_props->mass_to_solar_mass,
+              bi->spin, bj->spin);
 #endif
 
         bj->merger_data.swallow_id = bi->id;
         bj->merger_data.swallow_mass = bi->subgrid_mass;
+        bj->merger_data.swallow_dx[0] = dx[0];
+        bj->merger_data.swallow_dx[1] = dx[1];
+        bj->merger_data.swallow_dx[2] = dx[2];
 
       } else {
 
@@ -1138,9 +1210,8 @@ runner_iact_nonsym_bh_gas_feedback(
 
 #if COOLING_GRACKLE_MODE >= 2
           /* Take AGN-heated gas out of subgrid ISM mode */
-          pj->cooling_data.subgrid_temp = 0.f;
-          pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
-          pj->cooling_data.subgrid_fcold = 0.f;
+          cooling_subgrid_exit(&pj->cooling_data, &xpj->cooling_data,
+                               hydro_get_physical_density(pj, cosmo));
           pj->sf_data.dense_gas_fraction = 0.f;
 #endif
 
@@ -1206,7 +1277,8 @@ runner_iact_nonsym_bh_gas_feedback(
   /* Kick the particle if is was tagged only */
   if (v_kick > 0.f && flagged_to_kick) {
 
-    /* Set direction of launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards */
+    /* Set direction of launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
+     * 4=BH spin axis */
     float dir[3] = {0.f, 0.f, 0.f};
     int dir_flag = 0;
 
@@ -1280,6 +1352,7 @@ runner_iact_nonsym_bh_gas_feedback(
       /* Set delay time to at least the time-step*/
       pj->feedback_data.decoupling_delay_time = dt + f_decouple * t_H;
       pj->decoupled = 1;
+      pj->feedback_data.jet_decoupled = jet_flag;
 
       /* Give the wind a firehose stream radius, as for stellar winds, from
        * the BH's wind mass outflow rate (accretion rate times the jet or
@@ -1369,35 +1442,33 @@ runner_iact_nonsym_bh_gas_feedback(
 
 #if COOLING_GRACKLE_MODE >= 2
     /* Take particle out of subgrid ISM mode */
-    pj->cooling_data.subgrid_temp = 0.f;
-    pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
-    pj->cooling_data.subgrid_fcold = 0.f;
+    cooling_subgrid_exit(&pj->cooling_data, &xpj->cooling_data,
+                         hydro_get_physical_density(pj, cosmo));
     pj->sf_data.dense_gas_fraction = 0.f;
 
     /* Destroy all dust in jet, return it to gas phase metals */
     if (jet_flag) {
       const float old_dust_mass = pj->cooling_data.dust_mass;
       pj->cooling_data.dust_mass = 0.f;
-      float new_Z_total = 0.f;
-      pj->chemistry_data.metal_mass_fraction_total = 0.f;
       for (int elem = chemistry_element_He; elem < chemistry_element_count;
            ++elem) {
         const float old_metal_mass_elem =
             pj->chemistry_data.metal_mass_fraction[elem] * hydro_get_mass(pj);
+        const int d = dust_element_of_chemistry(elem);
         const float old_dust_mass_elem =
-            pj->cooling_data.dust_mass_fraction[elem] * old_dust_mass;
+            (d >= 0) ? pj->cooling_data.dust_mass_fraction[d] * old_dust_mass
+                     : 0.f;
 
         pj->chemistry_data.metal_mass_fraction[elem] =
             (old_metal_mass_elem + old_dust_mass_elem) / hydro_get_mass(pj);
-
-        if (elem != chemistry_element_H && elem != chemistry_element_He) {
-          new_Z_total += pj->chemistry_data.metal_mass_fraction[elem];
-        }
-
-        pj->cooling_data.dust_mass_fraction[elem] = 0.f;
+      }
+      for (int d = 0; d < dust_element_count; d++) {
+        pj->cooling_data.dust_mass_fraction[d] = 0.f;
       }
 
-      pj->chemistry_data.metal_mass_fraction_total = new_Z_total;
+      /* All of the dust is metals */
+      pj->chemistry_data.metal_mass_fraction_total +=
+          old_dust_mass / hydro_get_mass(pj);
     }
 #endif
 

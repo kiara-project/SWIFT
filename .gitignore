@@ -28,6 +28,7 @@ doc/latex/
 doc/man/
 doc/Doxyfile
 doc/RTD/source/SubgridModels/*/*.png
+doc/RTD/source/TimeStepping/figures/*.png
 doc/RTD/source/RadiativeTransfer/full_dependency_graph_RT.png
 
 examples/*/*/*.xmf
@@ -79,6 +80,7 @@ examples/SmallCosmoVolume/SmallCosmoVolume_DM/power_spectra
 examples/SmallCosmoVolume/SmallCosmoVolume_cooling/snapshots/
 examples/SmallCosmoVolume/SmallCosmoVolume_hydro/snapshots/
 examples/**/chem5
+!examples/KIARA/chem5
 examples/**/CloudyData_UVB=FG2011_shielded.h5
 examples/**/CloudyData_UVB=HM2012.h5
 examples/**/CloudyData_UVB=HM2012_shielded.h5
@@ -143,6 +145,7 @@ tests/testSPHStep
 tests/testExp
 tests/testErfc
 tests/testKernel
+tests/testKernelAccuracy
 tests/testKernelGrav
 tests/testKernelLongGrav
 tests/testFFT
@@ -196,7 +199,7 @@ tests/testEOS
 tests/testEOS*.txt
 tests/testEOS*.png
 tests/testUtilities
-tests/testCosmology
+tests/testCosmologyAccuracy
 tests/testOutputList
 tests/testCbrt
 tests/testFormat.sh

@@ -24,6 +24,9 @@
 #include "kick.h"
 #include "stars_part.h"
 
+/* Standard headers */
+#include <string.h>
+
 /**
  * @brief Specifies which s-particle fields to read from a dataset
  *
@@ -248,6 +251,26 @@ INLINE static void stars_write_particles(const struct spart *sparts,
 }
 
 /**
+ * @brief Remove the star output fields that cannot be written: the
+ * luminosities when no photometry tables were read.
+ *
+ * @param sp The #stars_props.
+ * @param list The list of i/o fields written by stars_write_particles().
+ * @param num_fields (in/out) The number of fields in the list.
+ */
+INLINE static void stars_remove_unavailable_fields(const struct stars_props *sp,
+                                                   struct io_props *list,
+                                                   int *num_fields) {
+
+  if (sp->lum_tables_Z[0] != NULL) return;
+
+  int n = 0;
+  for (int i = 0; i < *num_fields; ++i)
+    if (strcmp(list[i].name, "Luminosities") != 0) list[n++] = list[i];
+  *num_fields = n;
+}
+
+/**
  * @brief Initialize the global properties of the stars scheme.
  *
  * By default, takes the values provided by the hydro.
@@ -354,15 +377,26 @@ INLINE static void stars_props_init(struct stars_props *sp,
   sp->age_threshold = age_threshold_Myr * Myr / conv_fac;
   sp->age_threshold_unlimited = age_threshold_unlimited_Myr * Myr / conv_fac;
 
-  /* Read luminosity table filepath  */
+  /* Luminosity tables: optional, only used for the Luminosities output.
+   * Without Stars:luminosity_filename (or with "none") nothing is read or
+   * written. */
   char base_dir_name[200];
-  parser_get_param_string(params, "Stars:luminosity_filename", base_dir_name);
+  parser_get_opt_param_string(params, "Stars:luminosity_filename",
+                              base_dir_name, "none");
+  for (int i = 0; i < (int)luminosity_bands_count; ++i) {
+    sp->lum_tables_Z[i] = NULL;
+    sp->lum_tables_ages[i] = NULL;
+    sp->lum_tables_luminosities[i] = NULL;
+  }
+  const int with_luminosity_tables =
+      (base_dir_name[0] != '\0' && strcmp(base_dir_name, "none") != 0);
 
   static const char *luminosity_band_names[luminosity_bands_count] = {
       "u", "g", "r", "i", "z", "Y", "J", "H", "K"};
 
   /* Luminosity tables */
-  for (int i = 0; i < (int)luminosity_bands_count; ++i) {
+  for (int i = 0; with_luminosity_tables && i < (int)luminosity_bands_count;
+       ++i) {
     const int count_Z = eagle_stars_lum_tables_N_Z;
     const int count_ages = eagle_stars_lum_tables_N_ages;
     const int count_L = count_Z * count_ages;

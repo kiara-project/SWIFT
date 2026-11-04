@@ -20,7 +20,7 @@
 #define SWIFT_COOLING_PROPERTIES_KIARA_H
 
 /* include grackle */
-#include <grackle.h>
+#include "crackle/grackle.h"
 
 /**
  * @file src/cooling/KIARA/cooling_properties.h
@@ -135,6 +135,17 @@ struct cooling_function_data {
   /*! G0 per unit SN rate (internal units), normalised to the MW SN rate */
   double G0_factorSNe;
 
+  /*! G0 per unit galaxy SFR / distance^2 (internal units), normalised to the
+   * MW at the solar circle (method 7) */
+  double G0_factor_galaxy;
+
+  /*! Method 7: minimum (physical) softening of the galaxy-scale field */
+  double G0_softening_min;
+
+  /*! Method 7: fraction of G0 from the local SFR density; the rest is from
+   * the galaxy-scale model */
+  double G0_local_fraction;
+
   /* Dust parameters passed to grackle; see sample yml file */
 
   /*! Dust destruction efficiency by SN shocks (destroyed/shocked mass) */
@@ -149,10 +160,34 @@ struct cooling_function_data {
   /*! Dust grain size (micron) */
   double dust_grainsize;
 
-  /*! Reference density for dust growth (g/cm^3) */
+  /*! Limit the oxygen in dust to the oxides of the refractory dust elements
+   * (MgO, SiO2, CaO, FeO), as grains hold O only bound to them */
+  int dust_oxygen_stoichiometric_cap;
+
+  /*! H2 photodissociation by the ISRF G0, self- and dust-shielded (0 = off:
+   * only the UVB dissociates H2) */
+  int H2_isrf_dissociation;
+
+  /*! Unshielded ISRF H2 photodissociation rate per Habing unit of G0 (s^-1) */
+  double H2_isrf_dissociation_rate;
+
+  /*! LW dust absorption cross-section per H nucleus at the local dust-to-gas
+   * ratio (cm^2), for the dust shielding of the ISRF */
+  double H2_dust_shielding_cross_section;
+
+  /*! H2 shielding column from the particle's mean density, rather than the
+   * subgrid cold-cloud density, times the shielding length */
+  int H2_shield_mean_density;
+
+  /*! Limit the subgrid ISM molecular fraction to the part of the particle's
+   * column shielded by the Sternberg+14 atomic layer */
+  int H2_sternberg_limit;
+
+  /*! Density at which the dust growth time-scale is 1 Gyr (g/cm^3) */
   double dust_growth_densref;
 
-  /*! Dust growth time-scale at the reference density (Gyr) */
+  /*! Always 1 Gyr (the growth time-scale at dust_growth_densref); kept so the
+   * struct, and so the restart files, are unchanged */
   double dust_growth_tauref;
 
   /*! For dust model, need self-enrichment up to a small metallicity to
@@ -173,6 +208,14 @@ struct cooling_function_data {
   /*! For Grackle subgrid model, set max density to avoid pointlessly
    * over-iterating in Grackle */
   double max_subgrid_density;
+
+  /*! For Grackle subgrid model, minimum (physical) cold-cloud density, which
+   * overrides pressure equilibrium when the ISM pressure is low */
+  double min_subgrid_density;
+
+  /*! Minimum self-shielding column length as a fraction of h:
+   * MIN_SHIELD_SPACING_FRAC mean interparticle spacings */
+  double min_shield_h_frac;
 
   /*! For Grackle subgrid model, inverse of threshold nH above which multi-phase
    * ISM model kicks in */

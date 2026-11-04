@@ -56,6 +56,10 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
 /**
  * @brief Snapshot converter: atomic hydrogen (HI) mass of a gas particle.
  *
+ * With H2 chemistry (mode >= 2), in the subgrid ISM the species fractions
+ * are those of the cold phase, so (as for H2) this is the HI fraction times
+ * the cold fraction; outside the ISM the particle is single-phase.
+ *
  * @param e The #engine.
  * @param p The #part.
  * @param xp The #xpart.
@@ -66,14 +70,18 @@ INLINE static void convert_part_HI_mass(const struct engine *e,
                                         const struct xpart *xp, float *ret) {
 
   *ret = hydro_get_mass(p) * xp->cooling_data.HI_frac;
+#if COOLING_GRACKLE_MODE >= 2
+  if (p->cooling_data.subgrid_temp > 0.f) *ret *= p->cooling_data.subgrid_fcold;
+#endif
 }
 
 /**
  * @brief Snapshot converter: molecular hydrogen mass of a gas particle.
  *
- * With H2 chemistry (mode >= 2) this is the H2I + H2II fraction of the
- * cold subgrid phase times the cold fraction; otherwise all non-HI hydrogen
- * of star-forming gas is counted as H2.
+ * With H2 chemistry (mode >= 2) this is the H2I + H2II fraction, times the
+ * cold fraction in the subgrid ISM (where the fractions are cold-phase
+ * values); outside the ISM the particle is single-phase. Otherwise all
+ * non-HI hydrogen of star-forming gas is counted as H2.
  *
  * @param e The #engine.
  * @param p The #part.
@@ -89,7 +97,8 @@ INLINE static void convert_part_H2_mass(const struct engine *e,
   // chemistry_get_metal_mass_fraction_for_cooling(p)[chemistry_element_H];
 #if COOLING_GRACKLE_MODE >= 2
   H2_frac = xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac;
-  *ret = hydro_get_mass(p) * p->cooling_data.subgrid_fcold * H2_frac;
+  *ret = hydro_get_mass(p) * H2_frac;
+  if (p->cooling_data.subgrid_temp > 0.f) *ret *= p->cooling_data.subgrid_fcold;
 #else
   if (p->sf_data.SFR > 0) H2_frac = 1. - xp->cooling_data.HI_frac;
   *ret = hydro_get_mass(p) * H2_frac;
@@ -305,11 +314,11 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
                            cooling_data.dust_mass, "Total masses in dust.");
   num++;
 
-  list[num] = io_make_output_field("DustMassFractions", FLOAT,
-                                   chemistry_element_count, UNIT_CONV_NO_UNITS,
-                                   0.f, parts, cooling_data.dust_mass_fraction,
-                                   "Fractions of the particles' masses that "
-                                   "are in dust for a given element.");
+  list[num] = io_make_output_field(
+      "DustMassFractions", FLOAT, dust_element_count, UNIT_CONV_NO_UNITS, 0.f,
+      parts, cooling_data.dust_mass_fraction,
+      "Fractions of the particles' dust masses in each dust element, in the "
+      "order:" KIARA_DUST_ELEMENT_NAMES);
   num++;
 
   list[num] =
@@ -442,11 +451,41 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->dust_grainsize = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_grainsize", 0.1);
 
+  cooling->dust_oxygen_stoichiometric_cap = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:dust_oxygen_stoichiometric_cap", 0);
+
+  cooling->H2_isrf_dissociation = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:H2_isrf_dissociation", 0);
+
+  /* Sternberg+14: 5.8e-11 s^-1 for the Draine field, which is 1.71 Habing */
+  cooling->H2_isrf_dissociation_rate = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:H2_isrf_dissociation_rate_cgs", 3.4e-11);
+
+  /* Sternberg+14: 1.9e-21 cm^2 per H at solar metallicity */
+  cooling->H2_dust_shielding_cross_section = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:H2_dust_shielding_cross_section_cgs",
+      1.9e-21);
+
+  cooling->H2_shield_mean_density = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:H2_shield_mean_density", 0);
+
+  cooling->H2_sternberg_limit = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:H2_sternberg_limit", 0);
+
   cooling->dust_growth_densref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_densref", 2.3e-20);
 
-  cooling->dust_growth_tauref = parser_get_opt_param_double(
+  /* The growth time-scale is fixed at 1 Gyr at dust_growth_densref, since only
+   * their product sets it; an old tauref must be folded into densref */
+  const double dust_growth_tauref = parser_get_opt_param_double(
       parameter_file, "KIARACooling:dust_growth_tauref", 1.0);
+  if (dust_growth_tauref != 1.0)
+    error(
+        "KIARACooling:dust_growth_tauref is no longer used: the dust growth "
+        "time-scale is 1 Gyr at dust_growth_densref. Remove it and set "
+        "dust_growth_densref to %g (densref x tauref) for the same growth.",
+        cooling->dust_growth_densref * dust_growth_tauref);
+  cooling->dust_growth_tauref = 1.0;
 
   cooling->cold_ISM_frac = parser_get_opt_param_double(
       parameter_file, "KIARACooling:cold_ISM_frac", 1.0);
@@ -457,11 +496,27 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->G0_multiplier = parser_get_opt_param_double(
       parameter_file, "KIARACooling:G0_multiplier", 1.0);
 
+  cooling->G0_local_fraction = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:G0_local_fraction", 0.5);
+  if (cooling->G0_local_fraction < 0. || cooling->G0_local_fraction > 1.)
+    error("KIARACooling:G0_local_fraction must be in [0, 1]");
+
   cooling->max_subgrid_density = parser_get_opt_param_double(
       parameter_file, "KIARACooling:max_subgrid_density_g_p_cm3", FLT_MAX);
   /* convert to internal units */
   cooling->max_subgrid_density /=
       units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
+
+  /* Number density rho / m_H in physical cm^-3 (as
+   * KIARAStarFormation:lognormal_critical_density); 0 = no floor */
+  cooling->min_subgrid_density =
+      parser_get_opt_param_double(
+          parameter_file, "KIARACooling:min_subgrid_number_density_cm3", 0.) *
+      1.673e-24 / units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
+  if (cooling->min_subgrid_density > cooling->max_subgrid_density)
+    error(
+        "KIARACooling:min_subgrid_number_density_cm3 is above "
+        "max_subgrid_density_g_p_cm3");
 
   cooling->subgrid_threshold_n_H_inv = parser_get_opt_param_double(
       parameter_file, "KIARACooling:subgrid_threshold_n_H_cgs", 0.13);

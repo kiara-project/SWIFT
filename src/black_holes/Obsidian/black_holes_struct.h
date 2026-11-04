@@ -54,6 +54,10 @@ struct black_holes_bpart_data {
 
   /*! Mass of the black-hole that will swallow this #bpart. */
   float swallow_mass;
+
+  /*! Periodically wrapped separation (swallower minus this #bpart), used
+   * for the orbital plane in the merger spin calculation. */
+  float swallow_dx[3];
 };
 
 /**
@@ -114,6 +118,9 @@ black_holes_mark_bpart_as_not_swallowed(struct black_holes_bpart_data *p_data) {
 
   p_data->swallow_id = -1;
   p_data->swallow_mass = 0.f;
+  p_data->swallow_dx[0] = 0.f;
+  p_data->swallow_dx[1] = 0.f;
+  p_data->swallow_dx[2] = 0.f;
 }
 
 /**

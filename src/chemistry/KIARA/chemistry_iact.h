@@ -645,7 +645,15 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   chi->dm_dust += new_pi_dust_mass - pi_dust_mass;
   chj->dm_dust += new_pj_dust_mass - pj_dust_mass;
 
-  /* Spread individual dust elements */
+  /* Exchange the total metal mass (all metals, tracked or not) */
+  {
+    const float Zi = chi->metal_mass_fraction_total;
+    const float Zj = chj->metal_mass_fraction_total;
+    chi->dm_Z_total += (wt_ii * Zi + wt_ij * Zj) - mi * Zi;
+    chj->dm_Z_total += (wt_jj * Zj + wt_ji * Zi) - mj * Zj;
+  }
+
+  /* Exchange the individual elements */
   for (int elem = 0; elem < chemistry_element_count; ++elem) {
     /* Exchange metals */
     const float term_ii = wt_ii * chi->metal_mass_fraction[elem];
@@ -660,10 +668,12 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
 
     chi->dm_Z[elem] += new_pi_Z_mass - old_pi_Z_mass;
     chj->dm_Z[elem] += new_pj_Z_mass - old_pj_Z_mass;
+  }
 
-    /* Exchange dust metals */
-    const float pi_dust_frac = pi->cooling_data.dust_mass_fraction[elem];
-    const float pj_dust_frac = pj->cooling_data.dust_mass_fraction[elem];
+  /* Exchange dust metals */
+  for (int d = 0; d < dust_element_count; ++d) {
+    const float pi_dust_frac = pi->cooling_data.dust_mass_fraction[d];
+    const float pj_dust_frac = pj->cooling_data.dust_mass_fraction[d];
 
     /* Particle i */
     const float old_pi_dust_mass_Z = pi_dust_frac * pi_dust_mass;
@@ -672,7 +682,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     const float dust_term_ij = dust_wt_ij * pj_dust_frac;
     const float new_pi_dust_mass_Z = dust_term_ii + dust_term_ij;
 
-    chi->dm_dust_Z[elem] += new_pi_dust_mass_Z - old_pi_dust_mass_Z;
+    chi->dm_dust_Z[d] += new_pi_dust_mass_Z - old_pi_dust_mass_Z;
 
     /* Particle j */
     const float old_pj_dust_mass_Z = pj_dust_frac * pj_dust_mass;
@@ -681,7 +691,7 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     const float dust_term_ji = dust_wt_ji * pi_dust_frac;
     const float new_pj_dust_mass_Z = dust_term_jj + dust_term_ji;
 
-    chj->dm_dust_Z[elem] += new_pj_dust_mass_Z - old_pj_dust_mass_Z;
+    chj->dm_dust_Z[d] += new_pj_dust_mass_Z - old_pj_dust_mass_Z;
   }
 
   /* Update particles' internal energy per unit mass */
@@ -857,12 +867,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
     const float Di = pi->cooling_data.dust_mass / mi;
     const float Dj = pj->cooling_data.dust_mass / mj;
     if (Di > 0.f || Dj > 0.f) {
-      for (int elem = chemistry_element_C; elem < chemistry_element_count;
-           elem++) {
-        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[elem] -
-                             Dj * pj->cooling_data.dust_mass_fraction[elem];
-        chi->dZ_dust_dt[elem] += coef_i * dZd_ij;
-        chj->dZ_dust_dt[elem] -= coef_j * dZd_ij;
+      for (int d = 0; d < dust_element_count; d++) {
+        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[d] -
+                             Dj * pj->cooling_data.dust_mass_fraction[d];
+        chi->dZ_dust_dt[d] += coef_i * dZd_ij;
+        chj->dZ_dust_dt[d] -= coef_j * dZd_ij;
       }
     }
 #endif
@@ -925,11 +934,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
     const float Di = pi->cooling_data.dust_mass / hydro_get_mass(pi);
     const float Dj = pj->cooling_data.dust_mass / mj;
     if (Di > 0.f || Dj > 0.f) {
-      for (int elem = chemistry_element_C; elem < chemistry_element_count;
-           elem++) {
-        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[elem] -
-                             Dj * pj->cooling_data.dust_mass_fraction[elem];
-        chi->dZ_dust_dt[elem] += coef_i * dZd_ij;
+      for (int d = 0; d < dust_element_count; d++) {
+        const float dZd_ij = Di * pi->cooling_data.dust_mass_fraction[d] -
+                             Dj * pj->cooling_data.dust_mass_fraction[d];
+        chi->dZ_dust_dt[d] += coef_i * dZd_ij;
       }
     }
 #endif

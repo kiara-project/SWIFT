@@ -443,18 +443,9 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
       }
     }
 
-    /* output debug u */
-    pj->cooling_data.u_wind_before =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-
     /* Set the wind particle internal energy */
     hydro_set_physical_internal_energy(pj, xpj, cosmo, u_new);
     hydro_set_drifted_physical_internal_energy(pj, cosmo, NULL, u_new);
-
-    pj->cooling_data.u_wind_after =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-    pj->cooling_data.du_wind_this_step =
-        pj->cooling_data.u_wind_before - pj->cooling_data.u_wind_after;
 
 #ifdef FIREHOSE_DEBUG_CHECKS
     /* For firehose model, set initial radius of stream */
@@ -490,6 +481,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
           dt + fb_props->wind_decouple_time_factor *
                    cosmology_get_time_since_big_bang(cosmo, cosmo->a);
       pj->decoupled = 1;
+      pj->feedback_data.jet_decoupled = 0;
     } else {
       pj->feedback_data.decoupling_delay_time = 0.f;
       pj->decoupled = 0;
@@ -499,9 +491,8 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     pj->chemistry_data.diffusion_coefficient = 0.f;
 
     /* Take particle out of subgrid ISM mode */
-    pj->cooling_data.subgrid_temp = 0.f;
-    pj->cooling_data.subgrid_dens = hydro_get_physical_density(pj, cosmo);
-    pj->cooling_data.subgrid_fcold = 0.f;
+    cooling_subgrid_exit(&pj->cooling_data, &xpj->cooling_data,
+                         hydro_get_physical_density(pj, cosmo));
 
     pj->feedback_data.number_of_times_decoupled += 1;
 
@@ -620,9 +611,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
   const double max_new_mass = current_mass * fb_props->max_mass_increase_factor;
 
   if (new_mass > max_new_mass) {
-    /* Count for logging in the snapshot. */
-    pj->feedback_data.mass_limiter_count++;
-
     /* Limit the mass growth and any other quantity below */
     delta_mass = max_new_mass - current_mass;
     Omega_frac = delta_mass / si->feedback_data.mass;
@@ -661,9 +649,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
 
     /* PHYSICAL comparison */
     if (new_u_phys > max_new_u_phys) {
-
-      /* Count for logging in the snapshot. */
-      pj->feedback_data.heating_limiter_count++;
 
       injected_energy =
           max_new_u_phys * new_mass - current_u_phys * current_mass;
@@ -723,34 +708,28 @@ feedback_do_chemical_enrichment_of_gas_around_star(
             pj->cooling_data.subgrid_fcold -= f_evap;
 
             if (pj->cooling_data.subgrid_fcold <= 0.f) {
-              pj->cooling_data.subgrid_temp = 0.f;
-              pj->cooling_data.subgrid_dens =
-                  hydro_get_physical_density(pj, cosmo);
-              pj->cooling_data.subgrid_fcold = 0.f;
+              /* All cold gas evaporated (so is its H2) */
+              cooling_subgrid_exit(&pj->cooling_data, &xpj->cooling_data,
+                                   hydro_get_physical_density(pj, cosmo));
             }
           }
         }
       }
     }
 
-    /* output debug u */
-    pj->cooling_data.u_sn_before =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-
     hydro_set_physical_internal_energy(pj, xpj, cosmo, new_u_phys);
     hydro_set_drifted_physical_internal_energy(pj, cosmo, /*pfloor=*/NULL,
                                                new_u_phys);
-
-    pj->cooling_data.u_sn_after =
-        hydro_get_physical_internal_energy(pj, xpj, cosmo);
-    pj->cooling_data.du_sn_this_step =
-        pj->cooling_data.u_sn_before - pj->cooling_data.u_sn_after;
   } /* si->feedback_data.energy > 0.f */
 
   /* ------ Handle metal injection from SN explosions ------ */
 
-  /* Recompute Z since we do not track all of the metals from Chem5 */
-  pj->chemistry_data.metal_mass_fraction_total = 0.f;
+  /* The total metallicity gets all of the ejected metals (chem5's total,
+   * tracked elements or not; gas phase, without the dust formed) */
+  pj->chemistry_data.metal_mass_fraction_total =
+      (pj->chemistry_data.metal_mass_fraction_total * current_mass +
+       si->feedback_data.total_metal_mass * Omega_frac) *
+      new_mass_inv;
 
   /* Update mass fraction of each tracked element  */
   for (int elem = 0; elem < chemistry_element_count; elem++) {
@@ -762,11 +741,6 @@ feedback_do_chemical_enrichment_of_gas_around_star(
 
     pj->chemistry_data.metal_mass_fraction[elem] =
         new_metal_mass * new_mass_inv;
-
-    if (elem != chemistry_element_H && elem != chemistry_element_He) {
-      pj->chemistry_data.metal_mass_fraction_total +=
-          pj->chemistry_data.metal_mass_fraction[elem];
-    }
   }
 
 #if COOLING_GRACKLE_MODE >= 2
@@ -778,53 +752,51 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       fmax(pj->feedback_data.SNe_ThisTimeStep, 0.);
 
   /* Spread dust ejecta to gas */
-  for (int elem = chemistry_element_He; elem < chemistry_element_count;
-       elem++) {
+  for (int d = 0; d < dust_element_count; d++) {
     const double current_dust_mass =
-        pj->cooling_data.dust_mass_fraction[elem] * pj->cooling_data.dust_mass;
+        pj->cooling_data.dust_mass_fraction[d] * pj->cooling_data.dust_mass;
     const double delta_dust_mass =
-        si->feedback_data.delta_dust_mass[elem] * Omega_frac;
+        si->feedback_data.delta_dust_mass[d] * Omega_frac;
 
     /* at the moment this stores the mass (not mass frac) in each elem */
-    pj->cooling_data.dust_mass_fraction[elem] =
+    pj->cooling_data.dust_mass_fraction[d] =
         (current_dust_mass + delta_dust_mass);
   }
 
   /* Sum up each element to get total new dust mass */
   pj->cooling_data.dust_mass = 0.;
-  for (int elem = chemistry_element_He; elem < chemistry_element_count;
-       elem++) {
-    pj->cooling_data.dust_mass += pj->cooling_data.dust_mass_fraction[elem];
+  for (int d = 0; d < dust_element_count; d++) {
+    pj->cooling_data.dust_mass += pj->cooling_data.dust_mass_fraction[d];
   }
 
-  /* Compute inverse of new dust mass */
-  if (pj->cooling_data.dust_mass > 0.) {
+  /* Compute inverse of new dust mass (a denormal dust mass counts as none,
+   * as with the flush-to-zero of -ffast-math builds) */
+  if (pj->cooling_data.dust_mass >= FLT_MIN) {
     const double dust_mass_inv = 1. / pj->cooling_data.dust_mass;
 
     /* Divide by new dust mass to get the fractions */
-    for (int elem = chemistry_element_He; elem < chemistry_element_count;
-         elem++) {
-      pj->cooling_data.dust_mass_fraction[elem] *= dust_mass_inv;
+    for (int d = 0; d < dust_element_count; d++) {
+      pj->cooling_data.dust_mass_fraction[d] *= dust_mass_inv;
     }
 
     /* Check for inconsistency */
     if (pj->cooling_data.dust_mass > 0.2f * pj->mass) {
-      for (int elem = chemistry_element_He; elem < chemistry_element_count;
-           elem++) {
+      for (int d = 0; d < dust_element_count; d++) {
+        const int elem = chemistry_element_of_dust(d);
         message("DUST EXCEEDS MASS id=%lld elem=%d mZ=%g md=%g delta=%g \n",
                 pj->id, elem,
                 pj->chemistry_data.metal_mass_fraction[elem] * pj->mass,
-                pj->cooling_data.dust_mass_fraction[elem] *
+                pj->cooling_data.dust_mass_fraction[d] *
                     pj->cooling_data.dust_mass,
-                si->feedback_data.delta_dust_mass[elem] * Omega_frac);
+                si->feedback_data.delta_dust_mass[d] * Omega_frac);
       }
       warning("TOTAL DUST EXCEEDS MASS mgas=%g  mdust=%g\n", pj->mass,
               pj->cooling_data.dust_mass);
     }
   } else {
     /* For some reason the dust mass is zero or negative */
-    for (int elem = 0; elem < chemistry_element_count; elem++) {
-      pj->cooling_data.dust_mass_fraction[elem] = 0.f;
+    for (int d = 0; d < dust_element_count; d++) {
+      pj->cooling_data.dust_mass_fraction[d] = 0.f;
     }
   }
 

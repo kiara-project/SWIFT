@@ -149,8 +149,7 @@ double feedback_get_lum_from_star_particle(
  * Myr) or AGB O-rich efficiencies are used for each element, with O locked
  * in silicates and oxides of Mg, Si, S, Ca and Fe. The dust formed in each
  * element is capped at max_dust_fraction of that element's ejected mass and
- * removed from the ejected gas-phase metals; delta_dust_mass[0] holds the
- * total.
+ * removed from the ejected gas-phase metals.
  *
  * @param sp The #spart whose ejecta are processed.
  * @param star_age The stellar age (internal units).
@@ -165,9 +164,10 @@ void feedback_dust_production_condensation(
   /* Get age of star to separate AGB from SNII */
   star_age *= fb_props->time_to_Myr;
 
-  /* initialize change in dust mass */
+  /* Dust mass formed in each chemistry element */
+  double dust[chemistry_element_count];
   for (k = 0; k < chemistry_element_count; k++) {
-    sp->feedback_data.delta_dust_mass[k] = 0.f;
+    dust[k] = 0.f;
   }
 
   const double C_minus_O = sp->feedback_data.metal_mass[chemistry_element_C] -
@@ -176,8 +176,8 @@ void feedback_dust_production_condensation(
     /* Compute dust mass created in high-C/O AGB stars
      * (atomic C forms graphite)
      */
-    sp->feedback_data.delta_dust_mass[chemistry_element_C] =
-        fb_props->delta_AGBCOG1[chemistry_element_C] *
+    dust[chemistry_element_C] =
+        fb_props->delta_AGBCOG1[dust_element_C] *
         (sp->feedback_data.metal_mass[chemistry_element_C] -
          0.75 * sp->feedback_data.metal_mass[chemistry_element_O]);
     const double max_dust_C = fb_props->max_dust_fraction *
@@ -185,13 +185,14 @@ void feedback_dust_production_condensation(
     /* Cap the new dust mass formed to some fraction of total ejecta
      * metals in that element
      */
-    if (sp->feedback_data.delta_dust_mass[chemistry_element_C] > max_dust_C) {
-      sp->feedback_data.delta_dust_mass[chemistry_element_C] = max_dust_C;
+    if (dust[chemistry_element_C] > max_dust_C) {
+      dust[chemistry_element_C] = max_dust_C;
     }
 
     /* Subtract this from ejecta metals */
     sp->feedback_data.metal_mass[chemistry_element_C] -=
-        sp->feedback_data.delta_dust_mass[chemistry_element_C];
+        dust[chemistry_element_C];
+    sp->feedback_data.total_metal_mass -= dust[chemistry_element_C];
   } else {
     /* Choose dust table: If age > 100 Myr, assume ejecta is from AGB,
      * otherwise SNII
@@ -205,41 +206,40 @@ void feedback_dust_production_condensation(
     /* Compute dust mass created in either SNII or low-C/O AGB stars
      * (same type of dust, just different coefficients)
      */
-    for (k = chemistry_element_He; k < chemistry_element_count; k++) {
-      if (k ==
-          chemistry_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
-        sp->feedback_data.delta_dust_mass[k] =
+    for (int d = 0; d < dust_element_count; d++) {
+      k = chemistry_element_of_dust(d);
+      if (d == dust_element_O) { /* O in oxide of Mg, Si, S, Ca, (Ti), Fe */
+        dust[k] =
             16.0 *
-            (delta_table[chemistry_element_Mg] *
+            (delta_table[dust_element_Mg] *
                  sp->feedback_data.metal_mass[chemistry_element_Mg] / 24.305 +
-             delta_table[chemistry_element_Si] *
+             delta_table[dust_element_Si] *
                  sp->feedback_data.metal_mass[chemistry_element_Si] / 28.0855 +
-             delta_table[chemistry_element_S] *
+             delta_table[dust_element_S] *
                  sp->feedback_data.metal_mass[chemistry_element_S] / 32.065 +
-             delta_table[chemistry_element_Ca] *
+             delta_table[dust_element_Ca] *
                  sp->feedback_data.metal_mass[chemistry_element_Ca] / 40.078 +
-             delta_table[chemistry_element_Fe] *
+             delta_table[dust_element_Fe] *
                  sp->feedback_data.metal_mass[chemistry_element_Fe] / 55.845);
       } else {
-        sp->feedback_data.delta_dust_mass[k] =
-            delta_table[k] * sp->feedback_data.metal_mass[k];
+        dust[k] = delta_table[d] * sp->feedback_data.metal_mass[k];
       }
 
       const double max_dust =
           fb_props->max_dust_fraction * sp->feedback_data.metal_mass[k];
-      if (sp->feedback_data.delta_dust_mass[k] > max_dust) {
-        sp->feedback_data.delta_dust_mass[k] = max_dust;
+      if (dust[k] > max_dust) {
+        dust[k] = max_dust;
       }
 
       /* Remove dust from gas-phase metals to be distributed from star */
-      sp->feedback_data.metal_mass[k] -= sp->feedback_data.delta_dust_mass[k];
-      sp->feedback_data.total_metal_mass -=
-          sp->feedback_data.delta_dust_mass[k];
-
-      /* We will use element 0 of dust to store total change in dust mass */
-      sp->feedback_data.delta_dust_mass[0] +=
-          sp->feedback_data.delta_dust_mass[k];
+      sp->feedback_data.metal_mass[k] -= dust[k];
+      sp->feedback_data.total_metal_mass -= dust[k];
     }
+  }
+
+  /* Store by dust element */
+  for (int d = 0; d < dust_element_count; d++) {
+    sp->feedback_data.delta_dust_mass[d] = dust[chemistry_element_of_dust(d)];
   }
 }
 #endif
@@ -256,6 +256,11 @@ void feedback_dust_production_condensation(
  * @param N_SNe Number of SNe (SNII and SNIa) in this step; accumulated, so
  * must be zeroed by the caller.
  * @param ejecta_energy The total ejected energy in code units.
+ * @param SN_energy The SN energy in this step from chem5's own tables (SNII,
+ * including hypernovae, plus SNIa), regardless of the use_*_energy_from_chem5
+ * flags; in code units. Used for the wind energy budget.
+ * @param SN_energy_thermal The part of the SN energy included in
+ * ejecta_energy (per the use_*_energy_from_chem5 flags), in code units.
  * @param ejecta_mass The total ejected mass in code units.
  * @param ejecta_unprocessed The unprocessed mass in code units.
  * @param ejecta_metal_mass The metal masses for each element in
@@ -263,8 +268,9 @@ void feedback_dust_production_condensation(
  */
 void feedback_get_ejecta_from_star_particle(
     const struct spart *sp, double age, const struct feedback_props *fb_props,
-    double dt, double *N_SNe, double *ejecta_energy, double *ejecta_mass,
-    double *ejecta_unprocessed, double ejecta_metal_mass[chem5_element_count]) {
+    double dt, double *N_SNe, double *ejecta_energy, double *SN_energy,
+    double *SN_energy_thermal, double *ejecta_mass, double *ejecta_unprocessed,
+    double ejecta_metal_mass[chem5_element_count]) {
   int j, k, j1, j2, l, l1 = 0, l2 = 0, ll1 = 0, ll2 = 0, lll1 = 0, lll2 = 0;
   double SW_R, SNII_R, SNII_U, SNII_E, SNII_Z[chem5_element_count];
   double SNII_ENE, SNIa_R, SNIa_E = 0., SNIa_Z[chem5_element_count];
@@ -276,6 +282,8 @@ void feedback_get_ejecta_from_star_particle(
   dt *= fb_props->time_to_yr;
 
   *ejecta_energy = 0.;
+  *SN_energy = 0.;
+  *SN_energy_thermal = 0.;
   *ejecta_mass = 0.;
   *ejecta_unprocessed = 0.;
   for (k = 0; k < chem5_element_count; k++) ejecta_metal_mass[k] = 0.;
@@ -637,7 +645,10 @@ void feedback_get_ejecta_from_star_particle(
       if (fb_props->with_SNII_energy_from_chem5) {
         *ejecta_energy = SWn * fb_props->E_sw;
         *ejecta_energy += sp->mass_init * SNII_ENE;
+        *SN_energy_thermal += sp->mass_init * SNII_ENE;
       }
+      /* SNII (and hypernova) energy from the chem5 tables */
+      *SN_energy = max(0., sp->mass_init * SNII_ENE);
       /* Number of SNII (stars of M_l2-M_u2; SW_R counts all stars above
        * M_l2, which would count these twice). Used for the wind energy and
        * the dust model within Grackle. */
@@ -654,9 +665,11 @@ void feedback_get_ejecta_from_star_particle(
       } else {
         fb = 1;
         SNn = sp->mass_init * SNIa_R;
+        *SN_energy += max(0., SNn) * fb_props->E_sn1;
         /* SNIa always contribute */
         if (fb_props->with_SNIa_energy_from_chem5 == 1) {
           *ejecta_energy += SNn * fb_props->E_sn1;
+          *SN_energy_thermal += SNn * fb_props->E_sn1;
         }
         /* SNIa contribute if age < with_SNIa_energy_from_chem5 */
         else if (fb_props->with_SNIa_energy_from_chem5 > 10.) {
@@ -664,6 +677,7 @@ void feedback_get_ejecta_from_star_particle(
               (age / fb_props->time_to_yr) * fb_props->time_to_Myr;
           if (age_in_Myr < fb_props->with_SNIa_energy_from_chem5) {
             *ejecta_energy += SNn * fb_props->E_sn1;
+            *SN_energy_thermal += SNn * fb_props->E_sn1;
           }
         }
 
@@ -1668,60 +1682,65 @@ void feedback_props_init(struct feedback_props *fp,
   fp->b_ms = 0.04; /* binary parameter for SNIa */
 
   /* Chem5 indices to Swift */
-  fp->element_index_conversions[chemistry_element_H] = chem5_element_H;
-  fp->element_index_conversions[chemistry_element_He] = chem5_element_He;
-  fp->element_index_conversions[chemistry_element_C] = chem5_element_C;
-  fp->element_index_conversions[chemistry_element_N] = chem5_element_N;
-  fp->element_index_conversions[chemistry_element_O] = chem5_element_O;
-  fp->element_index_conversions[chemistry_element_Ne] = chem5_element_Ne;
-  fp->element_index_conversions[chemistry_element_Mg] = chem5_element_Mg;
-  fp->element_index_conversions[chemistry_element_Si] = chem5_element_Si;
-  fp->element_index_conversions[chemistry_element_S] = chem5_element_S;
-  fp->element_index_conversions[chemistry_element_Ca] = chem5_element_Ca;
-  fp->element_index_conversions[chemistry_element_Fe] = chem5_element_Fe;
+#define KIARA_ELEMENT_CONV(e) \
+  fp->element_index_conversions[chemistry_element_##e] = chem5_element_##e;
+  KIARA_ELEMENTS(KIARA_ELEMENT_CONV)
+#undef KIARA_ELEMENT_CONV
+
+  /* Report the tracked and dust elements; their order (KIARA_ELEMENTS,
+   * KIARA_DUST_ELEMENTS) is that of the particle arrays and snapshot
+   * columns */
+  if (engine_rank == 0) {
+    char list[400] = "";
+    int ordered = 1;
+    for (int elem = 0; elem < chemistry_element_count; elem++) {
+      sprintf(list + strlen(list), " %s",
+              chemistry_get_element_name((enum chemistry_element)elem));
+      if (elem > 0 && fp->element_index_conversions[elem] <
+                          fp->element_index_conversions[elem - 1])
+        ordered = 0;
+    }
+    message("Tracking %d elements:%s", chemistry_element_count, list);
+    if (!ordered)
+      warning(
+          "The tracked elements (KIARA_ELEMENTS) are not in order of atomic "
+          "number; the particle arrays and snapshot columns follow the list");
+#if COOLING_GRACKLE_MODE >= 2
+    list[0] = '\0';
+    ordered = 1;
+    for (int d = 0; d < dust_element_count; d++) {
+      sprintf(list + strlen(list), " %s",
+              chemistry_get_element_name(
+                  (enum chemistry_element)chemistry_element_of_dust(d)));
+      if (d > 0 && chemistry_element_of_dust(d) < chemistry_element_of_dust(d - 1))
+        ordered = 0;
+    }
+    message("Dust in %d elements:%s", dust_element_count, list);
+    if (!ordered)
+      warning(
+          "The dust elements (KIARA_DUST_ELEMENTS) are not in the order of "
+          "KIARA_ELEMENTS; the dust arrays and snapshot columns follow the "
+          "dust list");
+#endif
+  }
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* Production tables: AGB for C/O>1, AGB for C/O<1, and SNII (ignore SNIa) */
-  fp->delta_AGBCOG1[chemistry_element_H] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_He] = 0.0; /* He could be removed */
-  fp->delta_AGBCOG1[chemistry_element_C] = 0.2;
-  fp->delta_AGBCOG1[chemistry_element_N] = 0.0; /* N could be removed */
-  fp->delta_AGBCOG1[chemistry_element_O] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Ne] = 0.0; /* Ne could be removed */
-  fp->delta_AGBCOG1[chemistry_element_Mg] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Si] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_S] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Ca] = 0.0;
-  fp->delta_AGBCOG1[chemistry_element_Fe] = 0.0;
-
-  fp->delta_AGBCOL1[chemistry_element_H] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_He] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_C] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_N] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_O] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Ne] = 0.0;
-  fp->delta_AGBCOL1[chemistry_element_Mg] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Si] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_S] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Ca] = 0.2;
-  fp->delta_AGBCOL1[chemistry_element_Fe] = 0.2;
+  /* Production tables: AGB for C/O>1, AGB for C/O<1, and SNII (ignore SNIa).
+   * C/O>1 AGB stars form graphite only; otherwise all the dust elements
+   * condense (O in oxides of Mg, Si, S, Ca and Fe) */
 
   /* Multiplier of the SNII condensation efficiencies (Poping+17; Simba's
    * dust model used 2) */
   const float dust_boost_factor = parser_get_opt_param_float(
       params, "KIARAFeedback:dust_boost_factor", 1.f);
 
-  fp->delta_SNII[chemistry_element_H] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_He] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_C] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_N] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_O] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Ne] = 0.00 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Mg] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Si] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_S] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Ca] = 0.15 * dust_boost_factor;
-  fp->delta_SNII[chemistry_element_Fe] = 0.15 * dust_boost_factor;
+  for (int d = 0; d < dust_element_count; d++) {
+    fp->delta_AGBCOG1[d] = 0.0;
+    fp->delta_AGBCOL1[d] = 0.2;
+    fp->delta_SNII[d] = 0.15 * dust_boost_factor;
+  }
+  fp->delta_AGBCOG1[dust_element_C] = 0.2;
+  fp->delta_AGBCOL1[dust_element_C] = 0.0;
 #endif
 
   /* chem5 operation modes ------------------------------------------------- */
@@ -1803,6 +1822,9 @@ void feedback_props_init(struct feedback_props *fp,
   fp->SNII_energy_multiplier = parser_get_opt_param_float(
       params, "KIARAFeedback:SNII_energy_multiplier", 1.f);
 
+  fp->with_wind_energy_from_chem5 = parser_get_opt_param_int(
+      params, "KIARAFeedback:wind_energy_from_chem5", 0);
+
   fp->kick_radius_over_h = parser_get_opt_param_float(
       params, "KIARAFeedback:kick_radius_over_h", 0.5f);
 
@@ -1825,12 +1847,45 @@ void feedback_props_init(struct feedback_props *fp,
   fp->kick_velocity_scatter =
       parser_get_param_double(params, "KIARAFeedback:kick_velocity_scatter");
 
+  fp->vwind_sigma_sfr_slope = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_slope", 0.f);
+  fp->vwind_sigma_sfr_pivot = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_pivot_Msun_yr_kpc2", 0.1f);
+  fp->vwind_sigma_sfr_min_factor = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_min_factor", 0.5f);
+  fp->vwind_sigma_sfr_max_factor = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_max_factor", 2.f);
+  fp->vwind_sigma_sfr_min_radius_kpc = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_min_radius_kpc", 0.25f);
+  fp->vwind_sigma_sfr_eta_slope = parser_get_opt_param_float(
+      params, "KIARAFeedback:vwind_sigma_sfr_eta_slope", 0.f);
+  if (fp->vwind_sigma_sfr_eta_slope != 0.f && fp->vwind_sigma_sfr_slope == 0.f)
+    error(
+        "KIARAFeedback:vwind_sigma_sfr_eta_slope needs a non-zero "
+        "vwind_sigma_sfr_slope");
+  if (fp->vwind_sigma_sfr_slope != 0.f &&
+      (fp->vwind_sigma_sfr_pivot <= 0.f ||
+       fp->vwind_sigma_sfr_min_factor <= 0.f ||
+       fp->vwind_sigma_sfr_max_factor < fp->vwind_sigma_sfr_min_factor ||
+       fp->vwind_sigma_sfr_min_radius_kpc <= 0.f))
+    error("Invalid KIARAFeedback:vwind_sigma_sfr_* parameters");
+
   fp->wind_decouple_time_factor = parser_get_param_double(
       params, "KIARAFeedback:wind_decouple_time_factor");
   fp->recouple_ism_density_nH_cgs = parser_get_opt_param_double(
       params, "KIARAFeedback:recouple_ism_density_nH_cgs", 0.075);
   fp->recouple_density_factor = parser_get_opt_param_double(
       params, "KIARAFeedback:recouple_density_factor", 0.01);
+
+  /* Jets recouple only outside the ISM or once they are no longer highly
+   * supersonic, so they never recouple at full speed inside dense gas */
+  fp->jet_recouple_nH_cgs = parser_get_opt_param_double(
+      params, "KIARAFeedback:jet_recouple_nH_cgs", 0.13);
+  fp->jet_recouple_mach = parser_get_opt_param_double(
+      params, "KIARAFeedback:jet_recouple_mach", 10.);
+  if (engine_rank == 0)
+    message("Jets recouple below nH=%g cm^-3 or below Mach %g",
+            fp->jet_recouple_nH_cgs, fp->jet_recouple_mach);
 
   fp->cold_wind_internal_energy = parser_get_opt_param_double(
       params, "KIARAFeedback:cold_wind_temperature_K", 1.e4);
@@ -1902,6 +1957,17 @@ void feedback_props_init(struct feedback_props *fp,
             fp->FIRE_velocity_normalization);
     message("Feedback FIRE velocity slope: %g", fp->FIRE_velocity_slope);
     message("Feedback velocity scatter: %g", fp->kick_velocity_scatter);
+    if (fp->vwind_sigma_sfr_slope != 0.f) {
+      message(
+          "Feedback wind speed scales as (Sigma_SFR / %g Msun/yr/kpc^2)^%g, "
+          "within [%g, %g], with R_SF >= %g kpc",
+          fp->vwind_sigma_sfr_pivot, fp->vwind_sigma_sfr_slope,
+          fp->vwind_sigma_sfr_min_factor, fp->vwind_sigma_sfr_max_factor,
+          fp->vwind_sigma_sfr_min_radius_kpc);
+      if (fp->vwind_sigma_sfr_eta_slope != 0.f)
+        message("Feedback mass loading scales as that factor^-%g",
+                fp->vwind_sigma_sfr_eta_slope);
+    }
     message("Feedback FIRE eta normalization: %g", fp->FIRE_eta_normalization);
     message("Feedback FIRE eta break: %g", fp->FIRE_eta_break);
     message("Feedback FIRE eta upper slope: %g", fp->FIRE_eta_upper_slope);
@@ -1925,6 +1991,10 @@ void feedback_props_init(struct feedback_props *fp,
             fp->with_SNII_energy_from_chem5);
     message("Feedback use Chem5 SNIa energy: %d",
             fp->with_SNIa_energy_from_chem5);
+    message("Feedback wind energy budget: %s",
+            fp->with_wind_energy_from_chem5
+                ? "chem5 SNII+SNIa energy (no metallicity energy boost)"
+                : "1e51 erg per SN x metallicity energy boost");
   }
 }
 

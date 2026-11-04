@@ -48,6 +48,26 @@
 #define hydro_props_default_min_temp 0.f
 #define hydro_props_default_H_ionization_temperature 1e4
 
+#ifdef MAGMA2_SPH
+/* The MAGMA2 quantities set by the number of neighbours (see
+ * hydro/MAGMA2/hydro_parameters.h) */
+hydro_real_t magma2_slope_limiter_eta_crit = 0.;
+float magma2_fallback_min_neighbours = 0.f;
+
+/**
+ * @brief Set the MAGMA2 quantities that depend on the number of neighbours
+ * from the hydro properties.
+ *
+ * @param p The #hydro_props.
+ */
+static void hydro_props_set_magma2_neighbour_quantities(
+    const struct hydro_props *p) {
+  magma2_slope_limiter_eta_crit = 1. / p->eta_neighbours;
+  magma2_fallback_min_neighbours =
+      const_fallback_min_neighbour_fraction * p->target_neighbours;
+}
+#endif
+
 /**
  * @brief Initialize the global properties of the hydro scheme.
  *
@@ -161,23 +181,8 @@ void hydro_props_init(struct hydro_props *p,
       (pow_dimension(delta_eta) - pow_dimension(p->eta_neighbours)) *
       kernel_norm;
 
-#ifdef MAGMA2_SPH_PEDANTIC
-#ifndef const_kernel_target_neighbours
-  error(
-      "When using MAGMA2 SPH, the constant "
-      "const_kernel_target_neighbours must be defined in the header file "
-      "hydro_parameters.h. This is a compile-time constant and must be set "
-      "to the desired number of neighbours in the parameter file.");
-#else
-  if (fabsf((float)const_kernel_target_neighbours - p->target_neighbours) >
-      0.05f * p->target_neighbours) {
-    error(
-        "When using MAGMA2 SPH, the compiled constant "
-        "const_kernel_target_neighbours (%g) must be within 5 percent of "
-        "the desired number of neighbours (%g) in the parameter file.",
-        (float)const_kernel_target_neighbours, p->target_neighbours);
-  }
-#endif
+#ifdef MAGMA2_SPH
+  hydro_props_set_magma2_neighbour_quantities(p);
 #endif
 
 #ifdef SHADOWFAX_SPH
@@ -343,6 +348,13 @@ void hydro_props_print(const struct hydro_props *p) {
 
   message("Hydrodynamic relative tolerance in h: %.5f (+/- %.4f neighbours).",
           p->h_tolerance, p->delta_neighbours);
+
+#ifdef MAGMA2_SPH
+  message(
+      "MAGMA2 slope limiter eta_crit: %.4f; SPH fallback below %.2f "
+      "neighbours.",
+      (float)magma2_slope_limiter_eta_crit, magma2_fallback_min_neighbours);
+#endif
 
   message("Hydrodynamic integration: CFL parameter: %.4f.", p->CFL_condition);
 
@@ -578,4 +590,8 @@ void hydro_props_struct_dump(const struct hydro_props *p, FILE *stream) {
 void hydro_props_struct_restore(const struct hydro_props *p, FILE *stream) {
   restart_read_blocks((void *)p, sizeof(struct hydro_props), 1, stream, NULL,
                       "hydro props");
+
+#ifdef MAGMA2_SPH
+  hydro_props_set_magma2_neighbour_quantities(p);
+#endif
 }

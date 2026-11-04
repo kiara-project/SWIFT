@@ -139,7 +139,7 @@ struct star_formation {
     /*! for WN07, SFR unit conversion factor to scale efficiency */
     double to_msun_per_yr;
 
-    /*! The epsilon value to control sub-grid factors, multiplies SFR */
+    /*! Multiplier of the model SFR (star_formation_efficiency) */
     double epsilon;
 
     /*! For lognormal, conversion factor for free fall time */
@@ -767,24 +767,27 @@ INLINE static void star_formation_copy_properties(
   sp->split_data = xp->split_data;
 
   /* Store the chemistry struct in the star particle */
-  sp->chemistry_data = p->chemistry_data;
+  for (int elem = 0; elem < chemistry_element_count; elem++) {
+    sp->chemistry_data.metal_mass_fraction[elem] =
+        p->chemistry_data.metal_mass_fraction[elem];
+  }
+  sp->chemistry_data.metal_mass_fraction_total =
+      p->chemistry_data.metal_mass_fraction_total;
 
 #if COOLING_GRACKLE_MODE >= 2
   /* The gas metal fractions are gas-phase only (X + Y + Z + D = 1): the star
    * forms from all of the gas, so add the metals locked in dust back in */
   if (p->cooling_data.dust_mass > 0.f) {
     const float D = p->cooling_data.dust_mass / hydro_get_mass(p);
-    float Z_total = 0.f;
     for (int elem = 0; elem < chemistry_element_count; elem++) {
-      if (elem != chemistry_element_H) {
+      const int d = dust_element_of_chemistry(elem);
+      if (d >= 0) {
         sp->chemistry_data.metal_mass_fraction[elem] +=
-            D * p->cooling_data.dust_mass_fraction[elem];
-      }
-      if (elem != chemistry_element_H && elem != chemistry_element_He) {
-        Z_total += sp->chemistry_data.metal_mass_fraction[elem];
+            D * p->cooling_data.dust_mass_fraction[d];
       }
     }
-    sp->chemistry_data.metal_mass_fraction_total = Z_total;
+    /* All of the dust is metals */
+    sp->chemistry_data.metal_mass_fraction_total += D;
   }
 #endif
 
@@ -810,6 +813,8 @@ INLINE static void star_formation_copy_properties(
   sp->galaxy_data.stellar_mass = p->galaxy_data.stellar_mass;
   sp->galaxy_data.gas_mass = p->galaxy_data.gas_mass;
   sp->galaxy_data.specific_sfr = p->galaxy_data.specific_sfr;
+  sp->galaxy_data.sfr_radius = p->galaxy_data.sfr_radius;
+  sp->galaxy_data.centre_distance = p->galaxy_data.centre_distance;
 
   /* Slightly displace spawned particle to avoid zeros */
   if (1) {
@@ -940,10 +945,22 @@ INLINE static void starformation_init_backend(
   /* Calculate the ff constant */
   const double ff_const = sqrt(3. * M_PI / (32. * G_newton));
 
+  /* Overall SFR normalisation, for all SF models: the efficiency per
+   * free-fall time (SchmidtLaw) or a multiplier of the model SFR (WadaNorman,
+   * lognormal). It replaces lognormal_epsilon; refuse the old name so that an
+   * old parameter file cannot silently pick up a different value. */
+  if (parser_does_param_exist(parameter_file,
+                              "KIARAStarFormation:lognormal_epsilon"))
+    error(
+        "KIARAStarFormation:lognormal_epsilon has been renamed to "
+        "KIARAStarFormation:star_formation_efficiency (used by all the KIARA "
+        "SF models); please update the parameter file.");
+  const double sfe = parser_get_opt_param_double(
+      parameter_file, "KIARAStarFormation:star_formation_efficiency", 1.);
+
   if (starform->SF_model == kiara_star_formation_SchmidtLaw) {
     /* Get the star formation efficiency */
-    starform->schmidt_law.sfe = parser_get_param_double(
-        parameter_file, "KIARAStarFormation:star_formation_efficiency");
+    starform->schmidt_law.sfe = sfe;
 
     /* Calculate the constant */
     starform->schmidt_law.mdot_const = starform->schmidt_law.sfe / ff_const;
@@ -963,9 +980,8 @@ INLINE static void starformation_init_backend(
     starform->lognormal.rho0 =
         pow(10., -1.5) * 1.98841e33 / (rho_to_cgs * pow(3.08567758149e18, 3.));
 
-    /* Like the star formation efficiency but to control for sub-grid factors */
-    starform->lognormal.epsilon = parser_get_param_double(
-        parameter_file, "KIARAStarFormation:lognormal_epsilon");
+    /* Multiplier of the model SFR (star_formation_efficiency) */
+    starform->lognormal.epsilon = sfe;
 
     /* used to scale epsilon_c (efficiency) in lognormal model to sSFR */
     starform->lognormal.time_to_year_inverse =
@@ -1015,8 +1031,8 @@ INLINE static void starformation_print_backend(
   } else if (starform->SF_model == kiara_star_formation_WadaNorman) {
     message(
         "Star formation based on Wada+Norman 2007: critical "
-        "density (code units) = %e",
-        starform->lognormal.rhocrit);
+        "density (code units) = %e, efficiency = %e",
+        starform->lognormal.rhocrit, starform->lognormal.epsilon);
   } else if (starform->SF_model == kiara_star_formation_lognormal) {
     message(
         "Star formation based on lognormal density pdf: "

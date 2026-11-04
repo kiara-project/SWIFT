@@ -50,6 +50,14 @@ struct fof_galaxy_data {
 
   /*! Host galaxy specific star formation rate = SFR/M* */
   float specific_sfr;
+
+  /*! Host galaxy SFR-weighted rms radius of its star-forming gas about its
+   * SFR-weighted centre (comoving; 0 if too few star-forming particles) */
+  float sfr_radius;
+
+  /*! Distance from the host galaxy's centre of mass (comoving), at the last
+   * galaxy FoF call */
+  float centre_distance;
 };
 
 #endif

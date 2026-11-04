@@ -71,6 +71,10 @@ struct fof_props {
   /*! Galaxy (ISM) gas has a physical H number density above this (internal
    * units) */
   double cold_gas_n_H_threshold;
+
+  /*! Minimal number of star-forming gas particles for a galaxy to have a
+   * star-forming radius */
+  int galaxy_min_sf_particles;
 #endif
 
   /*! Minimal number of particles in a group */

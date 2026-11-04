@@ -275,9 +275,14 @@ int engine_dump_restarts(struct engine *e, const int drifted_all,
        * are done */
       MPI_Barrier(MPI_COMM_WORLD);
 
-      /* Reallocate freed memory */
-      if (e->free_foreign_when_dumping_restart)
+      /* Reallocate freed memory. The re-linking resets the foreign cells'
+       * parts_rebuild to the current layout, which no longer matches the
+       * delta_from_rebuild the other ranks send with the sf/grav counts:
+       * rebuild before the next step so that both sides agree again. */
+      if (e->free_foreign_when_dumping_restart) {
         engine_allocate_foreign_particles(e, /*fof=*/0);
+        e->forcerebuild = 1;
+      }
 #endif
 
       if (e->verbose)
@@ -601,6 +606,8 @@ void engine_io(struct engine *e) {
           pm_mesh_allocate(e->mesh);
 #ifdef WITH_MPI
         engine_allocate_foreign_particles(e, /*fof=*/0);
+        /* The foreign pointers were re-linked: rebuild (see restart dump) */
+        e->forcerebuild = 1;
 #endif
 
         /* ... and find the next output time */
@@ -638,6 +645,8 @@ void engine_io(struct engine *e) {
           pm_mesh_allocate(e->mesh);
 #ifdef WITH_MPI
         engine_allocate_foreign_particles(e, /*fof=*/0);
+        /* The foreign pointers were re-linked: rebuild (see restart dump) */
+        e->forcerebuild = 1;
 #endif
 
         /* ... and find the next output time */

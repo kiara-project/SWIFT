@@ -30,7 +30,8 @@
 #include <math.h>
 
 /* The grackle library itself */
-#include <grackle.h>
+#include "crackle/grackle.h"
+#include "crackle/crackle.h"
 
 /* Local includes. */
 #include "chemistry.h"
@@ -49,7 +50,7 @@
 #define GRACKLE_NPART 1
 #define GRACKLE_RANK 3
 #if COOLING_GRACKLE_MODE >= 2
-#define N_SPECIES 46 /* This further includes properties for dust model */
+#define N_SPECIES 47 /* This further includes properties for dust model */
 #else
 #define N_SPECIES                                 \
   21 /* This includes extra values at end to hold \
@@ -60,16 +61,17 @@
 #define GRACKLE_HEATLIM 1000.f
 #define GRACKLE_COOLLIM 0.01f
 #define MAX_COLD_ISM_FRACTION 0.9f
-/* Minimum particle column length as a fraction of p->h.
- * Should be <= mean interparticle spacing.
- * For 48 Ngb mean spacing ~ 0.887
- * For 57 Ngb mean spacing ~ 0.837
- * For 114 Ngb mean spacing ~ 0.664
+/* Minimum particle column length for self-shielding, as a fraction of the
+ * mean interparticle spacing (h / eta_neighbours, independent of the number
+ * of neighbours); cooling->min_shield_h_frac converts it to a fraction of h.
+ * Should be <= 1.
  *
  * Basically a limiter on rho / |grad rho| for a depth
  * for shielding, and how bad you think |grad rho|
- * really is at estimating the depth. */
-#define MIN_SHIELD_H_FRAC 0.332f
+ * really is at estimating the depth.
+ *
+ * 0.516 is the floor of 0.332 h used with 114 neighbours. */
+#define MIN_SHIELD_SPACING_FRAC 0.516
 
 void cooling_update(const struct phys_const *phys_const,
                     const struct cosmology *cosmo,
@@ -122,6 +124,26 @@ void cooling_copy_from_grackle(
     grackle_field_data *data, struct part *p, struct xpart *xp,
     const struct cooling_function_data *restrict cooling, gr_float rho);
 void cooling_grackle_free_data(grackle_field_data *data);
+void cooling_prepare_crackle_step(struct cooling_function_data *cooling);
+void cooling_copy_to_crackle(grackle_part_data *gp,
+                             const struct cosmology *restrict cosmo,
+                             const struct cooling_function_data *restrict
+                                 cooling,
+                             const struct part *p, const struct xpart *xp,
+                             const double dt, const double T_warm,
+                             gr_float *iact_rates, int mode);
+void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
+                               struct xpart *xp,
+                               const struct cooling_function_data *restrict
+                                   cooling);
+#ifdef CRACKLE_VALIDATE_DIRECT
+void cooling_crackle_override_inputs(int on);
+void cooling_crackle_compare_inputs(long long id);
+void cooling_crackle_validate_direct(
+    const struct part *p, const struct part *p_ref, const struct xpart *xp,
+    const struct xpart *xp_ref, const gr_float *iact, const gr_float *iact_ref,
+    const gr_float result, const gr_float result_ref, const int mode);
+#endif
 gr_float cooling_grackle_driver(
     const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us,
@@ -416,14 +438,18 @@ INLINE static double cooling_compute_cold_ISM_fraction(
  * @param u_subgrid Specific internal energy of the cold phase at the subgrid
  * temperature (from the cold-phase species).
  * @param cooling #cooling_function_data struct.
- * @return The physical subgrid (cold-cloud) density, capped at
- * max_subgrid_density.
+ * @return The physical subgrid (cold-cloud) density, floored at
+ * min_subgrid_density and capped at max_subgrid_density.
  */
 INLINE static double cooling_compute_subgrid_density(
     const double rho, const double u, const double u_subgrid,
     const struct cooling_function_data *cooling) {
 
   double subgrid_dens = rho * u / u_subgrid;
+
+  /* Floor at a typical cold-cloud density: clouds are bound and so denser
+   * than pressure equilibrium with a low-pressure ISM would make them */
+  subgrid_dens = fmax(subgrid_dens, cooling->min_subgrid_density);
 
   /* Cap at max value which should be something vaguely like GMC densities */
   subgrid_dens = fmin(subgrid_dens, cooling->max_subgrid_density);
@@ -534,7 +560,7 @@ __attribute__((always_inline)) INLINE static float cooling_KMT_H2_fraction(
  * Based on Schauer et al. 2015 eqs 8,9.
  *
  * The H column is the physical density times an effective length
- * rho/|grad rho| limited to [MIN_SHIELD_H_FRAC h, kernel_gamma h]. H2
+ * rho/|grad rho| limited to [min_shield_h_frac h, kernel_gamma h]. H2
  * self-shielding is left to crackle.
  *
  * @param p The particle to act upon.
@@ -560,7 +586,7 @@ cooling_compute_self_shielding(const struct part *restrict p,
     const double rho_com = hydro_get_comoving_density(p);
     double L_eff_com = rho_com * rho_grad_norm_inv;
     const double L_eff_com_max = kernel_gamma * p->h;
-    const double L_eff_com_min = MIN_SHIELD_H_FRAC * p->h;
+    const double L_eff_com_min = cooling->min_shield_h_frac * p->h;
     L_eff_com = fmin(L_eff_com, L_eff_com_max);
     L_eff_com = fmax(L_eff_com, L_eff_com_min);
     const double L_eff_in_cm = L_eff_com * a * cooling->units.length_units;
@@ -754,6 +780,28 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
          p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe;
   } else if (cooling->G0_computation_method == 6) {
     G0 = cooling_G0_from_FIRE(p, xp, rho, T_warm, cooling);
+  }
+#endif
+#ifdef WITH_FOF_GALAXIES
+  else if (cooling->G0_computation_method == 7) {
+    /* Mix of the local SFR density (as method 1) and a galaxy-scale field:
+     * the galaxy's SFR as a source at its centre of mass, softened over its
+     * SFR radius, falling as 1 / (r^2 + r_sfr^2) (physical) */
+    fH2_shield = cooling_compute_self_shielding(p, cooling);
+    const double G0_local =
+        fH2_shield * p->chemistry_data.local_sfr_density * cooling->G0_factor1;
+    double G0_galaxy = 0.;
+    const double sfr_galaxy = ssfr * mstar;
+    if (sfr_galaxy > 0.) {
+      const double a = cooling->units.a_value;
+      const double r = p->galaxy_data.centre_distance * a;
+      const double r_sfr =
+          fmax(p->galaxy_data.sfr_radius * a, cooling->G0_softening_min);
+      G0_galaxy =
+          cooling->G0_factor_galaxy * sfr_galaxy / (r * r + r_sfr * r_sfr);
+    }
+    G0 = cooling->G0_local_fraction * G0_local +
+         (1. - cooling->G0_local_fraction) * G0_galaxy;
   }
 #endif
   else {

@@ -322,6 +322,14 @@ INLINE static void hydro_write_particles(const struct part *parts,
                                    "Count for how many times this particle had "
                                    "an ill-conditioned u_aux_norm");
   num++;
+
+  list[num] = io_make_output_field("LowNeighbourFallbackCounts", INT, 1,
+                                   UNIT_CONV_NO_UNITS, 0.f, parts,
+                                   debug.low_ngb_fallback_count,
+                                   "Count for how many times this particle "
+                                   "used the SPH fallback because it had too "
+                                   "few neighbours");
+  num++;
 #endif
 
   *num_fields = num;
