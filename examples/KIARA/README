@@ -1,0 +1,23 @@
+Examples for the KIARA galaxy formation model:
+
+ - MAGMA2 SPH,
+ - KIARA cooling (built-in crackle: primordial and metal-line cooling,
+   H2, dust formation and destruction, interstellar radiation field),
+ - KIARA chemistry (11 elements, metal diffusion, firehose wind mixing),
+ - KIARA star formation and stellar feedback (chem5 yields, decoupled
+   kinetic winds),
+ - Obsidian black holes (Rennehan et al. 2024).
+
+Shared files:
+
+ - chem5/             chem5 stellar lifetime and yield tables (KIARAFeedback:tables_path)
+ - getCloudyTable.sh  fetches the Cloudy table used by the cooling (KIARACooling:cloudy_table)
+
+Star particle luminosities (the Luminosities output) are only computed if
+Stars:luminosity_filename points to the EAGLE photometry tables (see
+../EAGLE_ICs/getEaglePhotometryTable.sh); the examples do not set it.
+
+Examples:
+
+ - KIARA_25/          EAGLE 25 Mpc ICs at low resolution (L0025N0188), with the
+                      current KIARA calibration.

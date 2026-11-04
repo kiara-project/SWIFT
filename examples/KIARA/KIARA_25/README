@@ -1,0 +1,23 @@
+KIARA in the 25 Mpc EAGLE volume at 8x lower resolution than EAGLE
+(L0025N0188: 188^3 dark matter particles, the same number of gas particles
+generated at start-up; gas particle mass 1.45e7 Msun).
+
+This is close to the resolution at which KIARA is calibrated (25 Mpc/h,
+256^3), so kiara_25.yml uses the calibrated subgrid parameters unchanged.
+It is meant to be kept up to date with the current calibration. Only the
+cosmology (EAGLE / Planck 2013, to match the ICs), the IC options and the
+file names differ from the calibration runs.
+
+The code should be configured with
+
+  --with-subgrid=KIARA --with-hydro=magma2 --with-kernel=wendland-C2
+
+(plus any compiler, library or MPI options for your system; no external
+Grackle library is needed, the KIARA cooling uses a built-in crackle).
+
+run.sh fetches the ICs (with ../../EAGLE_ICs/EAGLE_25_low_res/getIC.sh) and
+the Cloudy cooling table, then runs SWIFT with --cosmology --kiara. The chem5
+tables are read from ../chem5.
+
+MD5 hash of the ICs:
+62e7ec93a1b0b4c57ff0c63ad0da2028  EAGLE_L0025N0188_ICs.hdf5
