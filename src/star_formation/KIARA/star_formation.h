@@ -139,7 +139,7 @@ struct star_formation {
     /*! for WN07, SFR unit conversion factor to scale efficiency */
     double to_msun_per_yr;
 
-    /*! The epsilon value to control sub-grid factors, multiplies SFR */
+    /*! Multiplier of the model SFR (star_formation_efficiency) */
     double epsilon;
 
     /*! For lognormal, conversion factor for free fall time */
@@ -945,10 +945,22 @@ INLINE static void starformation_init_backend(
   /* Calculate the ff constant */
   const double ff_const = sqrt(3. * M_PI / (32. * G_newton));
 
+  /* Overall SFR normalisation, for all SF models: the efficiency per
+   * free-fall time (SchmidtLaw) or a multiplier of the model SFR (WadaNorman,
+   * lognormal). It replaces lognormal_epsilon; refuse the old name so that an
+   * old parameter file cannot silently pick up a different value. */
+  if (parser_does_param_exist(parameter_file,
+                              "KIARAStarFormation:lognormal_epsilon"))
+    error(
+        "KIARAStarFormation:lognormal_epsilon has been renamed to "
+        "KIARAStarFormation:star_formation_efficiency (used by all the KIARA "
+        "SF models); please update the parameter file.");
+  const double sfe = parser_get_opt_param_double(
+      parameter_file, "KIARAStarFormation:star_formation_efficiency", 1.);
+
   if (starform->SF_model == kiara_star_formation_SchmidtLaw) {
     /* Get the star formation efficiency */
-    starform->schmidt_law.sfe = parser_get_param_double(
-        parameter_file, "KIARAStarFormation:star_formation_efficiency");
+    starform->schmidt_law.sfe = sfe;
 
     /* Calculate the constant */
     starform->schmidt_law.mdot_const = starform->schmidt_law.sfe / ff_const;
@@ -968,9 +980,8 @@ INLINE static void starformation_init_backend(
     starform->lognormal.rho0 =
         pow(10., -1.5) * 1.98841e33 / (rho_to_cgs * pow(3.08567758149e18, 3.));
 
-    /* Like the star formation efficiency but to control for sub-grid factors */
-    starform->lognormal.epsilon = parser_get_param_double(
-        parameter_file, "KIARAStarFormation:lognormal_epsilon");
+    /* Multiplier of the model SFR (star_formation_efficiency) */
+    starform->lognormal.epsilon = sfe;
 
     /* used to scale epsilon_c (efficiency) in lognormal model to sSFR */
     starform->lognormal.time_to_year_inverse =
@@ -1020,8 +1031,8 @@ INLINE static void starformation_print_backend(
   } else if (starform->SF_model == kiara_star_formation_WadaNorman) {
     message(
         "Star formation based on Wada+Norman 2007: critical "
-        "density (code units) = %e",
-        starform->lognormal.rhocrit);
+        "density (code units) = %e, efficiency = %e",
+        starform->lognormal.rhocrit, starform->lognormal.epsilon);
   } else if (starform->SF_model == kiara_star_formation_lognormal) {
     message(
         "Star formation based on lognormal density pdf: "
