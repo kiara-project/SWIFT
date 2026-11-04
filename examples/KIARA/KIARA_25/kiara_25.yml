@@ -1,0 +1,324 @@
+# KIARA galaxy formation model (MAGMA2 SPH + KIARA cooling/chemistry/stars/
+# feedback + Obsidian black holes) in the EAGLE 25 Mpc low-resolution volume.
+#
+# This file holds the current KIARA calibration and is updated as the
+# calibration changes. Build SWIFT with
+#   ./configure --with-subgrid=KIARA --with-hydro=magma2 --with-kernel=wendland-C2
+# and run with --cosmology --kiara (see run.sh).
+#
+# The EAGLE L0025N0188 ICs (gas particle mass 1.45e7 Msun) are close to the
+# resolution at which KIARA is calibrated (25 Mpc/h with 256^3 particles), so
+# the subgrid parameters below are used unchanged.
+
+# Define some meta-data about the simulation
+MetaData:
+  run_name:   KIARA-EAGLE-L0025N0188
+
+# Define the system of units to use internally. 
+InternalUnitSystem:
+  UnitMass_in_cgs:          1.98841e43              # 10^10 M_sun in grams
+  UnitLength_in_cgs:        3.08567758e24           # Mpc in centimeters
+  UnitVelocity_in_cgs:      1.0e5                   # km/s in centimeters per second
+  UnitCurrent_in_cgs:       1                       # Amperes
+  UnitTemp_in_cgs:          1                       # Kelvin
+
+# Cosmological parameters (EAGLE / Planck 2013, matching the ICs)
+Cosmology:
+  h:                        0.6777                  # Reduced Hubble constant
+  a_begin:                  0.0078125               # Initial scale-factor of the simulation (z=127)
+  a_end:                    1.0                     # Final scale factor of the simulation
+  Omega_cdm:                0.2587481               # Cold Dark Matter density parameter
+  Omega_lambda:             0.693                   # Dark-energy density parameter
+  Omega_b:                  0.0482519               # Baryon density parameter
+
+# Parameters governing the time integration
+TimeIntegration:
+  dt_min:                   1e-10                   # The minimal time-step size of the simulation (in internal units).
+  dt_max:                   1e-2                    # The maximal time-step size of the simulation (in internal units).
+
+# Parameters governing the snapshots
+Snapshots:
+  basename:                     kiara_25               # Common part of the name of output files
+  output_list_on:               1
+  output_list:                  ./output_list.txt
+  recording_triggers_part:      [-1, -1]                # No particle recording
+  recording_triggers_bpart:     [-1, -1]                # No particle recording
+
+# Parameters governing the conserved quantities statistics
+Statistics:
+  delta_time:                   1.01
+  scale_factor_first:           0.01
+
+# Parameters for repartitioning the domain
+DomainDecomposition:
+    trigger: 0.2      # only repartition when the imbalance exceeds 20%
+
+# Parameters for the self-gravity scheme
+Gravity:
+  eta:                                  0.025           # Constant dimensionless multiplier for time integration.
+  MAC:                                  adaptive        # Opening angle condition
+  theta_cr:                             0.7             # Opening angle (Multipole acceptance criterion)
+  epsilon_fmm:                          0.001           # Adaptive opening angle
+  distributed_mesh:                     0
+  use_tree_below_softening:             0
+  mesh_side_length:                     256
+  comoving_DM_softening:                0.0025          # Comoving softening for DM (2.5 ckpc)
+  max_physical_DM_softening:            0.0025          # Physical softening for DM (2.5 pkpc)
+  comoving_baryon_softening:            0.0025          # Comoving softening for baryons (2.5 ckpc)
+  max_physical_baryon_softening:        0.0025          # Physical softening for baryons (2.5 pkpc)
+
+# Parameters for the hydrodynamics scheme
+SPH:
+  target_neighbours:                 64
+  h_min_ratio:                       0.2                # Minimal smoothing length in units of softening.
+  h_max:                             0.5                # Maximal smoothing length in co-moving internal units.
+  CFL_condition:                     0.2                # Courant-Friedrich-Levy condition for time integration.
+  minimal_temperature:               10.0               # (internal units)
+  initial_temperature:               -1.                # (internal units)
+  particle_splitting:                1                  # Particle splitting is ON
+  particle_splitting_mass_threshold: 8.0e-3             # (internal units, i.e. 8e7 Msun ~ 4x initial gas particle mass)
+
+# Parameters of the stars neighbour search
+Stars:
+  resolution_eta:               1.2348                   # N=48; Target smoothing length in units of the mean inter-particle separation
+  h_tolerance:                  7e-3
+  min_time_step_Myr:            0.1                      # Floor on the age-based stellar time-step (so it does not vanish at birth)
+  max_timestep_young_Myr:       2.                       # Maximal time-step of young stars, to resolve the SNII phase
+  timestep_age_threshold_Myr:   45.                      # Age below which stars are young
+  timestep_age_threshold_unlimited_Myr: 100.             # Age above which the stellar time-step is not limited
+
+BlackHoles:
+  resolution_eta:               1.2348                  # Example values: 1.1642=32, 1.2348=48, 1.4669=96, 1.553304=114
+  h_tolerance:                  7e-3
+  h_max:                        0.00500                 # max BH search radius in Mpc
+  h_min:                        0.00125                 # min BH search radius in Mpc
+
+FOF:
+  basename:                        fof_output           # Filename for the FOF outputs.
+  min_group_size:                  8                    # The minimum no. of particles required for a group.
+  linking_types:                   1,0,0,0,1,1,0        # flags to indicate which particle types to run FOF on
+  attaching_types:                 0,0,0,0,0,0,0        # flags to indicate which non-grouped types to attach
+  linking_length_ratio:            0.05                 # Linking length in units of the main inter-particle separation.
+  seed_black_holes_enabled:        1                    # Enable seeding of black holes in FoF groups
+  black_hole_seed_halo_mass_Msun:  5.8e8                # Minimal group mass in which to seed a black hole (in solar masses). For Kiara this is actually the stellar mass limit.
+  cold_gas_temperature_threshold:  1.0e5                # Cold gas below this temperature in K
+  cold_gas_n_H_threshold_cgs:      0.13                 # Cold gas above this density in H/cc
+  scale_factor_first:              0.05                 # Scale-factor of first FoF black hole seeding calls.
+  delta_time:                      1.01                 # Scale-factor ratio between consecutive FoF black hole seeding calls.
+
+Scheduler:
+  max_top_level_cells:          16
+  cell_split_size:              200
+
+Restarts:
+  onexit:                       1
+  delta_hours:                  2.0
+
+# Parameters related to the initial conditions
+InitialConditions:
+  file_name:                    EAGLE_L0025N0188_ICs.hdf5  # DM-only EAGLE ICs (see ../../EAGLE_ICs/EAGLE_25_low_res)
+  periodic:                     1
+  cleanup_h_factors:            1                       # Remove the h-factors inherited from Gadget
+  cleanup_velocity_factors:     1                       # Remove the sqrt(a) factor in the velocities inherited from Gadget
+  generate_gas_in_ics:          1                       # Generate gas particles from the DM-only ICs
+  cleanup_smoothing_lengths:    1                       # Since we generate gas, make use of the (expensive) cleaning-up procedure.
+  remap_ids:                    1                       # Re-map the IDs to [1, N] to avoid collision problems when splitting
+
+KIARAChemistry:
+  diffusion_on:                 1                       # Turns on metal mixing
+  diffusion_coefficient:        0.472                   # 0.472 is default value from Rennehan (2021), they quote C*h^2*|S| not (C*h)^2|S|
+  use_firehose_wind_model:      1                       # Turns on Firehose wind model (tracks outflow stream/ambient mixing when "decoupled")
+  firehose_nh_ambient_max_cgs:  1.e-3
+  firehose_temp_floor:          1.e3
+  firehose_recoupling_mach:     1.0
+  firehose_recoupling_u_factor: 0.5
+  firehose_recoupling_fmix:     0.899
+  firehose_max_velocity:        2000.0
+  firehose_max_fmix_per_step:   0.1
+  init_abundance_metal:         9.e-10
+  init_abundance_Hydrogen:      0.752
+  init_abundance_Helium:        0.248
+  init_abundance_Carbon:        1.e-10
+  init_abundance_Nitrogen:      1.e-10
+  init_abundance_Oxygen:        1.e-10
+  init_abundance_Neon:          1.e-10
+  init_abundance_Magnesium:     1.e-10
+  init_abundance_Silicon:       1.e-10
+  init_abundance_Sulfur:        1.e-10
+  init_abundance_Calcium:       1.e-10
+  init_abundance_Iron:          1.e-10
+
+# KIARA cooling (built-in crackle: primordial + metal cooling, H2 and dust)
+KIARACooling:
+  cloudy_table:                 ./CloudyData_UVB=FG2011_shielded.h5  # From ../getCloudyTable.sh (Grackle data files)
+  with_UV_background:           1                       # Enable or not the UV background
+  redshift:                     -1                      # Redshift to use (-1 means time based redshift)
+  with_metal_cooling:           1                       # Enable or not the metal cooling
+  provide_volumetric_heating_rates: 0                   # Provide volumetric heating rates to grackle
+  provide_specific_heating_rates: 1                     # Provide specific heating rates to grackle; turning this off ignores adiabatic dudt
+  self_shielding_method:        3                       # Grackle (<= 3) self shielding method; 3 (default) is advised.
+  ism_adiabatic_heating_method: 2                       # For subgrid ISM: 0=ignore adiabatic du/dt, 1=evolve in grackle, 2=use to evaporate cold ism
+  grackle_max_steps:            200                     # maximum number of iterations for a single step in Grackle
+  timestep_accuracy:            0.2                     # max change in energy, HI, or electron density in a single timestep
+  grackle_damping_interval:     0                       # e-folding of damping subcycle iterations when substep too small (0=off)
+  use_grackle_dust_evol:        1                       # turn on dust model, only in KIARA (will be turned off for SIMBA's GRACKLE_MODE==1)
+  dust_destruction_eff:         0.3                     # efficiency of dust destruction by shocks = destroyed mass/shocked mass
+  dust_sne_coeff:               1.0                     # SN energy / 1.e51 erg
+  dust_sne_shockspeed:          100.0                   # km/s
+  dust_grainsize:               0.1                     # grain size in micron
+  dust_oxygen_stoichiometric_cap: 1                      # 1: limit dust O to oxides of the dust Mg, Si, Ca, Fe
+  H2_isrf_dissociation:         1                      # 1: G0-driven LW H2 photodissociation, self- and dust-shielded
+  H2_shield_mean_density:       1                      # 1: H2 shielding column at the mean (not cold-cloud) density
+  H2_sternberg_limit:           1                      # 1: limit the ISM molecular fraction to the Sternberg+14 shielded interior
+  dust_growth_densref:          5.0e-24               # g cm^-3 physical
+  dust_growth_tauref:           1.0                     # Gyr, growth timescale at densref
+  cold_ISM_frac:                0.5                     # Fraction of particle mass in cold phase eligible for SF
+  G0_computation_method:        7                       # For Grackle subgrid SF compate G0 via: 1=Local SFR density; 2=Global sSFR; 3=sSFR when nonzero, otherwise local (-3=opposite); 4=scaled to SNe rate; 5=mix of 2+4; 6=FIRE-based
+  G0_local_fraction:            0.5                    # method 7: fraction of G0 from the local SFR density, the rest galaxy-scale
+  G0_multiplier:                1.0
+  max_subgrid_density_g_p_cm3:  1.673e-15               # z=0 maximum comoving density sent to Grackle in subgrid model, in cgs units
+  min_subgrid_number_density_cm3: 0.                      # floor on the cold-cloud density, rho/m_H in physical cm^-3 (0 = off)
+  subgrid_threshold_n_H_cgs:    0.13                    # Warm-ISM EoS: physical n_H above which (with >100x the mean baryon density) gas can enter the subgrid ISM
+  subgrid_threshold_T_K:        1.e4                    # Warm-ISM EoS: warm-phase temperature at subgrid_threshold_n_H_cgs (K)
+  subgrid_warm_ism_EOS:         0.                      # Warm-ISM EoS: slope, T_warm = T_K (n_H / n_H_cgs)^slope (0 = isothermal)
+  entropy_floor_margin_dex:     0.5                     # Gas enters the subgrid ISM if below this many dex above the warm-ISM EoS temperature
+  self_enrichment_metallicity:  1.e-7                   # when below this metallicity, self-enrich from own star formation.
+
+# KIARA star formation parameters
+KIARAStarFormation:
+  SF_model:                          WadaNorman         # SchmidtLaw, WadaNorman, or lognormal
+  min_over_density:                  100.0              # The over-density above which star-formation is allowed.
+  threshold_temperature_K :          1000.0             # When using subgrid-based SF threshold, subgrid temperature below which gas is star-forming if also above the density limit.
+  threshold_number_density_H_p_cm3:  0.13              # When using subgrid-based SF threshold, subgrid number density above which gas is star-forming if also below the temperature limit.
+  H2_model:                          Grackle            # 'Thresh' sets fH2=1; 'KMT' computes fH2 from KG11; 'Grackle' uses Grackle-computed fH2
+  lognormal_critical_density:        1.e3               # For WN/lognormal: number density (cgs) above which SF occurs
+  star_formation_efficiency:         1.0                # SFR normalisation: multiplier of the WadaNorman/lognormal SFR, or the efficiency per free-fall time for SchmidtLaw
+  wn07_epsc_method:                  4                  # method to estimate SF eff epsc from galaxy props in WadaNorman model
+
+# Kiara feedback model (based on EAGLE-kinetic)
+KIARAFeedback:
+  tables_path:                          ../chem5         # chem5 yield and lifetime tables (in the repository)
+  imf:                                  1               # IMF: 0 = Kroupa, 1 = Chabrier, >=2 Not implemented
+  use_HN_energy_from_chem5:             0               # Use hypernovae energy directly from star particle to gas
+  use_SNII_energy_from_chem5:           0               # Use SNII energy directly from star particle to gas
+  use_SNIa_energy_from_chem5:           1000            # Use SNIa energy directly from star particle to gas. If >10, use SNIa energy only if age < use_SNIa_energy_from_chem5 in Myr
+  dust_boost_factor:                    1.
+  stellar_enrichment_frequency:         0.0             # Factor in units of current stellar age above which to recompute stellar evol
+  metal_yield_multiplier:               1.0            # Factor to multiply all chem5 metal yields
+  FIRE_velocity_normalization:          2.5             # Normalization from Muratov
+  FIRE_velocity_slope:                  0.12            # Muratov+15: 0.12
+  kick_velocity_scatter:                0.1             #
+  FIRE_eta_normalization:               6.0            #
+  FIRE_eta_break_Msun:                  5.2e9           #
+  FIRE_eta_lower_slope:                 -0.317          # Angles-Alcazar+17: -0.317
+  FIRE_eta_upper_slope:                 -0.761          # Angles-Alcazar+17: -0.761
+  wind_velocity_suppression_redshift:   -9.
+  wind_eta_suppression_redshift:        -9.
+  metal_dependent_vwind:                0               # 0=Off, 1=vwind boost, 2=eta boost, 3=both boost
+  cold_wind_temperature_K:              8000            #
+  hot_wind_temperature_K:               8000            # converted to K from erg/g released by 1 SN per ~100Mo
+  minimum_galaxy_stellar_mass_Msun:     5.8e8           # floor for M* to use in FIRE wind formula
+  wind_decouple_time_factor:            0.1            # fraction of Hubble time at launch to decouple (max)
+  recouple_ism_density_nH_cgs:          0.1            # ISM threshold density for purposes of recoupling (cgs)
+  recouple_density_factor:              0.001            # Factor below recouple_ism_density_cgs at which to recouple
+  SNII_energy_multiplier:               1.0
+  wind_energy_from_chem5:               1               # wind energy budget = chem5 SNII (incl. HN) + SNIa energy (not also thermal while launching), no metallicity boost; 0 = 1e51 erg per SN x metal_dependent_vwind boost
+  vwind_sigma_sfr_slope:                0.25             # v_w *= (Sigma_SFR/pivot)^slope (0 = off)
+  vwind_sigma_sfr_pivot_Msun_yr_kpc2:   0.04             # pivot galaxy SFR surface density
+  vwind_sigma_sfr_min_factor:           1.0             # clip of the v_w factor
+  vwind_sigma_sfr_max_factor:           2.0             #
+  vwind_sigma_sfr_min_radius_kpc:       0.25            # floor on the galaxy SF radius (physical)
+  vwind_sigma_sfr_eta_slope:            2.0             # eta *= factor^-eta_slope (0 = off, 2 = eta v^2 fixed)
+  stellar_evolution_age_cut_Gyr:        0.1             # Stellar age in Gyr above which the enrichment is down-sampled.
+  stellar_evolution_sampling_rate:      10              # Number of time-steps in-between two enrichment events for a star above the age threshold.
+
+  # Obsidian: Rennehan+24 AGN model
+ObsidianAGN:
+  subgrid_seed_mass_Msun:               1.0e4           # Black hole subgrid mass at creation time in solar masses.
+  environment_temperature_cut_K:        1.0e5           # Above this is considered "hot gas"
+  min_gas_mass_for_nibbling_Msun:       1.e6           # Minimum mass for a gas particle to be nibbled from [M_Sun]. Only used if use_nibbling is 1.
+  bondi_use_all_gas:                    0               # Use all of the gas in the kernel to compute the Bondi rate
+  bondi_alpha:                          0.1             # The boost factor for Bondi accretion
+  max_eddington_fraction:               10.           # Maximal allowed total accretion rate in units of Eddington rate.
+  max_bondi_eddington_fraction:         1.            # Maximal allowed Bondi accretion rate in units of Eddington rate.
+  eddington_fraction_lower_boundary:    0.03            # Below this M_dot,acc/M_dot,Edd, the ADAF mode starts
+  eddington_fraction_upper_boundary:    0.3             # Above this M_dot,acc/M_dot,Edd, the slim disk mode starts
+  fixed_T_above_EoS_dex:                0.5             # How far above the EoS should we consider cold gas?
+  dynamical_time_factor:                1.            # Number of dynamical e-folding times over which mass is taken from accr disk. Default=0, which means take accretion disk reservoir is fully added to BH every timestep
+  dynamical_time_max_in_Myr:            50.           # Max dynamical time for torque-limited accretion in Myr at z=0; this is scaled by H0/H(z). Default is 0 (instantaneous dump).
+  torque_accretion_method:              3              # 0=Mgas/tdyn on corotating gas 1=Mgas/tdyn on disk gas, 2=Simba (HQ11), 3=Mgas/tdyn on all cold gas
+  torque_accretion_norm:                1.0           # Multiplicative factor for the cold gas accreiton mode
+  dynamical_time_calculation_method:    0
+  suppress_growth:                      4            # 0=None, 1=Hopkins+21, 2=Simba-style exponential to torque mode only, 3=Simba-style applied to all accretion, 4=SF outflow-based, 5=4 applied only to SF gas, 6=2 applied only to SF gas
+  sigma_crit_Msun_pc2:                  3000        # critical mass surface density for Hopkins+21 suppression, canonical=3000
+  suppression_sf_eff:                   0.1
+  bh_characteristic_suppression_mass:   3.e7            # the exponential e-folding mass for Simba-C style BH suppression
+  jet_loading_type:                     MixedLoaded    # EnergyLoaded or MomentumLoaded
+  jet_frac_energy_loaded:               0.1
+  jet_temperature_K:                    -1.          # Temperature to heat the jet particles, in Kelvin. If <0, use abs(value) times Tvir (estimated from MBH)
+  jet_velocity_km_s:                    5000.           # Resolved, large-scale jet velocity in km/s
+  jet_subgrid_velocity_km_s:            100000.          # Subgrid jet velocity in km/s, sets the small-scale mass loading.
+  jet_launch_dir:                       4               # Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards
+  jet_minimum_reservoir_mass_Msun:      3.6e7           # How much mass must build up in the reservoir before the jet releases energy. Should be ~2 times the particle mass.
+  jet_velocity_scaling_with_BH_mass:    0.0             # Scaling of jet_velocity with MBH for MBH>1e9
+  lum_thresh_always_jet_1e45_erg_s:     1.0             # If BH accr rate gives a luminosity above this in units of 10^45 erg/s, always launch a jet
+  jet_decouple_time_factor:             2.e-4
+  # fixed_spin:                           0.9             # The spin of every black hole in the simulation.
+  adaf_torque_phi_factor:               0.0             # Magnetic flux of torque-fed ADAF inflow relative to MAD (Bondi share is MAD)
+  adaf_jet_free_energy:                 1               # 1: ADAF jets at full MAD efficiency regardless of spin-down
+  torque_accretion_max_radius_softening: 1.0            # Torque accretion only from cold gas within this many Plummer softenings
+  adaf_coupling:                        0.02            # How much of the energy couples to the medium (at z=0). <1
+  adaf_max_coupling:                    0.2             # Maximum coupling value, only used if adaf_z_scaling>0.
+  adaf_z_scaling:                       0.             # power-law scaling of adaf_coupling value with (1+z) (default=0; adaf_coupling capped at 1)
+  adaf_disk_efficiency:                 0.5             # Constant value from Benson & Babul 2009 Fig. 7
+  adaf_wind_speed_km_s:                 -2000.           # Wind speed for ADAF kick, or if <0 it is the max speed
+  adaf_wind_dir:                        4             # Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards
+  adaf_f_quasar_psi:                    -1.
+  adaf_maximum_temperature_K:           -1.           # The maximum temperature to heat an individual particle in the ADAF thermal energy dump; If <0, use abs(value) times Tvir (estimated from MBH)
+  adaf_mass_limit_Msun:                 0.5e8           # Minimum black hole mass (Msun) for the ADAF mode to activate
+  adaf_mass_limit_spread_Msun:          1.0e8
+  adaf_mass_limit_a_scaling:            0.
+  adaf_mass_limit_a_min:                0.25
+  adaf_energy_ramp_width:               3.0
+  adaf_cooling_shutoff_factor:          1.0            # shut of cooling around ADAF BH for this * min(h/c_s, dt_bh). -1 puts half ADAF energy into heat (no cooling shutoff) + half into kick, similar to SIMBA.
+  adaf_kick_factor:                     1.0              # frac of ADAF energy to use in kick (as opposed to  heating)
+  adaf_decouple_time_factor:            0.1  
+  quasar_coupling:                      0.2            # How much of the energy couples to the medium. <1
+  quasar_wind_momentum_flux:            20.0            # This number times L/c for momentum loading.
+  quasar_wind_speed_km_s:               -100.           # Wind launch velocity.
+  quasar_wind_dir:                      1               # 0=random, 1=L_gas, 2=L_BH, 3=outwards
+  quasar_decouple_time_factor:          0.1 
+  quasar_cooling_shutoff_factor:        1.0             # like adaf_cooling_shutoff_factor, but for quasar AND slim disk mode
+  minimum_black_hole_mass_v_kick_Msun:  1.e7
+  minimum_v_kick_km_s:                  1.
+  slim_disk_coupling:                   0.2            # How much of the energy couples to the medium. <1
+  slim_disk_jet_active:                 0               # Should we also have a jet in the slim disk mode?
+  slim_disk_wind_speed_km_s:            -600.           # Wind launch velocity.
+  slim_disk_wind_dir:                   1               # 0=random, 1=L_gas, 2=L_BH, 3=outwards
+  slim_disk_decouple_time_factor:       0.1 
+  minimum_black_hole_mass_unresolved_Msun: 1.8e7            # BH mass at which unresolved feedback is viable
+  dynamical_friction_model:             0               # Subgrid gas dynamical friction (Dubois+13, DARWIN-1): 0 = off (repositioning only), 1 = friction where kernel non-wind gas nH > df_min_nH_cgs, repositioning below.
+  df_min_nH_cgs:                        0.1             # Kernel gas density [cm^-3] below which the BH is repositioned instead of feeling friction.
+  df_boost_nH_cgs:                      0.1             # Density [cm^-3] above which the friction is boosted by alpha = (nH / df_boost_nH_cgs)^df_boost_exponent.
+  df_boost_exponent:                    2.0             # Exponent beta of the boost (2 in DARWIN-1, 1 in DARWIN-2).
+  df_boost_max:                         0               # Maximal boost alpha (0 = no cap, as in DARWIN). The uncapped boost locks the BH to its kernel gas velocity.
+  df_coulomb_log:                       3.2             # ln Lambda of the supersonic Ostriker (1999) term.
+  df_use_dynamical_mass:                0               # 0 = friction from the subgrid BH mass, 1 = from the dynamical (particle) mass.
+  reposition_radius_from_softening:     1               # 1 = max_reposition_distance_ratio is in units of the Plummer baryon softening (EAGLE); 0 = in units of h_BH / 2.8 (earlier Obsidian).
+  max_reposition_mass:                  1e20            # Maximal BH mass considered for BH repositioning in solar masses (large number implies we always reposition).
+  max_reposition_distance_ratio:        1.4             # Maximal distance a BH can be repositioned, in units of equiv Plummer softening length.
+  with_reposition_velocity_threshold:   1               # Should we only reposition to particles that move slowly w.r.t. the black hole?
+  max_reposition_velocity_ratio:        0.5             # Maximal velocity offset of a particle to reposition a BH to, in units of the ambient sound speed of the BH. Only meaningful if with_reposition_velocity_threshold is 1.
+  min_reposition_velocity_threshold:    -1.0            # Minimal value of the velocity threshold for repositioning [km/s], set to < 0 for no effect. Only meaningful if with_reposition_velocity_threshold is 1.
+  set_reposition_speed:                 0               # Should we reposition black holes with (at most) a prescribed speed towards the potential minimum?
+  reposition_reference_mass:            0               # Unused, normalisation for speed of repositioning.
+  reposition_reference_n_H:             0               # Unused, reference density for speed of repositioning.
+  reposition_coefficient_upsilon:       0               # Unused, normalisation factor.
+  threshold_major_merger:               0.333           # Mass ratio threshold to consider a BH merger as 'major'
+  threshold_minor_merger:               0.1             # Mass ratio threshold to consider a BH merger as 'minor'
+  merger_threshold_type:                EscapeVelocity  # Type of velocity threshold for BH mergers (0: v_circ at kernel edge, 1: v_esc at actual distance, with softening, 2: v_esc at actual distance, no softening).
+  merger_max_distance_ratio:            1.4             # Maximal distance over which two BHs can merge, in units of equiv Plummer softening length.
+  with_potential_correction:            1               # Correct for the potential when repositioning?
+  minimum_timestep_Myr:                 0.1             # Minimum of the accretion-limited time-step length.
+  dt_accretion_factor:                  1.0            # OPTIONAL: Default 1.0, timestep limiter 5% growth
+

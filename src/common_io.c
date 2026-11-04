@@ -1880,6 +1880,11 @@ void io_select_star_fields(const struct spart *const sparts,
                            struct io_props *const list) {
 
   stars_write_particles(sparts, list, num_fields, with_cosmology);
+#ifdef STARS_KIARA
+  /* KIARA's photometry tables are optional */
+  if (e != NULL)
+    stars_remove_unavailable_fields(e->stars_properties, list, num_fields);
+#endif
   *num_fields +=
       particle_splitting_write_sparticles(sparts, list + *num_fields);
   *num_fields += chemistry_write_sparticles(sparts, list + *num_fields);
