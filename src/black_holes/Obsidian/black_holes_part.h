@@ -274,6 +274,22 @@ struct bpart {
   /* Velocity of most recent reposition jump */
   float last_repos_vel;
 
+  /*! Gas dynamical-friction acceleration, in the comoving units of the
+   * gravity kick (physical acceleration times a^2); zero when the BH uses
+   * repositioning */
+  float df_accel[3];
+
+  /*! Maximal velocity change (internal units) the dynamical friction may
+   * apply per half kick, so that it cannot reverse the BH-gas motion */
+  float df_dv_max;
+
+  /*! Kernel-smoothed density, sound speed and velocity (in the BH frame) of
+   * the gas used for the dynamical friction (no decoupled or non-cooling
+   * gas); comoving, internal units */
+  float df_rho_gas;
+  float df_sound_speed_gas;
+  float df_velocity_gas[3];
+
   /*! Total number of time steps in which the black hole was active. */
   int number_of_time_steps;
 

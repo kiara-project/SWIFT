@@ -298,6 +298,18 @@ runner_iact_nonsym_bh_gas_density(
   const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
   const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
 
+  /* Gas for the dynamical friction: as for repositioning, no decoupled
+   * winds or jets and no gas with cooling shut off (an outflow must not
+   * drag the BH along with it) */
+  if (bh_props->dynamical_friction_model && !pj->decoupled &&
+      pj->feedback_data.cooling_shutoff_delay_time <= 0.f) {
+    bi->df_rho_gas += mj * wi;
+    bi->df_sound_speed_gas += mj * wi * cj;
+    bi->df_velocity_gas[0] += mj * wi * dv[0];
+    bi->df_velocity_gas[1] += mj * wi * dv[1];
+    bi->df_velocity_gas[2] += mj * wi * dv[2];
+  }
+
   /* Classify gas as hot or cold for accretion */
   const int gas_temperature_state =
       black_hole_gas_hot_or_cold(bi, pj, cosmo, bh_props);
