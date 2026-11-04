@@ -434,6 +434,10 @@ struct black_holes_props {
   /*! Maximal distance to reposition, in units of softening length */
   float max_reposition_distance_ratio;
 
+  /*! 1: the repositioning distance is in units of the baryon softening (as
+   * in EAGLE); 0: in units of h_BH / (Plummer-equivalent factor) */
+  int reposition_radius_from_softening;
+
   /*! Switch to enable a relative velocity limit for particles to which the
    * black holes can reposition */
   int with_reposition_velocity_threshold;
@@ -1294,6 +1298,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       phys_const->const_solar_mass;
   bp->max_reposition_distance_ratio = parser_get_param_float(
       params, "ObsidianAGN:max_reposition_distance_ratio");
+  bp->reposition_radius_from_softening = parser_get_opt_param_int(
+      params, "ObsidianAGN:reposition_radius_from_softening", 1);
 
   bp->with_reposition_velocity_threshold = parser_get_param_int(
       params, "ObsidianAGN:with_reposition_velocity_threshold");

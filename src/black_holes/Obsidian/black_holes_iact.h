@@ -34,6 +34,25 @@
 #include "timestep_sync_part.h"
 #include "tracers.h"
 
+/**
+ * @brief Square of the (comoving) maximal repositioning distance of a BH.
+ *
+ * max_reposition_distance_ratio times the Plummer-equivalent baryon
+ * softening (as in EAGLE), or, with reposition_radius_from_softening = 0,
+ * times h_BH / (Plummer-equivalent factor) (the earlier Obsidian choice).
+ */
+__attribute__((always_inline)) INLINE static float
+black_holes_max_reposition_distance2(const struct bpart *bi,
+                                     const struct black_holes_props *bh_props,
+                                     const struct gravity_props *grav_props) {
+  const float l = bh_props->reposition_radius_from_softening
+                      ? grav_props->epsilon_baryon_cur
+                      : bi->h;
+  const float d = kernel_gravity_softening_plummer_equivalent_inv *
+                  bh_props->max_reposition_distance_ratio * l;
+  return d * d;
+}
+
 // #define OBSIDIAN_DEBUG_CHECKS
 
 /**
@@ -417,12 +436,9 @@ runner_iact_nonsym_bh_gas_repos(
   const float ui = r * hi_inv;
   kernel_eval(ui, &wi);
 
-  /* (Square of) Max repositioning distance allowed based on the softening */
+  /* (Square of) Max repositioning distance allowed */
   const float max_dist_repos2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_reposition_distance_ratio *
-      bh_props->max_reposition_distance_ratio * bi->h * bi->h;
+      black_holes_max_reposition_distance2(bi, bh_props, grav_props);
 
   /* Is this gas neighbour close enough that we can consider its potential
      for repositioning? */
@@ -770,12 +786,9 @@ runner_iact_nonsym_bh_bh_repos(const float r2, const float dx[3],
 
   const float v2_pec = v2 * cosmo->a2_inv;
 
-  /* (Square of) Max repositioning distance allowed based on the softening */
+  /* (Square of) Max repositioning distance allowed */
   const float max_dist_repos2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_reposition_distance_ratio *
-      bh_props->max_reposition_distance_ratio * bi->h * bi->h;
+      black_holes_max_reposition_distance2(bi, bh_props, grav_props);
 
   /* Is this BH neighbour close enough that we can consider its potential
      for repositioning? */
