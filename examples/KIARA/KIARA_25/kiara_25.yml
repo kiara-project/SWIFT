@@ -166,6 +166,13 @@ KIARACooling:
   dust_sne_coeff:               1.0                     # SN energy / 1.e51 erg
   dust_sne_shockspeed:          100.0                   # km/s
   dust_grainsize:               0.1                     # grain size in micron
+  dust_grain_size_min_micron:   0.001                   # size bins (--with-kiara-dust-size-bins, default 10): smallest radius (micron)
+  dust_grain_size_max_micron:   1.0                     # largest radius (micron); log-spaced in between
+  dust_initial_source:          SNII                    # size spectrum of dust without a size history (SNII or AGB)
+  dust_coagulation:             1                       # grain-grain coagulation between the size bins
+  dust_shattering:              1                       # grain-grain shattering between the size bins
+  dust_grain_density:           2.4                     # grain material density for the collisions (g/cm^3)
+  dust_collision_velocity_cap:  1.0                     # cap grain velocities at this x the gas velocity dispersion across the kernel (0: no cap)
   dust_oxygen_stoichiometric_cap: 1                      # 1: limit dust O to oxides of the dust Mg, Si, Ca, Fe
   H2_isrf_dissociation:         1                      # 1: G0-driven LW H2 photodissociation, self- and dust-shielded
   H2_shield_mean_density:       1                      # 1: H2 shielding column at the mean (not cold-cloud) density

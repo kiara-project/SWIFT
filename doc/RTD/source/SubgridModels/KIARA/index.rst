@@ -13,9 +13,6 @@ a common grid of grain radii. The size bins describe how each material's dust
 mass is distributed in radius; the dust mass itself, and its elemental
 composition, remain those evolved by crackle.
 
-*The size-resolved dust is under development: grain collisions
-(coagulation and shattering) are being added.*
-
 Grain-size grid
 ---------------
 
@@ -109,6 +106,47 @@ the wavelength. ``KIARACooling:dust_grainsize`` is not used with size bins.
 
 Grains cannot grow beyond the largest radius of the grid, so its upper end
 should allow for growth.
+
+Grain collisions
+----------------
+
+Grain-grain collisions move dust between the bins without changing its mass
+(Li et al. 2021, section 2.5.3). The grains are coupled to the turbulence of
+the gas, with a velocity dispersion (Li et al., equation 15)
+
+.. math::
+   \sigma_{\rm gr} = 0.06\,{\rm km\,s^{-1}} \left(\frac{v_J}{c_s}\right)^2
+   \frac{a}{0.1\,\mu{\rm m}} \left(\frac{n}{1\,{\rm cm^{-3}}}\right)^{-1/2}
+   \frac{\rho_{\rm gr}}{2.4\,{\rm g\,cm^{-3}}},
+
+where :math:`v_J = 0.7\,(L_J/1\,{\rm pc})^{1/2}` km/s is the turbulent
+velocity at the Jeans length :math:`L_J`. Every step, each bin gets a velocity
+whose components are drawn from a Gaussian of dispersion
+:math:`\sigma_{\rm gr}/\sqrt{3}` (reproducibly, from the particle ID and the
+time). Pairs of grains slower than the sticking threshold of Hirashita & Yan
+(2009, equation 8) coagulate; pairs faster than 2 km/s shatter, into
+fragments with a :math:`a^{-3.3}` spectrum following Hirashita & Yan (2009),
+section 2.3. The material constants are those of Hirashita & Yan's table 2
+(quartz for silicates, graphite for carbonaceous grains), with the common
+grain density ``KIARACooling:dust_grain_density`` (2.4 g/cm^3). Grains only
+collide with grains of the same material.
+
+The cascade of Larson's law up to the Jeans length only makes sense in the
+ISM: in diffuse gas the Jeans length is many kpc and the formula gives grains
+in the circumgalactic and intergalactic medium hundreds of km/s, which grinds
+them below the smallest bin. So the collisions only happen above the density
+threshold of the subgrid ISM (``KIARACooling:subgrid_threshold_n_H_cgs``, with
+more than 100 times the mean baryon density), and the grain velocities are at
+most ``KIARACooling:dust_collision_velocity_cap`` (1) times the velocity
+dispersion of the gas across the kernel, :math:`H|S|` from the trace-free
+velocity shear :math:`S` of the Smagorinsky diffusion (no cap if diffusion is
+off; 0 also switches the cap off). In the subgrid ISM the collisions happen
+in the cold phase, at the density and temperature that crackle uses, where
+the grains are slow and mostly coagulate; shattering happens in the warm and
+hot ISM.
+
+``KIARACooling:dust_coagulation`` and ``KIARACooling:dust_shattering`` (both 1
+by default) switch the two processes.
 
 Transport
 ---------

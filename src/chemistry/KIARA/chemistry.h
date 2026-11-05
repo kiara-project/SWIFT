@@ -309,6 +309,11 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
 
   struct chemistry_part_data *cpd = &p->chemistry_data;
 
+#if KIARA_DUST_N_BINS > 0
+  /* Not known without the shear tensor */
+  cpd->velocity_dispersion = -1.f;
+#endif
+
   /* If diffusion is on, finish up shear tensor & particle's diffusion coeff */
   if (cd->diffusion_flag == 1 && cd->C_Smagorinsky > 0.f) {
     const float h_inv_dim_plus_one = h_inv_dim * h_inv; /* 1/h^(d+1) */
@@ -363,6 +368,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
     }
 
     velocity_gradient_norm = sqrtf(velocity_gradient_norm);
+
+#if KIARA_DUST_N_BINS > 0
+    /* The velocity difference across the kernel, for the dust collisions */
+    cpd->velocity_dispersion =
+        cosmo->a * p->h * kernel_gamma * velocity_gradient_norm;
+#endif
 
     /* Never set D for wind, or ISM particles */
     if (!(p->decoupled) && !(p->cooling_data.subgrid_temp > 0.f)) {
@@ -445,6 +456,9 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
 
   /* Reset the diffusion. */
   cpd->diffusion_coefficient = 0.f;
+#if KIARA_DUST_N_BINS > 0
+  cpd->velocity_dispersion = 0.f;
+#endif
 
   /* Reset the change in metallicity */
   cpd->dZ_dt_total = 0.f;

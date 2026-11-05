@@ -217,6 +217,13 @@ struct chemistry_part_data {
   /*! Diffusion coefficient */
   float diffusion_coefficient;
 
+#if KIARA_DUST_N_BINS > 0
+  /*! Velocity dispersion of the gas across the kernel, H |S| from the
+   * trace-free shear (physical internal units; < 0 if not computed), which
+   * caps the grain velocities in the dust collisions */
+  float velocity_dispersion;
+#endif
+
   /*! Variation of the total metal mass */
   float dZ_dt_total;
 

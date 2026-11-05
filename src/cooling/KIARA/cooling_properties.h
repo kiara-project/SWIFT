@@ -179,6 +179,18 @@ struct cooling_function_data {
 
   /*! The normalised mass spectrum of that source on the grain-size grid */
   double dust_initial_distribution[KIARA_DUST_N_BINS];
+
+  /*! Grain-grain collisions between the size bins (Li et al. 2021):
+   * coagulation and shattering on/off */
+  int dust_coagulation;
+  int dust_shattering;
+
+  /*! Material density of the grains, for the collisions (g/cm^3) */
+  double dust_grain_density;
+
+  /*! Cap on the grain velocity dispersion in the collisions, in units of
+   * the velocity dispersion of the gas across the kernel (<= 0: no cap) */
+  double dust_collision_velocity_cap;
 #endif
 
   /*! H2 photodissociation by the ISRF G0, self- and dust-shielded (0 = off:

@@ -62,6 +62,14 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
                      cooling->dust_grain_sizes, KIARA_DUST_N_BINS);
   io_write_attribute_s(h_grp, "KIARA dust initial source",
                        cooling->dust_initial_source ? "AGB" : "SNII");
+  io_write_attribute_i(h_grp, "KIARA dust coagulation",
+                       cooling->dust_coagulation);
+  io_write_attribute_i(h_grp, "KIARA dust shattering",
+                       cooling->dust_shattering);
+  io_write_attribute_d(h_grp, "KIARA dust grain density [g/cm^3]",
+                       cooling->dust_grain_density);
+  io_write_attribute_d(h_grp, "KIARA dust collision velocity cap",
+                       cooling->dust_collision_velocity_cap);
 #endif
 }
 #endif
@@ -526,6 +534,19 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   cooling->dust_initial_source =
       kiara_dust_read_initial_source(parameter_file, cooling->dust_grain_sizes,
                                      cooling->dust_initial_distribution);
+
+  /* Grain-grain collisions between the size bins */
+  cooling->dust_coagulation = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:dust_coagulation", 1);
+  cooling->dust_shattering = parser_get_opt_param_int(
+      parameter_file, "KIARACooling:dust_shattering", 1);
+  cooling->dust_grain_density = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_grain_density", 2.4);
+  if (!(cooling->dust_grain_density > 0.) ||
+      !isfinite(cooling->dust_grain_density))
+    error("KIARACooling:dust_grain_density must be positive");
+  cooling->dust_collision_velocity_cap = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:dust_collision_velocity_cap", 1.);
 #endif
 
   cooling->H2_isrf_dissociation = parser_get_opt_param_int(
