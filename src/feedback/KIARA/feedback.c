@@ -146,7 +146,7 @@ double feedback_get_lum_from_star_particle(
  * @brief Condense part of a star particle's ejected metals into dust.
  *
  * Uses the condensation efficiencies of the Simba/Li+2019 dust model: for
- * stars older than 100 Myr with C/O > 1 (by mass excess), C condenses into
+ * stars older than 100 Myr with C/O > 1 by number, C condenses into
  * graphite with the AGB C-rich efficiency; otherwise the SNII (age < 100
  * Myr) or AGB O-rich efficiencies are used for each element, with O locked
  * in silicates and oxides of Mg, Si, S, Ca and Fe. The dust formed in each
@@ -176,9 +176,12 @@ void feedback_dust_production_condensation(
     dust[k] = 0.f;
   }
 
-  const double C_minus_O = sp->feedback_data.metal_mass[chemistry_element_C] -
-                           sp->feedback_data.metal_mass[chemistry_element_O];
-  if (star_age > 100. && C_minus_O > 0.) {
+  /* Carbon-rich AGB ejecta (C/O > 1 by number, i.e. by mass C > 0.75 O)
+   * condense their excess carbon, C - 0.75 O, into graphite */
+  const double C_excess =
+      sp->feedback_data.metal_mass[chemistry_element_C] -
+      0.75 * sp->feedback_data.metal_mass[chemistry_element_O];
+  if (star_age > 100. && C_excess > 0.) {
     /* Compute dust mass created in high-C/O AGB stars
      * (atomic C forms graphite)
      */
