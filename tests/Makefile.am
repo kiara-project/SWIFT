@@ -41,7 +41,8 @@ TESTS = testGreetings testMaths testReading.sh testKernel testKernelAccuracy \
         testNeutrinoFermiDirac \
         testLog testDistance testTimeline testZoomInit.sh testGetZoomIJKFunc.sh \
         testZoomRegrid.sh testSpaceSplit testZoomVoidTree.sh testZoomGravityDown testMeshGravityRebuildCheck \
-        testKIARADustGrid testKIARADustSources testKIARADustEvolution
+        testKIARADustGrid testKIARADustSources testKIARADustEvolution \
+        testKIARADustCooling
         # testMatrixInversion
 
 # List of test programs to compile
@@ -59,7 +60,8 @@ check_PROGRAMS = testGreetings testReading testTimeIntegration testKernelLongGra
 		 testNeutrinoCosmology \
 		 testNeutrinoFermiDirac testLog testTimeline testZoomInit testGetZoomIJKFunc \
 		 testZoomRegrid testSpaceSplit testZoomVoidTree testZoomGravityDown \
-		 testKIARADustGrid testKIARADustSources testKIARADustEvolution
+		 testKIARADustGrid testKIARADustSources testKIARADustEvolution \
+		 testKIARADustCooling
 
 # Rebuild tests when SWIFT is updated.
 $(check_PROGRAMS): ../src/.libs/libswiftsim.a
@@ -213,6 +215,7 @@ testZoomGravityDown_SOURCES = testZoomGravityDown.c
 testKIARADustGrid_SOURCES = testKIARADustGrid.c
 testKIARADustSources_SOURCES = testKIARADustSources.c
 testKIARADustEvolution_SOURCES = testKIARADustEvolution.c
+testKIARADustCooling_SOURCES = testKIARADustCooling.c
 
 # Files necessary for distribution
 EXTRA_DIST = testKIARADustGrid.py testReading.sh makeInput.py testActivePair.sh \

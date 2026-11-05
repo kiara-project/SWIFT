@@ -167,8 +167,12 @@ the element composition always agree.
 Validation
 ----------
 
-``make check`` runs the stand-alone checks of the grid, the source spectra
-and the radius transport and grain collisions with 6 bins. Run
+``make check`` runs the stand-alone checks with 6 bins: the grid, the source
+spectra, the radius transport (growth, sputtering), the bins kept consistent
+with the element dust, the SN shock shrink, and the grain collisions (Li et
+al. Eq. 15 and Hirashita & Yan Eq. 8 against their published forms, single
+pair rates, conservation of each material's mass, coagulation moving mass to
+larger grains and shattering to smaller ones). Run
 ``python3 tests/testKIARADustGrid.py`` to compile and run them with 2, 3, 6,
 12 and 41 bins under the address and undefined-behaviour sanitizers. These
 do not link crackle or GSL and do not replace a full KIARA build or a
