@@ -257,6 +257,9 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
   for (int d = 0; d < dust_element_count; d++) {
     p->cooling_data.dust_mass_fraction[d] = 0.f;
   }
+#if KIARA_DUST_N_BINS > 0
+  kiara_dust_distribution_zero(p->cooling_data.dust_size_distribution);
+#endif
 
   p->cooling_data.dust_temperature = 0.f;
 #endif
@@ -327,6 +330,14 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
           cooling->H2_shield_mean_density);
   message("H2 Sternberg+14 molecular-fraction limit = %d",
           cooling->H2_sternberg_limit);
+#if KIARA_DUST_N_BINS > 0
+  message(
+      "Dust size bins: %d per material (carbonaceous, silicate), radii "
+      "%g to %g micron, dust without a size history from %s",
+      KIARA_DUST_N_BINS, cooling->dust_grain_sizes[0],
+      cooling->dust_grain_sizes[KIARA_DUST_N_BINS - 1],
+      cooling->dust_initial_source ? "AGB" : "SNII");
+#endif
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);

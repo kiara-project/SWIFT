@@ -20,6 +20,12 @@
 #define SWIFT_COOLING_PROPERTIES_KIARA_H
 
 /* include grackle */
+/* The particle layout depends on the configured number of dust size bins:
+ * never fall back to the stand-alone default of dust.h here */
+#ifndef KIARA_DUST_N_BINS
+#error "config.h must be included before the KIARA cooling headers"
+#endif
+#include "chemistry/KIARA/dust.h"
 #include "crackle/grackle.h"
 
 /**
@@ -163,6 +169,17 @@ struct cooling_function_data {
   /*! Limit the oxygen in dust to the oxides of the refractory dust elements
    * (MgO, SiO2, CaO, FeO), as grains hold O only bound to them */
   int dust_oxygen_stoichiometric_cap;
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Representative (physical) radius of each grain-size bin (micron) */
+  double dust_grain_sizes[KIARA_DUST_N_BINS];
+
+  /*! Source assumed for dust without a size history: 0 = SNII, 1 = AGB */
+  int dust_initial_source;
+
+  /*! The normalised mass spectrum of that source on the grain-size grid */
+  double dust_initial_distribution[KIARA_DUST_N_BINS];
+#endif
 
   /*! H2 photodissociation by the ISRF G0, self- and dust-shielded (0 = off:
    * only the UVB dissociates H2) */
