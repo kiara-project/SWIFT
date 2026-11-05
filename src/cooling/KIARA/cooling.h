@@ -102,8 +102,9 @@ void cooling_copy_to_grackle1(grackle_field_data *data, const struct part *p,
                               gr_float species_densities[N_SPECIES]);
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
-    const struct cooling_function_data *restrict cooling, const double dt,
-    gr_float rho, gr_float species_densities[N_SPECIES]);
+    const struct cooling_function_data *restrict cooling,
+    const double SNe_count, gr_float rho,
+    gr_float species_densities[N_SPECIES]);
 void cooling_copy_to_grackle3(grackle_field_data *data, const struct part *p,
                               const struct xpart *xp, gr_float rho,
                               gr_float species_densities[N_SPECIES]);
@@ -118,20 +119,18 @@ void cooling_copy_to_grackle(
     grackle_field_data *data, const struct unit_system *restrict us,
     const struct cosmology *restrict cosmo,
     const struct cooling_function_data *restrict cooling, const struct part *p,
-    const struct xpart *xp, const double dt, const double T_floor,
+    const struct xpart *xp, const double SNe_count, const double T_floor,
     gr_float species_densities[N_SPECIES], gr_float *iact_rates, int mode);
 void cooling_copy_from_grackle(
     grackle_field_data *data, struct part *p, struct xpart *xp,
     const struct cooling_function_data *restrict cooling, gr_float rho);
 void cooling_grackle_free_data(grackle_field_data *data);
 void cooling_prepare_crackle_step(struct cooling_function_data *cooling);
-void cooling_copy_to_crackle(grackle_part_data *gp,
-                             const struct cosmology *restrict cosmo,
-                             const struct cooling_function_data *restrict
-                                 cooling,
-                             const struct part *p, const struct xpart *xp,
-                             const double dt, const double T_warm,
-                             gr_float *iact_rates, int mode);
+void cooling_copy_to_crackle(
+    grackle_part_data *gp, const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling, const struct part *p,
+    const struct xpart *xp, const double SNe_count, const double T_warm,
+    gr_float *iact_rates, int mode);
 void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
                                struct xpart *xp,
                                const struct cooling_function_data *restrict
@@ -717,6 +716,55 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
 }
 
 /**
+ * @brief Length of the gas time-step over which a particle uses the SNe
+ * deposited on it, given the length dt of one thermochemistry call.
+ *
+ * Without RT this is dt. In KIARA-RT the thermochemistry is done in the RT
+ * sub-cycles, 2^(hydro bin - RT bin) of them per hydro step, and
+ * rt_do_thermochemistry() may redo a sub-cycle as 2^depth shorter calls.
+ *
+ * @param cooling The properties of the cooling function.
+ * @param p Pointer to the particle data.
+ * @param dt The length of the thermochemistry call.
+ * @param depth The recursion depth of an RT retry (0 otherwise).
+ */
+INLINE static double cooling_get_SNe_step(
+    const struct cooling_function_data *cooling, const struct part *p,
+    const double dt, const int depth) {
+  if (!cooling->do_cooling_in_rt) return dt;
+  return ldexp(dt, depth + p->time_bin - p->rt_time_data.time_bin);
+}
+
+/**
+ * @brief SN rate a gas particle uses over its current time-step.
+ *
+ * Stellar feedback deposits a number of SNe on the gas
+ * (feedback_data.SNe_ThisTimeStep). Over a gas step dt_step a particle uses
+ * a fraction f of them, f = 1 - exp(-dt_step / tau) for an SN smoothing time
+ * tau and f = 1 without one, at a constant rate over the step, so that
+ * sub-steps (RT sub-cycles and retries) add up to the same number.
+ * cooling_decay_SNe_rate() removes that fraction at the end of the step.
+ *
+ * @param cooling The properties of the cooling function.
+ * @param p Pointer to the particle data.
+ * @param dt_step The gas time-step (see cooling_get_SNe_step()).
+ * @return The SN rate (internal units).
+ */
+INLINE static double cooling_get_SNe_rate(
+    const struct cooling_function_data *cooling, const struct part *p,
+    const double dt_step) {
+#if COOLING_GRACKLE_MODE >= 2
+  if (dt_step <= 0. || p->feedback_data.SNe_ThisTimeStep <= 0.f) return 0.;
+  const double f = cooling->SNe_smoothing_time > 0.
+                       ? -expm1(-dt_step / cooling->SNe_smoothing_time)
+                       : 1.;
+  return p->feedback_data.SNe_ThisTimeStep * f / dt_step;
+#else
+  return 0.;
+#endif
+}
+
+/**
  * @brief Returns the value of G0 for given particle p
  *
  * The method is set by G0_computation_method: 0 none; 1 local SFR density
@@ -731,13 +779,14 @@ __attribute__((always_inline)) INLINE static float cooling_G0_from_FIRE(
  * @param cooling The properties of the cooling function.
  * @param mstar The stellar mass of the host galaxy (internal units).
  * @param ssfr The specific SFR of the host galaxy (internal units).
+ * @param SNe_rate The SN rate the particle uses (cooling_get_SNe_rate()).
  * @return G0 in Habing units (0 outside the subgrid ISM).
  */
 __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     const struct part *restrict p, const struct xpart *restrict xp,
     const float rho, const float T_warm,
     const struct cooling_function_data *cooling, const float mstar,
-    const float ssfr) {
+    const float ssfr, const double SNe_rate) {
 
   /* No ISRF outside subgrid ISM */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;
@@ -771,13 +820,12 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
   }
 #if COOLING_GRACKLE_MODE >= 2
   else if (cooling->G0_computation_method == 4) {
-    /* SNe_ThisTimeStep stores the SN **rate** (internal units) */
-    G0 = p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe;
+    G0 = SNe_rate * cooling->G0_factorSNe;
   } else if (cooling->G0_computation_method == 5) {
     float pssfr = max(p->sf_data.SFR, 0.f);
     pssfr /= max(mstar, 8. * p->mass);
     G0 = max(ssfr, pssfr) * cooling->G0_factor2 +
-         p->feedback_data.SNe_ThisTimeStep * cooling->G0_factorSNe;
+         SNe_rate * cooling->G0_factorSNe;
   } else if (cooling->G0_computation_method == 6) {
     G0 = cooling_G0_from_FIRE(p, xp, rho, T_warm, cooling);
   }

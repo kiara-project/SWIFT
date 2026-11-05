@@ -114,8 +114,8 @@ struct cooling_function_data {
    * its cooling time (internal units) */
   double firehose_rho_max;
 
-  /*! Timescale (internal units) over which the SN rate deposited on gas
-   * particles by stellar feedback decays (0: used for one cooling step) */
+  /*! E-folding time (internal units) over which gas particles use the SNe
+   * deposited on them by stellar feedback (0: all in the next step) */
   double SNe_smoothing_time;
 
   /*! track H2 formation; this is set within the code based on selection options

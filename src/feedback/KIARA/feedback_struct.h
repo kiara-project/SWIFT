@@ -42,7 +42,8 @@ struct feedback_part_data {
   long long kick_id;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Number of SNe (of any type) going off in nearby stars */
+  /*! Number of SNe (of any type) deposited by neighbouring stars and not
+   * yet used (see cooling_get_SNe_rate()) */
   float SNe_ThisTimeStep;
 #endif
 };
@@ -97,7 +98,8 @@ struct feedback_spart_data {
   float wind_velocity;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Number of SNe (of any type) going off within star during this step */
+  /*! Number of SNe (of any type) going off within the star over its last
+   * enrichment interval */
   double SNe_ThisTimeStep;
 
   /*! Dust mass formed in each #dust_element this step (float, like the gas

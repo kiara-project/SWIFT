@@ -462,14 +462,15 @@ static double cooling_H2_shielding_length(
  * @param p The #part.
  * @param xp The #xpart.
  * @param cooling The #cooling_function_data used in the run.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param rho The particle density (grackle units).
  * @param species_densities Buffer holding the densities passed to grackle.
  */
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
-    const struct cooling_function_data *restrict cooling, const double dt,
-    gr_float rho, gr_float species_densities[N_SPECIES]) {
+    const struct cooling_function_data *restrict cooling,
+    const double SNe_count, gr_float rho,
+    gr_float species_densities[N_SPECIES]) {
   /* HM */
   species_densities[6] = xp->cooling_data.HM_frac * rho;
   data->HM_density = &species_densities[6];
@@ -488,10 +489,8 @@ void cooling_copy_to_grackle2(
     species_densities[20] =
         p->cooling_data.dust_mass / p->mass * species_densities[12];
     data->dust_density = &species_densities[20];
-    species_densities[21] = p->feedback_data.SNe_ThisTimeStep * dt / p->mass *
-                            species_densities[12];
-    /* need to pass the number of SNe per volume of particle;
-     * recall SNe_ThisTimeStep is the SNe rate */
+    /* The number of SNe the particle uses in this call, per volume */
+    species_densities[21] = SNe_count / p->mass * species_densities[12];
 
     // if (species_densities[21] > 1.e15) message("SNe_density: %g %g %g
     // %g\n",p->mass, species_densities[12], p->feedback_data.SNe_ThisTimeStep,
@@ -592,14 +591,15 @@ void cooling_copy_to_grackle2(
  * @param p The #part.
  * @param xp The #xpart.
  * @param cooling The #cooling_function_data used in the run.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param rho The particle density (grackle units).
  * @param species_densities Buffer holding the densities passed to grackle.
  */
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
-    const struct cooling_function_data *restrict cooling, const double dt,
-    gr_float rho, gr_float species_densities[N_SPECIES]) {
+    const struct cooling_function_data *restrict cooling,
+    const double SNe_count, gr_float rho,
+    gr_float species_densities[N_SPECIES]) {
   data->HM_density = NULL;
   data->H2I_density = NULL;
   data->H2II_density = NULL;
@@ -987,7 +987,7 @@ void cooling_crackle_compare_inputs(long long id) {
  * @param cooling The #cooling_function_data used in the run.
  * @param p The #part.
  * @param xp The #xpart.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param T_warm The warm-ISM EoS temperature of the particle (K).
  * @param species_densities Buffer holding the values passed to grackle.
  * @param iact_rates The RT heating and ionisation rates passed to grackle.
@@ -997,7 +997,7 @@ void cooling_copy_to_grackle(
     grackle_field_data *data, const struct unit_system *restrict us,
     const struct cosmology *restrict cosmo,
     const struct cooling_function_data *restrict cooling, const struct part *p,
-    const struct xpart *xp, const double dt, const double T_warm,
+    const struct xpart *xp, const double SNe_count, const double T_warm,
     gr_float species_densities[N_SPECIES], gr_float *iact_rates, int mode) {
 
   /* Grid description for a single particle. Grackle only reads these, so
@@ -1078,8 +1078,8 @@ void cooling_copy_to_grackle(
 
   cooling_copy_to_grackle1(data, p, xp, species_densities[12],
                            species_densities);
-  cooling_copy_to_grackle2(data, p, xp, cooling, dt, species_densities[12],
-                           species_densities);
+  cooling_copy_to_grackle2(data, p, xp, cooling, SNe_count,
+                           species_densities[12], species_densities);
   cooling_copy_to_grackle3(data, p, xp, species_densities[12],
                            species_densities);
 
@@ -1199,18 +1199,16 @@ void cooling_prepare_crackle_step(struct cooling_function_data *cooling) {
  * @param cooling The #cooling_function_data used in the run.
  * @param p The #part.
  * @param xp The #xpart.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param T_warm The warm-ISM EoS temperature (used outside the subgrid ISM).
  * @param iact_rates The RT interaction rates (zeroed in the subgrid ISM).
  * @param mode 0 solve, 1 cooling time, 2 temperature.
  */
-void cooling_copy_to_crackle(grackle_part_data *gp,
-                             const struct cosmology *restrict cosmo,
-                             const struct cooling_function_data *restrict
-                                 cooling,
-                             const struct part *p, const struct xpart *xp,
-                             const double dt, const double T_warm,
-                             gr_float *iact_rates, int mode) {
+void cooling_copy_to_crackle(
+    grackle_part_data *gp, const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling, const struct part *p,
+    const struct xpart *xp, const double SNe_count, const double T_warm,
+    gr_float *iact_rates, int mode) {
 
   const chemistry_data *chemistry = &cooling->chemistry;
 
@@ -1313,7 +1311,7 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
   gr_float dust_metals[NUM_METAL_SPECIES_GRACKLE] = {0.};
   if (cooling->use_grackle_dust_evol == 1) {
     dust_density = p->cooling_data.dust_mass / p->mass * rho;
-    SNe_density = p->feedback_data.SNe_ThisTimeStep * dt / p->mass * rho;
+    SNe_density = SNe_count / p->mass * rho;
     if (p->cooling_data.subgrid_temp == 0.f) {
       isrf = -1.f;
     } else {
@@ -1583,9 +1581,12 @@ static gr_float cooling_grackle_driver_fields(
   }*/
 
   /* load particle information from particle to grackle data */
-  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, T_warm,
+  const double SNe_count =
+      cooling_get_SNe_rate(cooling, p,
+                           cooling_get_SNe_step(cooling, p, dt, 0)) *
+      dt;
+  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, SNe_count, T_warm,
                           species_densities, iact_rates, mode);
-
 
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
@@ -1697,8 +1698,12 @@ static gr_float cooling_crackle_driver(
   chemistry_data *chemistry = (chemistry_data *)&cooling->chemistry;
 
   grackle_part_data gp;
-  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, dt, T_warm, iact_rates,
-                          mode);
+  const double SNe_count =
+      cooling_get_SNe_rate(cooling, p,
+                           cooling_get_SNe_step(cooling, p, dt, 0)) *
+      dt;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, SNe_count, T_warm,
+                          iact_rates, mode);
 
   gr_float return_value = 0.f;
   switch (mode) {
@@ -2252,8 +2257,11 @@ void cooling_do_grackle_cooling(
 
   /* Compute the ISRF */
   p->cooling_data.G0 =
-      fmax(cooling_compute_G0(p, xp, p->cooling_data.subgrid_dens, T_warm,
-                              cooling, galaxy_mstar, galaxy_ssfr),
+      fmax(cooling_compute_G0(
+               p, xp, p->cooling_data.subgrid_dens, T_warm, cooling,
+               galaxy_mstar, galaxy_ssfr,
+               cooling_get_SNe_rate(cooling, p,
+                                    cooling_get_SNe_step(cooling, p, dt, 0))),
            0.);
 
   /* Do grackle cooling */
@@ -2365,15 +2373,17 @@ void cooling_do_grackle_cooling(
 }
 
 /**
- * @brief Decay the SN rate deposited on a gas particle by stellar feedback,
- * once it has been used over a step of length dt. With no smoothing time,
- * it is dropped, so that each deposit is used for one step.
+ * @brief Remove the SNe a gas particle has used over its step of length dt
+ * from the number deposited on it by stellar feedback: a fraction
+ * 1 - exp(-dt / tau) of them for an SN smoothing time tau, all of them
+ * without one (see cooling_get_SNe_rate()). Particles that did not cool this
+ * step (decoupled or with cooling shut off) lose them in the same way.
  *
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param dt The time-step of this particle.
  */
-static INLINE void cooling_decay_SNe_rate(
+static INLINE void cooling_decay_SNe(
     const struct cooling_function_data *restrict cooling,
     struct part *restrict p, const double dt) {
 #if COOLING_GRACKLE_MODE >= 2
@@ -2425,10 +2435,10 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   if (dt == 0.f || dt_therm == 0.f) return;
 
   /* In KIARA_RT we do cooling in rt_thermochemistry, so we don't do it here.
-   * This task runs before stellar feedback and RT in each step, so the SN
-   * rate deposited last step has already been used by RT: decay it here. */
+   * This task runs before stellar feedback and RT in each step, so the SNe
+   * deposited last step have already been used by RT: remove them here. */
   if (cooling->do_cooling_in_rt) {
-    cooling_decay_SNe_rate(cooling, p, dt);
+    cooling_decay_SNe(cooling, p, dt);
     return;
   }
 
@@ -2447,9 +2457,9 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
     p->cooling_data.ncool_this_step += 1;
   }
 
-  /* The SN rate deposited by stellar feedback has now been used (for the
-   * dust and G0) over this step */
-  cooling_decay_SNe_rate(cooling, p, dt);
+  /* The SNe deposited by stellar feedback have now been used (for the dust
+   * and G0) over this step */
+  cooling_decay_SNe(cooling, p, dt);
 }
 
 /**

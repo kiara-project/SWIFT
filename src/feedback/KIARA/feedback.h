@@ -329,6 +329,8 @@ __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
   for (int d = 0; d < dust_element_count; d++) {
     sp->feedback_data.delta_dust_mass[d] = 0.;
   }
+  /* No SNe to deposit either */
+  sp->feedback_data.SNe_ThisTimeStep = 0.;
 #endif
   sp->feedback_data.total_metal_mass = 0.;
 
@@ -889,9 +891,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_feedback(
   sp->last_enrichment_time = (with_cosmology) ? cosmo->a : time;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* Update the number of SNe that have gone off, used in Grackle dust model.
-     Actually stores SNe rate */
-  sp->feedback_data.SNe_ThisTimeStep = N_SNe / dt;
+  /* The number of SNe that went off over this enrichment interval, deposited
+   * on the gas neighbours (dust destruction, SN-based G0) */
+  sp->feedback_data.SNe_ThisTimeStep = N_SNe;
 #endif
 
 #ifdef SWIFT_STARS_DENSITY_CHECKS
