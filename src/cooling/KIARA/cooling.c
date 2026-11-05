@@ -2089,6 +2089,13 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
    * skip the extra grackle call here. */
   if (p->chemistry_data.radius_stream <= 0.f ||
       p->chemistry_data.rho_ambient <= 0.f) {
+    /* Gas that skips the cooling solve this step (decoupled, or with its
+     * cooling shut off, which in KIARA-RT still goes through the solve) has
+     * its dust sputtered here, as the solve would have done */
+    if (dt > 0. && p->cooling_data.subgrid_temp == 0.f &&
+        (p->decoupled || (!cooling->do_cooling_in_rt &&
+                          p->feedback_data.cooling_shutoff_delay_time > 0.f)))
+      cooling_sputter_dust(us, cosmo, cooling, p, xp, dt);
     return;
   }
 
