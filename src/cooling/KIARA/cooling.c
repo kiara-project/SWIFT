@@ -2630,6 +2630,8 @@ void cooling_split_part(struct part *p, struct xpart *xp, double n) {
   xp->cooling_data.radiated_energy /= n;
 #if COOLING_GRACKLE_MODE >= 2
   p->cooling_data.dust_mass /= n;
+  /* The SNe deposited on the particle are shared between its n parts */
+  p->feedback_data.SNe_ThisTimeStep /= n;
 #endif
 }
 
