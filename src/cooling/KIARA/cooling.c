@@ -1983,7 +1983,7 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
       const double tsp = 1.7e8 * 3.15569251e7 /
                          units_cgs_conversion_factor(us, UNIT_CONV_TIME) *
                          (cooling->dust_grainsize / 0.1) * (1.e-27 / rho_cgs) *
-                         (pow(2.e6 / Tstream, 2.5) + 1.0);
+                         (pow(2.e6 / Tstream_K, 2.5) + 1.0);
 
       const float dust_mass_old = p->cooling_data.dust_mass;
 
