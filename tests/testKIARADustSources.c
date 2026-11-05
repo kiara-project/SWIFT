@@ -27,7 +27,9 @@ int main(void) {
     assert(fabs(sum - 1.) < 1.e-13);
   }
   assert(!kiara_dust_source_lognormal(radius, .1, 0., 0., mass));
+#ifndef __FAST_MATH__ /* -ffast-math (SWIFT's default) assumes no NaN/inf */
   assert(!kiara_dust_source_lognormal(radius, NAN, .6, 0., mass));
+#endif
   assert(kiara_dust_source_lognormal(radius, 1.e-20, .01, 3., mass));
   assert(mass[0] == 1.);
   assert(kiara_dust_source_lognormal(radius, 1.e20, .01, 3., mass));

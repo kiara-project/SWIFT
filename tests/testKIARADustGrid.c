@@ -24,10 +24,12 @@ static void check_deposit(const double *radius, const double a) {
 
 int main(void) {
   double radius[KIARA_DUST_N_BINS];
+#ifndef __FAST_MATH__ /* -ffast-math (SWIFT's default) assumes no NaN/inf */
   assert(!kiara_dust_grid_logarithmic(NAN, 1., radius));
+  assert(!kiara_dust_grid_logarithmic(1., INFINITY, radius));
+#endif
   assert(!kiara_dust_grid_logarithmic(0., 1., radius));
   assert(!kiara_dust_grid_logarithmic(1., 1., radius));
-  assert(!kiara_dust_grid_logarithmic(1., INFINITY, radius));
   for (int irregular = 0; irregular < 2; ++irregular) {
     assert(kiara_dust_grid_logarithmic(1.e-4, 1., radius));
     if (irregular)
@@ -43,8 +45,10 @@ int main(void) {
     for (int i = 1; i < KIARA_DUST_N_BINS; ++i)
       check_deposit(radius, sqrt(radius[i - 1] * radius[i]));
   }
+#ifndef __FAST_MATH__ /* -ffast-math (SWIFT's default) assumes no NaN/inf */
   radius[1] = NAN;
   assert(!kiara_dust_grid_valid(radius));
+#endif
   printf("PASS dust grid: %d bins\n", KIARA_DUST_N_BINS);
   return 0;
 }

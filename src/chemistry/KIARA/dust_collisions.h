@@ -6,9 +6,10 @@
 
 #include "dust.h"
 
-#include <assert.h>
 #include <float.h>
 #include <math.h>
+
+#if KIARA_DUST_N_BINS > 0
 
 /** Representative radii and single-grain masses, in cgs units.
  *
@@ -85,8 +86,8 @@ static inline void kiara_dust_collision_deposit(
     const struct kiara_dust_collision_grid *grid, const double grain_mass,
     const double total_mass, double bin_mass[KIARA_DUST_N_BINS]) {
 
-  assert(isfinite(grain_mass) && grain_mass > 0.);
-  assert(isfinite(total_mass) && total_mass >= 0.);
+  kiara_dust_assert(isfinite(grain_mass) && grain_mass > 0.);
+  kiara_dust_assert(isfinite(total_mass) && total_mass >= 0.);
   if (total_mass == 0.) return;
 
   if (grain_mass <= grid->mass[0]) {
@@ -128,10 +129,10 @@ static inline double kiara_dust_collision_velocity_dispersion(
     const double radius, const double gas_density, const double sound_speed,
     const double grain_density) {
 
-  assert(isfinite(radius) && radius > 0.);
-  assert(isfinite(gas_density) && gas_density > 0.);
-  assert(isfinite(sound_speed) && sound_speed > 0.);
-  assert(isfinite(grain_density) && grain_density > 0.);
+  kiara_dust_assert(isfinite(radius) && radius > 0.);
+  kiara_dust_assert(isfinite(gas_density) && gas_density > 0.);
+  kiara_dust_assert(isfinite(sound_speed) && sound_speed > 0.);
+  kiara_dust_assert(isfinite(grain_density) && grain_density > 0.);
 
   const double pi = 3.14159265358979323846;
   const double gravity_cgs = 6.67430e-8;
@@ -308,5 +309,7 @@ static inline int kiara_dust_collision_evolve(
   for (int i = 0; i < KIARA_DUST_N_BINS; ++i) fraction[i] = current[i];
   return 1;
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif /* SWIFT_KIARA_DUST_COLLISIONS_H */

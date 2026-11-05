@@ -4,6 +4,8 @@
 
 #include "dust_grid.h"
 
+#if KIARA_DUST_N_BINS > 0
+
 /** Remap a' = scale*a + shift, with optional fixed-number mass evolution
  * proportional to a'^3. */
 static inline double kiara_dust_radius_remap(
@@ -32,5 +34,7 @@ static inline double kiara_dust_radius_remap(
   for (int i = 0; i < KIARA_DUST_N_BINS; ++i) sum += output[i];
   return sum;
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif

@@ -6,6 +6,8 @@
 
 #include "dust_collisions.h"
 
+#if KIARA_DUST_N_BINS > 0
+
 /**
  * @brief Sticking threshold in cm/s: Hirashita & Yan (2009), equation 8.
  *
@@ -22,8 +24,8 @@ static inline double kiara_dust_coagulation_threshold(
     const double radius_i, const double radius_j, const double grain_density,
     const enum kiara_dust_material material) {
 
-  assert(radius_i > 0. && radius_j > 0. && grain_density > 0.);
-  assert(material == kiara_dust_carbonaceous ||
+  kiara_dust_assert(radius_i > 0. && radius_j > 0. && grain_density > 0.);
+  kiara_dust_assert(material == kiara_dust_carbonaceous ||
          material == kiara_dust_silicate);
   const int carbon = material == kiara_dust_carbonaceous;
   const double surface_energy = carbon ? 12. : 25.;
@@ -79,5 +81,7 @@ static inline void kiara_dust_coagulation_operator_init(
     }
   }
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif /* SWIFT_KIARA_DUST_COAGULATION_H */

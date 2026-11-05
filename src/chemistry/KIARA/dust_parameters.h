@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#if KIARA_DUST_N_BINS > 0
+
 /** Read one common grid, retaining the legacy endpoint parameter aliases. */
 static inline void kiara_dust_read_grid(struct swift_params *params,
                                         double radius[KIARA_DUST_N_BINS]) {
@@ -68,5 +70,7 @@ static inline int kiara_dust_read_initial_source(
   kiara_dust_read_source(params, agb, radius, shape);
   return agb;
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif

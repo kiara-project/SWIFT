@@ -4,6 +4,8 @@
 
 #include "dust_grid.h"
 
+#if KIARA_DUST_N_BINS > 0
+
 /** Integrate Li et al. (2021), Eq. 5, as mass in geometric cells, folding both
  * tails into endpoint bins. */
 static inline int kiara_dust_source_lognormal(
@@ -45,5 +47,7 @@ static inline void kiara_dust_distribution_seed(
       distribution[material][i] = fraction * shape[i];
   }
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif

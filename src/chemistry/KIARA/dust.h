@@ -4,13 +4,29 @@
 #ifndef SWIFT_KIARA_DUST_H
 #define SWIFT_KIARA_DUST_H
 
-/* config.h normally provides this.  Keep headers usable by stand-alone tools. */
+/* config.h provides this (--with-kiara-dust-size-bins, 0: no size-resolved
+ * dust). Keep headers usable by stand-alone tools. */
 #ifndef KIARA_DUST_N_BINS
 #define KIARA_DUST_N_BINS 6
 #endif
-#if KIARA_DUST_N_BINS < 2
-#error "KIARA dust requires at least two size bins per material"
+#if KIARA_DUST_N_BINS < 0 || KIARA_DUST_N_BINS == 1
+#error "KIARA dust requires 0 (no size bins) or at least two size bins"
 #endif
+
+#include <stdio.h>
+#include <stdlib.h>
+
+/* Consistency check of the dust headers. Not assert(): SWIFT's error.h
+ * defines its own, which clashes with <assert.h> depending on the include
+ * order; this also keeps the headers usable by stand-alone tools. */
+#define kiara_dust_assert(expr)                                            \
+  do {                                                                     \
+    if (!(expr)) {                                                         \
+      fprintf(stderr, "%s:%s():%i: FAILED KIARA DUST CHECK: " #expr "\n", \
+              __FILE__, __func__, __LINE__);                               \
+      abort();                                                             \
+    }                                                                      \
+  } while (0)
 
 #define KIARA_DUST_N_MATERIALS 2
 #define KIARA_DUST_N_DISTRIBUTION_VALUES \
@@ -21,6 +37,8 @@ enum kiara_dust_material {
   kiara_dust_silicate = 1,
   kiara_dust_material_count = KIARA_DUST_N_MATERIALS
 };
+
+#if KIARA_DUST_N_BINS > 0
 
 /** Zero a material-by-size distribution. */
 static inline void
@@ -75,5 +93,7 @@ kiara_dust_distribution_normalize(
         distribution[material][bin] *= sum_inv;
   }
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif /* SWIFT_KIARA_DUST_H */

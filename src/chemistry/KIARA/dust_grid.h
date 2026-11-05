@@ -4,8 +4,9 @@
 
 #include "dust.h"
 
-#include <assert.h>
 #include <math.h>
+
+#if KIARA_DUST_N_BINS > 0
 
 /** Validate representative grain radii in any consistent length unit. */
 static inline int kiara_dust_grid_valid(
@@ -38,8 +39,8 @@ static inline int kiara_dust_grid_logarithmic(
 static inline void kiara_dust_grid_deposit(
     const double radius[KIARA_DUST_N_BINS], const double grain_radius,
     const double total_mass, double bins[KIARA_DUST_N_BINS]) {
-  assert(isfinite(grain_radius) && grain_radius > 0.);
-  assert(isfinite(total_mass) && total_mass >= 0.);
+  kiara_dust_assert(isfinite(grain_radius) && grain_radius > 0.);
+  kiara_dust_assert(isfinite(total_mass) && total_mass >= 0.);
   if (grain_radius <= radius[0]) {
     bins[0] += total_mass;
     return;
@@ -63,5 +64,7 @@ static inline void kiara_dust_grid_deposit(
     }
   }
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif

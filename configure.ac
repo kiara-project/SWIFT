@@ -342,6 +342,26 @@ if test "$enable_kiara_debugging_checks" = "yes"; then
    AC_DEFINE([KIARA_DEBUG_CHECKS],1,[Enable KIARA expensive debugging])
 fi
 
+# Number of grain-size bins per dust material (carbonaceous, silicate) in the
+# KIARA dust model. This is a compile-time choice because the bins are part of
+# the particle layout; 0 (the default) leaves the size-resolved dust out.
+AC_ARG_WITH([kiara-dust-size-bins],
+   [AS_HELP_STRING([--with-kiara-dust-size-bins=<n>],
+      [number of grain-size bins per KIARA dust material, 0 (no size-resolved dust) or >= 2 @<:@default: 0@:>@])],
+   [kiara_dust_size_bins="$withval"],
+   [kiara_dust_size_bins=0]
+)
+case "$kiara_dust_size_bins" in
+   ''|*[[!0-9]]*)
+      AC_MSG_ERROR([--with-kiara-dust-size-bins must be 0 or an integer >= 2])
+   ;;
+esac
+if test "$kiara_dust_size_bins" -eq 1; then
+   AC_MSG_ERROR([--with-kiara-dust-size-bins must be 0 or >= 2])
+fi
+AC_DEFINE_UNQUOTED([KIARA_DUST_N_BINS], [$kiara_dust_size_bins],
+   [Number of grain-size bins per material in the KIARA dust model (0: none)])
+
 # Check if Firehose expensive debugging is on.
 AC_ARG_ENABLE([firehose-debugging-checks],
    [AS_HELP_STRING([--enable-firehose-debugging-checks],
@@ -3885,6 +3905,7 @@ AC_MSG_RESULT([
    Entropy floor        : $with_entropy_floor
    Cooling function     : $with_cooling_name
    Chemistry            : $with_chemistry_name
+   KIARA dust size bins : $kiara_dust_size_bins
    Tracers              : $with_tracers
    Stellar model        : $with_stars
    Star formation model : $with_star_formation

@@ -6,6 +6,8 @@
 
 #include "dust_collisions.h"
 
+#if KIARA_DUST_N_BINS > 0
+
 /** Deposit a fragment spectrum dn/da proportional to a^-3.3.
  * Integrate MASS analytically (dM/da proportional to a^-0.3) between geometric
  * bin boundaries. The end bins include unresolved fragments outside the grid:
@@ -18,7 +20,7 @@ static inline void kiara_dust_shattering_deposit_fragments(
     const double radius_max, const double fragment_mass,
     double product[KIARA_DUST_N_BINS]) {
 
-  assert(radius_min > 0. && radius_max >= radius_min && fragment_mass >= 0.);
+  kiara_dust_assert(radius_min > 0. && radius_max >= radius_min && fragment_mass >= 0.);
   if (fragment_mass == 0.) return;
   if (radius_max == radius_min) {
     const double ratio = radius_max / grid->radius[0];
@@ -43,7 +45,7 @@ static inline void kiara_dust_shattering_deposit_fragments(
     sum += weight[k];
     if (weight[k] > weight[largest]) largest = k;
   }
-  assert(sum > 0. && isfinite(sum));
+  kiara_dust_assert(sum > 0. && isfinite(sum));
   double remaining = fragment_mass;
   for (int k = 0; k < KIARA_DUST_N_BINS; ++k) {
     if (k == largest) continue;
@@ -83,9 +85,9 @@ static inline double kiara_dust_shattering_products(
     const enum kiara_dust_material material,
     double product[KIARA_DUST_N_BINS]) {
 
-  assert(i >= 0 && i < j && j < KIARA_DUST_N_BINS);
-  assert(speed > 2.e5 && grain_density > 0.);
-  assert(material == kiara_dust_carbonaceous ||
+  kiara_dust_assert(i >= 0 && i < j && j < KIARA_DUST_N_BINS);
+  kiara_dust_assert(speed > 2.e5 && grain_density > 0.);
+  kiara_dust_assert(material == kiara_dust_carbonaceous ||
          material == kiara_dust_silicate);
   const int carbon = material == kiara_dust_carbonaceous;
   const double c0 = carbon ? 1.8e5 : 5.e5;
@@ -171,5 +173,7 @@ static inline void kiara_dust_shattering_operator_init(
     }
   }
 }
+
+#endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif /* SWIFT_KIARA_DUST_SHATTERING_H */
