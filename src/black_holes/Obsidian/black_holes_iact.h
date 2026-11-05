@@ -662,6 +662,12 @@ runner_iact_nonsym_bh_gas_swallow(
       struct chemistry_part_data *pj_chem = &pj->chemistry_data;
       chemistry_transfer_part_to_bpart(bi_chem, pj_chem, nibbled_mass,
                                        nibbled_mass / pj_mass_orig);
+#if defined(CHEMISTRY_KIARA) && COOLING_GRACKLE_MODE >= 2
+      /* The nibbled gas takes its share of the dust with it */
+      chemistry_add_dust_to_bpart(bi_chem, &pj->cooling_data,
+                                  nibbled_mass / pj_mass_orig);
+      pj->cooling_data.dust_mass *= new_gas_mass / pj_mass_orig;
+#endif
     }
 
     /* This particle is swallowed by the BH with the largest ID of all the

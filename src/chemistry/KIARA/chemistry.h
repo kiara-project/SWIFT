@@ -1403,6 +1403,28 @@ chemistry_transfer_part_to_bpart(struct chemistry_bpart_data *bp_data,
     bp_data->metal_mass[i] += p_data->metal_mass_fraction[i] * nibble_mass;
 }
 
+#if COOLING_GRACKLE_MODE >= 2
+/**
+ * @brief Add a fraction of a gas particle's dust to the metals of a black hole
+ * that accretes it (the dust is metals, by element).
+ *
+ * @param bp_data The black hole data to add to.
+ * @param co The cooling data of the gas particle (its dust).
+ * @param fraction The fraction of the particle's dust accreted.
+ */
+__attribute__((always_inline)) INLINE static void chemistry_add_dust_to_bpart(
+    struct chemistry_bpart_data *bp_data, const struct cooling_part_data *co,
+    const double fraction) {
+
+  const double dust_mass = fraction * co->dust_mass;
+  for (int d = 0; d < dust_element_count; d++) {
+    const double mass = dust_mass * co->dust_mass_fraction[d];
+    bp_data->metal_mass[chemistry_element_of_dust(d)] += mass;
+    bp_data->metal_mass_total += mass;
+  }
+}
+#endif
+
 /**
  * @brief Add the chemistry data of a black hole to another one.
  *
