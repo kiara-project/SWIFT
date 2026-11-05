@@ -48,6 +48,81 @@ static inline void kiara_dust_distribution_seed(
   }
 }
 
+/**
+ * @brief The dust mass in each material and size bin of a particle.
+ *
+ * Each material's row of the distribution (fractions of the dust mass) is
+ * rescaled to the material's share of the dust, from the element composition,
+ * so that the masses agree with it even if the rows are out of date. An empty
+ * row of a material with dust gets the shape seed (if given; else it stays
+ * empty).
+ *
+ * @param distribution The distribution (fractions of the dust mass).
+ * @param dust The dust mass.
+ * @param f_carbon The carbonaceous share of the dust (the rest is silicate).
+ * @param seed A normalised shape for empty rows, or NULL.
+ * @param mass (return) The masses.
+ */
+static inline void kiara_dust_bin_masses(
+    const float distribution[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS],
+    const double dust, const double f_carbon,
+    const double seed[KIARA_DUST_N_BINS],
+    double mass[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS]) {
+  const double f_C = fmin(fmax(f_carbon, 0.), 1.);
+  for (int material = 0; material < KIARA_DUST_N_MATERIALS; ++material) {
+    const double m_material =
+        (dust > 0.) * dust *
+        (material == kiara_dust_carbonaceous ? f_C : 1. - f_C);
+    double row = 0.;
+    for (int i = 0; i < KIARA_DUST_N_BINS; ++i)
+      row += distribution[material][i];
+    for (int i = 0; i < KIARA_DUST_N_BINS; ++i)
+      mass[material][i] = (row > 0.)
+                              ? distribution[material][i] / row * m_material
+                              : ((seed != NULL) ? seed[i] * m_material : 0.);
+  }
+}
+
+/**
+ * @brief Set a particle's size distribution from dust masses in its bins.
+ *
+ * The bin masses give each material's shape; the rows are rescaled to the
+ * materials' dust masses m_material (from the element composition) and
+ * divided by their sum, so that the distribution always agrees with the
+ * element masses. An empty row of a material with dust gets the shape seed
+ * (if given; else it stays empty, to be seeded later).
+ *
+ * @param distribution (return) The distribution (fractions of the dust mass).
+ * @param mass The masses in each material and bin (only their shapes count).
+ * @param m_material The dust mass of each material.
+ * @param seed A normalised shape for empty rows, or NULL.
+ */
+static inline void kiara_dust_set_distribution(
+    float distribution[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS],
+    const double mass[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS],
+    const double m_material[KIARA_DUST_N_MATERIALS],
+    const double seed[KIARA_DUST_N_BINS]) {
+  double total = 0.;
+  for (int material = 0; material < KIARA_DUST_N_MATERIALS; ++material)
+    total += fmax(m_material[material], 0.);
+  for (int material = 0; material < KIARA_DUST_N_MATERIALS; ++material) {
+    const double m = fmax(m_material[material], 0.);
+    double row = 0.;
+    for (int i = 0; i < KIARA_DUST_N_BINS; ++i)
+      row += fmax(mass[material][i], 0.);
+    for (int i = 0; i < KIARA_DUST_N_BINS; ++i) {
+      double f = 0.;
+      if (total > 0. && m > 0.) {
+        if (row > 0.)
+          f = fmax(mass[material][i], 0.) / row * m / total;
+        else if (seed != NULL)
+          f = seed[i] * m / total;
+      }
+      distribution[material][i] = (float)f;
+    }
+  }
+}
+
 #endif /* KIARA_DUST_N_BINS > 0 */
 
 #endif

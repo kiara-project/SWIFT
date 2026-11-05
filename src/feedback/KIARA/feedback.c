@@ -21,6 +21,8 @@
 /* This file's header */
 #include "feedback.h"
 
+#include "chemistry/KIARA/dust_parameters.h"
+
 /* Local includes. */
 #include "hydro_properties.h"
 #include "inline.h"
@@ -163,6 +165,10 @@ void feedback_dust_production_condensation(
 
   /* Get age of star to separate AGB from SNII */
   star_age *= fb_props->time_to_Myr;
+#if KIARA_DUST_N_BINS > 0
+  /* The size spectrum of this dust */
+  sp->feedback_data.dust_source_agb = (star_age > 100.);
+#endif
 
   /* Dust mass formed in each chemistry element */
   double dust[chemistry_element_count];
@@ -1930,6 +1936,15 @@ void feedback_props_init(struct feedback_props *fp,
 #if COOLING_GRACKLE_MODE >= 2
   fp->max_dust_fraction = parser_get_opt_param_double(
       params, "KIARAFeedback:max_dust_fraction", 0.9);
+#if KIARA_DUST_N_BINS > 0
+  /* Size spectra of the stellar dust on the grain-size grid of the cooling */
+  {
+    double radius[KIARA_DUST_N_BINS];
+    kiara_dust_read_grid(params, radius);
+    kiara_dust_read_source(params, /*agb=*/0, radius, fp->dust_source_shape[0]);
+    kiara_dust_read_source(params, /*agb=*/1, radius, fp->dust_source_shape[1]);
+  }
+#endif
 #endif
 
   /* Convert Kelvin to internal energy and internal units */

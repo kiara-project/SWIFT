@@ -105,6 +105,11 @@ struct feedback_spart_data {
   /*! Dust mass formed in each #dust_element this step (float, like the gas
    * dust masses it is added to) */
   float delta_dust_mass[dust_element_count];
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Channel of that dust, for its size spectrum: 0 = SNII, 1 = AGB */
+  int dust_source_agb;
+#endif
 #endif
 
   /*! Initial stream radius for firehose model */

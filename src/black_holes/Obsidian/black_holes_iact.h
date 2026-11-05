@@ -1465,6 +1465,9 @@ runner_iact_nonsym_bh_gas_feedback(
       for (int d = 0; d < dust_element_count; d++) {
         pj->cooling_data.dust_mass_fraction[d] = 0.f;
       }
+#if KIARA_DUST_N_BINS > 0
+      kiara_dust_distribution_zero(pj->cooling_data.dust_size_distribution);
+#endif
 
       /* All of the dust is metals */
       pj->chemistry_data.metal_mass_fraction_total +=

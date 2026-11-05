@@ -2383,6 +2383,13 @@ void cooling_init_chemistry(
     p->cooling_data.dust_mass = init_dust_to_gas *
                                 cooling->self_enrichment_metallicity *
                                 (Z_sun_dust / Z_sun) * p->mass;
+#if KIARA_DUST_N_BINS > 0
+    /* This dust has the spectrum of dust without a size history */
+    kiara_dust_distribution_seed(
+        cooling->dust_initial_distribution,
+        p->cooling_data.dust_mass_fraction[dust_element_C],
+        p->cooling_data.dust_size_distribution);
+#endif
 
     p->chemistry_data.metal_mass_fraction[chemistry_element_He] =
         cooling->chemistry.SolarAbundances[0];

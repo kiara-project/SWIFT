@@ -403,6 +403,12 @@ struct feedback_props {
 
   /*! max fraction of metals locked into dust */
   float max_dust_fraction;
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Normalised mass spectra of the dust from SNII (0) and AGB stars (1) on
+   * the grain-size grid (Li et al. 2021) */
+  double dust_source_shape[2][KIARA_DUST_N_BINS];
+#endif
 #endif
 
   /*! chem5 metal yield multiplier */

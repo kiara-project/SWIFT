@@ -13,9 +13,8 @@ a common grid of grain radii. The size bins describe how each material's dust
 mass is distributed in radius; the dust mass itself, and its elemental
 composition, remain those evolved by crackle.
 
-*The size-resolved dust is under development: the stellar sources, the
-diffusion and Firehose exchange of the bins, and grain collisions are being
-added.*
+*The size-resolved dust is under development: grain collisions
+(coagulation and shattering) are being added.*
 
 Grain-size grid
 ---------------
@@ -108,6 +107,22 @@ the wavelength. ``KIARACooling:dust_grainsize`` is not used with size bins.
 
 Grains cannot grow beyond the largest radius of the grid, so its upper end
 should allow for growth.
+
+Transport
+---------
+
+Wherever dust moves, its sizes move with it:
+
+* stellar dust is added to the gas with the spectrum of its channel (SNII for
+  stars younger than 100 Myr, AGB otherwise);
+* diffusion and Firehose mixing exchange the dust of each bin with the same
+  pairwise weights as the dust of each element;
+* self-enrichment seeds dust with the ``dust_initial_source`` spectrum, and
+  jets destroy all of a particle's dust.
+
+In each case the moved dust sets the shape of the distribution, while the
+dust masses of the elements set the amount of each material, so the bins and
+the element composition always agree.
 
 Validation
 ----------
