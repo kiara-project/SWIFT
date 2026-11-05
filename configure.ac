@@ -344,12 +344,12 @@ fi
 
 # Number of grain-size bins per dust material (carbonaceous, silicate) in the
 # KIARA dust model. This is a compile-time choice because the bins are part of
-# the particle layout; 0 (the default) leaves the size-resolved dust out.
+# the particle layout; 0 leaves the size-resolved dust out.
 AC_ARG_WITH([kiara-dust-size-bins],
    [AS_HELP_STRING([--with-kiara-dust-size-bins=<n>],
-      [number of grain-size bins per KIARA dust material, 0 (no size-resolved dust) or >= 2 @<:@default: 0@:>@])],
+      [number of grain-size bins per KIARA dust material, 0 (no size-resolved dust) or >= 2 @<:@default: 10@:>@])],
    [kiara_dust_size_bins="$withval"],
-   [kiara_dust_size_bins=0]
+   [kiara_dust_size_bins=10]
 )
 case "$kiara_dust_size_bins" in
    ''|*[[!0-9]]*)

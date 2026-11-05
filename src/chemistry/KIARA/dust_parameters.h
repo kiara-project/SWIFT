@@ -15,14 +15,12 @@
 /** Read one common grid, retaining the legacy endpoint parameter aliases. */
 static inline void kiara_dust_read_grid(struct swift_params *params,
                                         double radius[KIARA_DUST_N_BINS]) {
-  const double legacy_min = parser_get_opt_param_double(
-      params, "KIARACooling:dust_small_grainsize", 0.005);
-  const double legacy_max = parser_get_opt_param_double(
-      params, "KIARACooling:dust_large_grainsize", 0.1);
+  /* Logarithmic radii from 0.001 to 1 micron by default (Li et al. 2021
+   * use 1e-4 to 1 micron), wide enough for grains to grow */
   const double minimum = parser_get_opt_param_double(
-      params, "KIARACooling:dust_grain_size_min_micron", legacy_min);
+      params, "KIARACooling:dust_grain_size_min_micron", 0.001);
   const double maximum = parser_get_opt_param_double(
-      params, "KIARACooling:dust_grain_size_max_micron", legacy_max);
+      params, "KIARACooling:dust_grain_size_max_micron", 1.);
   if (parser_does_param_exist(params, "KIARACooling:dust_grain_sizes_micron")) {
     parser_get_opt_param_double_array(params,
                                       "KIARACooling:dust_grain_sizes_micron",

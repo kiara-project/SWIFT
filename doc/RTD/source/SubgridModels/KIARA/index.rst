@@ -20,16 +20,18 @@ Grain-size grid
 ---------------
 
 Choose the number of radii per material at build time with
-``--with-kiara-dust-size-bins=N``. The default, 0, leaves the size-resolved
-dust out of the build (no memory is used for it); otherwise ``N`` must be at
-least 2. The number sets the particle layout, so changing it requires
-rebuilding and restart files cannot be converted.
+``--with-kiara-dust-size-bins=N``. The default is 10; 0 leaves the
+size-resolved dust out of the build (no memory is used for it, and crackle
+uses the single grain size ``KIARACooling:dust_grainsize``); otherwise ``N``
+must be at least 2. Each bin adds 16 bytes to a gas particle (10 bins: 1184
+instead of 1024 bytes) and nothing to a star particle. The number sets the
+particle layout, so changing it requires rebuilding and restart files cannot
+be converted.
 
 Set ``KIARACooling:dust_grain_size_min_micron`` and
 ``KIARACooling:dust_grain_size_max_micron`` at run time to construct
 logarithmically spaced representative radii including both endpoints. The
-defaults are 0.005 and 0.1 micron. For the wider range of Li et al. (2021),
-set these to 0.0001 and 1.
+defaults are 0.001 and 1 micron (Li et al. 2021 use 0.0001 to 1 micron).
 
 Alternatively, ``KIARACooling:dust_grain_sizes_micron`` supplies exactly
 ``N`` finite, positive, strictly increasing radii and overrides the endpoint
