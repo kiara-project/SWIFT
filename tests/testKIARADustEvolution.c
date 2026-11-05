@@ -36,6 +36,39 @@ static void check_transport(const double *radius, int bin, double shift,
   }
 }
 
+/* The common growth shift adds exactly the requested mass, and the area
+ * factor is 1 for grains of the reference radius and scales as 1 / a */
+static void check_growth_and_area(const double *radius) {
+  double mass[KIARA_DUST_N_BINS], grown[KIARA_DUST_N_BINS];
+  for (int i = 0; i < KIARA_DUST_N_BINS; ++i) mass[i] = 1. + i;
+  const double m0 = sum(mass);
+  for (double f = 1.e-6; f < 10.; f *= 7.) {
+    const double da = kiara_dust_growth_shift(radius, mass, f * m0);
+    double added = 0.;
+    for (int i = 0; i < KIARA_DUST_N_BINS; ++i)
+      added += mass[i] * (pow(1. + da / radius[i], 3.) - 1.);
+    assert(da > 0. && fabs(added / (f * m0) - 1.) < 1.e-10);
+    /* The remap then holds the grown mass (up to the top of the grid) */
+    const double total =
+        kiara_dust_radius_remap(radius, mass, da, 1., 1, grown);
+    assert(fabs(total / (m0 + f * m0) - 1.) < 1.e-10);
+  }
+  assert(kiara_dust_growth_shift(radius, mass, 0.) == 0.);
+
+  double dist[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS] = {{0}};
+  const int b = KIARA_DUST_N_BINS / 2;
+  dist[kiara_dust_silicate][b] = 1.;
+  assert(fabs(kiara_dust_area_factor(radius, (const double(*)[KIARA_DUST_N_BINS])dist,
+                                     radius[b]) -
+              1.) < 1.e-14);
+  assert(fabs(kiara_dust_area_factor(radius, (const double(*)[KIARA_DUST_N_BINS])dist,
+                                     0.1) -
+              0.1 / radius[b]) < 1.e-12);
+  double empty[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS] = {{0}};
+  assert(kiara_dust_area_factor(radius, (const double(*)[KIARA_DUST_N_BINS])empty,
+                                0.1) == 1.);
+}
+
 int main(void) {
   double radius[KIARA_DUST_N_BINS];
   for (int irregular = 0; irregular < 2; ++irregular) {
@@ -45,6 +78,7 @@ int main(void) {
         const double x = (double)i / (KIARA_DUST_N_BINS - 1);
         radius[i] = exp(log(1.e-4) * (1. - x * x));
       }
+    check_growth_and_area(radius);
     for (int i = 0; i < KIARA_DUST_N_BINS; ++i) {
       check_transport(radius, i, 0., 1., 1);
       check_transport(radius, i, .03, 1., 1);

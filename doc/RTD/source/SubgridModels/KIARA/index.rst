@@ -13,8 +13,8 @@ a common grid of grain radii. The size bins describe how each material's dust
 mass is distributed in radius; the dust mass itself, and its elemental
 composition, remain those evolved by crackle.
 
-*The size-resolved dust is under development: the grid and the stellar
-source spectra below are in place, their evolution in the gas is being
+*The size-resolved dust is under development: the stellar sources, the
+diffusion and Firehose exchange of the bins, and grain collisions are being
 added.*
 
 Grain-size grid
@@ -72,6 +72,42 @@ The source parameters are ``KIARAFeedback:dust_SNII_a0_micron`` (0.1),
 (4). Both materials use the same source spectrum for a given channel; their
 masses and subsequent size distributions remain independent. The 100 Myr
 stellar-age split between the SNII and AGB channels is an approximation.
+
+Evolution in crackle
+--------------------
+
+With size bins, crackle evolves the dust from its size distribution (there is
+no option to keep the bins as bookkeeping only). In Li et al. (2021),
+accretion growth and thermal sputtering change the radius of every grain at
+the same rate, which crackle's rates give for 0.1 micron grains:
+
+* growth: each element's accretion time scales with the area-weighted radius
+  ``a_eff = sum(m) / sum(m / a)`` of its material (carbon in carbonaceous
+  grains; O, Mg, Si, S, Ca and Fe in silicates and oxides), and the surviving
+  grains then grow by the common ``da`` that adds the accreted mass;
+* sputtering: every grain is eroded by the same
+  ``da = 0.1 micron dt / t_sput(0.1 micron)``; grains smaller than ``da`` are
+  destroyed;
+* SN shocks: every grain loses the fraction of its mass that the
+  (size-independent) shock destruction removes.
+
+The mass destroyed in each material is taken from its elements in proportion
+to their dust masses, and after crackle's per-element limits each material's
+bins are rescaled to its dust mass, so that the bins always agree with the
+element composition. Thermal sputtering outside crackle (hot and Firehose
+gas) works in the same way.
+
+The surface processes scale with the grain area per dust mass relative to 0.1
+micron grains, ``0.1 micron / a_eff`` over both materials: H2 formation on
+grains, the gas-grain heat exchange (and so the dust temperature),
+photoelectric heating and recombination onto grains (and the Sternberg et
+al. 2014 limit on the molecular fraction through its H2 formation rate).
+Absorption of the interstellar radiation field (dust heating, dust shielding
+of the Lyman-Werner band) is per dust mass, as for grains much smaller than
+the wavelength. ``KIARACooling:dust_grainsize`` is not used with size bins.
+
+Grains cannot grow beyond the largest radius of the grid, so its upper end
+should allow for growth.
 
 Validation
 ----------

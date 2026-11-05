@@ -2968,6 +2968,9 @@ case "$with_cooling" in
       AC_DEFINE([COOLING_KIARA], [1], [Cooling via the built-in crackle library incl. dust+H2 formation])
       AC_DEFINE([COOLING_GRACKLE_MODE], [2], [Cooling via Grackle mode=2])
       with_cooling_name="KIARA (built-in crackle incl. dust+H2 formation)"
+      if test "$enable_crackle_validate" != "no" -a "$kiara_dust_size_bins" -gt 0; then
+         AC_MSG_ERROR([--enable-crackle-validate compares crackle's field-array path (and external Grackle), which have no dust size bins: use --with-kiara-dust-size-bins=0])
+      fi
       if test "$enable_crackle_validate" = "direct"; then
          AC_DEFINE([CRACKLE_VALIDATE_DIRECT], [1], [Compare the direct crackle path with its field-array path])
          with_cooling_name="$with_cooling_name, direct path validated against field path"
