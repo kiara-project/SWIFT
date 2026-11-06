@@ -402,7 +402,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_spart(
  *        in code units
  *
  * The circular velocity follows from the galaxy stellar mass (Dutton+11,
- * scaled with (H/H0)^(1/3)); the wind speed is FIRE_velocity_normalization
+ * scaled with (H/H0)^(1/3), or (H/H0)^FIRE_velocity_Hz_exponent with the
+ * extra factor capped at FIRE_velocity_Hz_max_boost); the wind speed is
+ * FIRE_velocity_normalization
  * times v_circ (with an optional power of v_circ/200 km/s), with a uniform
  * random scatter and an optional high-redshift suppression.
  *
@@ -434,9 +436,21 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
      measurements by Dutton+11 */
 
   /* Dutton+11 eq 6: log (M* / 1e10) = -0.61 + 4.51 log (vdisk / 100) */
-  const float v_circ_km_s =
+  const float H_ratio = cosmo->H / cosmo->H0;
+  float v_circ_km_s =
       100.f * powf(4.0738f * galaxy_stellar_mass_Msun * 1.e-10f, 0.221729f) *
-      pow(cosmo->H / cosmo->H0, 1.f / 3.f);
+      powf(H_ratio, 1.f / 3.f);
+
+  /* Optional extra redshift dependence: v_circ ~ (H/H0)^FIRE_velocity_Hz_
+   * exponent instead of the fixed-halo-mass 1/3, with the extra factor
+   * optionally capped. Passes through the FIRE velocity slope below. */
+  if (fb_props->FIRE_velocity_Hz_exponent != 1.f / 3.f) {
+    float boost =
+        powf(H_ratio, fb_props->FIRE_velocity_Hz_exponent - 1.f / 3.f);
+    if (fb_props->FIRE_velocity_Hz_max_boost > 0.f)
+      boost = fminf(boost, fb_props->FIRE_velocity_Hz_max_boost);
+    v_circ_km_s *= boost;
+  }
 
   const float rand_for_scatter =
       random_unit_interval(sp_id, ti_current, random_number_stellar_feedback_2);

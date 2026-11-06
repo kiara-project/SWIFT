@@ -211,6 +211,14 @@ struct feedback_props {
   /*! FIRE velocity slope */
   float FIRE_velocity_slope;
 
+  /*! Power of H(z)/H0 in the circular velocity used for the wind speed (1/3
+   * = Dutton+11 scaling, i.e. a fixed-mass halo) */
+  float FIRE_velocity_Hz_exponent;
+
+  /*! Cap on the extra circular-velocity factor (H/H0)^(exponent - 1/3);
+   * <= 0 means no cap */
+  float FIRE_velocity_Hz_max_boost;
+
   /*! Normalization for the mass loading curve */
   float FIRE_eta_normalization;
 
