@@ -1896,6 +1896,10 @@ void feedback_props_init(struct feedback_props *fp,
       params, "KIARAFeedback:jet_recouple_nH_cgs", 0.13);
   fp->jet_recouple_mach = parser_get_opt_param_double(
       params, "KIARAFeedback:jet_recouple_mach", 10.);
+  fp->bh_recouple_log = parser_get_opt_param_int(
+      params, "KIARAFeedback:bh_recouple_log", 0);
+  if (engine_rank == 0 && fp->bh_recouple_log)
+    message("Logging BH_RECOUPLE lines for BH-launched (jet/wind) particles");
   if (engine_rank == 0)
     message("Jets recouple below nH=%g cm^-3 or below Mach %g",
             fp->jet_recouple_nH_cgs, fp->jet_recouple_mach);

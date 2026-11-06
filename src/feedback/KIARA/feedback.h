@@ -187,6 +187,35 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
                             p->chemistry_data.radius_stream < 0.f ||
                             rho_nH_cgs < rho_recouple_cgs);
 
+      /* Optional log of where and why BH-launched particles recouple */
+      if (recouple && p->decoupled != 1 && fb_props->bh_recouple_log &&
+          xp->feedback_data.bh_launch_type > 0) {
+        const int reason = (timer_recouple ? 1 : 0) +
+                           (p->chemistry_data.radius_stream < 0.f ? 2 : 0) +
+                           (rho_nH_cgs < rho_recouple_cgs ? 4 : 0);
+        double d2 = 0.;
+        float v2 = 0.f;
+        for (int k = 0; k < 3; k++) {
+          double dx = p->x[k] - xp->feedback_data.bh_launch_pos[k];
+          const double box = e->s->dim[k];
+          if (dx > 0.5 * box) dx -= box;
+          if (dx < -0.5 * box) dx += box;
+          d2 += dx * dx;
+          v2 += xp->v_full[k] * xp->v_full[k];
+        }
+        const double t_flight =
+            (cosmo->time - xp->feedback_data.bh_launch_time) *
+            fb_props->time_to_Myr;
+        const float u_phys = hydro_get_physical_internal_energy(p, xp, cosmo);
+        message(
+            "BH_RECOUPLE: z=%.4f id=%lld type=%d reason=%d t_flight=%.3g Myr "
+            "dist=%.3g pkpc v=%.4g km/s nH=%.3g T=%.3g",
+            cosmo->z, p->id, xp->feedback_data.bh_launch_type, reason, t_flight,
+            sqrt(d2) * cosmo->a * fb_props->length_to_kpc,
+            sqrtf(v2) * cosmo->a_inv / fb_props->kms_to_internal, rho_nH_cgs,
+            u_phys / fb_props->temp_to_u_factor);
+      }
+
       if (recouple && p->decoupled == 1) {
         /* If it is recoupling, do one more decoupled step to set timestep etc
          */
@@ -194,6 +223,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
       } else if (recouple) {
         /* extra decoupled step is done, now properly recouple */
         feedback_recouple_set_flags(p, xp, cosmo);
+        xp->feedback_data.bh_launch_type = 0;
       } else {
         /* Reset subgrid properties if decoupled for safety */
         cooling_subgrid_exit(&p->cooling_data, &xp->cooling_data,
@@ -383,6 +413,11 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
 #if COOLING_GRACKLE_MODE >= 2
   p->feedback_data.SNe_ThisTimeStep = 0.f;
 #endif
+  xp->feedback_data.bh_launch_pos[0] = 0.;
+  xp->feedback_data.bh_launch_pos[1] = 0.;
+  xp->feedback_data.bh_launch_pos[2] = 0.;
+  xp->feedback_data.bh_launch_time = 0.f;
+  xp->feedback_data.bh_launch_type = 0;
 }
 
 /**

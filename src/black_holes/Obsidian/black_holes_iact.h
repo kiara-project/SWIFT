@@ -1377,6 +1377,13 @@ runner_iact_nonsym_bh_gas_feedback(
           bh_props->rho_to_n_cgs, m_dot_wind, v_kick, bi->h, cosmo);
       pj->chemistry_data.exchanged_mass = 0.f;
 
+      /* Record the launch, for the optional recoupling log */
+      xpj->feedback_data.bh_launch_pos[0] = pj->x[0];
+      xpj->feedback_data.bh_launch_pos[1] = pj->x[1];
+      xpj->feedback_data.bh_launch_pos[2] = pj->x[2];
+      xpj->feedback_data.bh_launch_time = cosmo->time;
+      xpj->feedback_data.bh_launch_type = jet_flag ? 1 : 2;
+
       /* Count number of decouplings, also reset decoupling for jets */
       if (jet_flag) {
         if (bh_props->jet_decouple_time_factor > 0.f) {

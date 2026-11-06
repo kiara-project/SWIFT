@@ -302,6 +302,9 @@ struct feedback_props {
   /*! ...or once its Mach number relative to the ambient gas is below this */
   float jet_recouple_mach;
 
+  /*! Log each recoupling of a BH-launched (jet or wind) particle? */
+  int bh_recouple_log;
+
   /*! The internal energy corresponding to the unheated wind temperature */
   float cold_wind_internal_energy;
 
