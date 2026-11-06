@@ -148,6 +148,13 @@ struct star_formation {
     /*! For WN07, flag to set method used to compute epsc */
     int wn07_epsc_method;
 
+    /*! For WN07, power q of the free-fall rate: SFR ~ 1/(t_ff^q t_ref^(1-q))
+     * (1 = standard; 0.5 = Leroy+25 PHANGS tau_dep ~ t_ff^0.5) */
+    double wn07_tff_exponent;
+
+    /*! For WN07, reference density (code units) where t_ref = t_ff */
+    double wn07_tff_ref_density;
+
   } lognormal;
 };
 
@@ -473,8 +480,13 @@ INLINE static void star_formation_compute_SFR_wn07(
    * not estimated density rho_c, per free-fall time
    * 1/t_ff = sqrt(32 G rho / (3 pi)) as in the other SF models (the rho_V
    * prefactor is applied below). */
-  const double rhosfr =
-      epsc * starform->lognormal.ff_const_inv * sqrt(rho_V) * f_c;
+  double rhosfr = epsc * starform->lognormal.ff_const_inv * sqrt(rho_V) * f_c;
+
+  /* Optionally weaken the density dependence of the free-fall rate:
+   * 1/t_ff -> 1/(t_ff^q t_ref^(1-q)) = (1/t_ff) (rho_ref/rho_V)^((1-q)/2) */
+  if (starform->lognormal.wn07_tff_exponent != 1.)
+    rhosfr *= pow(starform->lognormal.wn07_tff_ref_density / rho_V,
+                  0.5 * (1. - starform->lognormal.wn07_tff_exponent));
 
   /* multiply by dense gas effective volume to get SFR (rho_V appears in both
    * this eqn and previous one so it is cancelled out for efficiency) */
@@ -1003,6 +1015,17 @@ INLINE static void starformation_init_backend(
     if (starform->SF_model == kiara_star_formation_WadaNorman) {
       starform->lognormal.wn07_epsc_method = parser_get_opt_param_int(
           parameter_file, "KIARAStarFormation:wn07_epsc_method", 0);
+      starform->lognormal.wn07_tff_exponent = parser_get_opt_param_double(
+          parameter_file, "KIARAStarFormation:wn07_tff_exponent", 1.);
+      /* Same convention as lognormal_critical_density: rho / m_H, cm^-3 */
+      starform->lognormal.wn07_tff_ref_density =
+          parser_get_opt_param_double(
+              parameter_file, "KIARAStarFormation:wn07_tff_ref_density_cm3",
+              500.) *
+          1.673e-24 / rho_to_cgs;
+      if (starform->lognormal.wn07_tff_exponent < 0. ||
+          starform->lognormal.wn07_tff_exponent > 1.)
+        error("KIARAStarFormation:wn07_tff_exponent must be in [0, 1]");
     }
   }
 }
@@ -1031,8 +1054,11 @@ INLINE static void starformation_print_backend(
   } else if (starform->SF_model == kiara_star_formation_WadaNorman) {
     message(
         "Star formation based on Wada+Norman 2007: critical "
-        "density (code units) = %e, efficiency = %e",
-        starform->lognormal.rhocrit, starform->lognormal.epsilon);
+        "density (code units) = %e, efficiency = %e, free-fall rate "
+        "~ t_ff^-%g with t_ref = t_ff at %e (code units)",
+        starform->lognormal.rhocrit, starform->lognormal.epsilon,
+        starform->lognormal.wn07_tff_exponent,
+        starform->lognormal.wn07_tff_ref_density);
   } else if (starform->SF_model == kiara_star_formation_lognormal) {
     message(
         "Star formation based on lognormal density pdf: "
