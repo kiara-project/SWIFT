@@ -283,6 +283,11 @@ struct black_holes_props {
   /*! The wind speed of the ADAF outflow */
   float adaf_wind_speed;
 
+  /*! Minimum ADAF kick speed (internal units) in whole-kernel mode: a share of
+   * the energy too small for it gives a kick at this speed with probability
+   * E / (m v_min^2 / 2) instead of a smaller kick (0 = off) */
+  float adaf_wind_min_speed;
+
   /*! The mass loading of the ADAF wind */
   float adaf_wind_mass_loading;
 
@@ -1166,6 +1171,18 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_wind_speed = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_wind_speed_km_s", 0.f);
   bp->adaf_wind_speed *= bp->kms_to_internal;
+
+  bp->adaf_wind_min_speed = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_wind_min_speed_km_s", 0.f);
+  bp->adaf_wind_min_speed *= bp->kms_to_internal;
+  if (bp->adaf_wind_min_speed < 0.f)
+    error("ObsidianAGN:adaf_wind_min_speed_km_s must be >= 0");
+  if (bp->adaf_wind_min_speed > 0.f && bp->adaf_wind_speed < 0.f &&
+      bp->adaf_wind_min_speed > fabs(bp->adaf_wind_speed))
+    error("ObsidianAGN:adaf_wind_min_speed_km_s exceeds |adaf_wind_speed_km_s|");
+  if (engine_rank == 0 && bp->adaf_wind_min_speed > 0.f)
+    message("ADAF kicks below %g km/s are made stochastic at that speed",
+            bp->adaf_wind_min_speed / bp->kms_to_internal);
 
   const float f_psi =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_f_quasar_psi", -1.f);

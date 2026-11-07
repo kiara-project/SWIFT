@@ -1173,6 +1173,23 @@ runner_iact_nonsym_bh_gas_feedback(
           /* Later will apply velocity as if it was flagged to swallow */
           adaf_kick_flag = 1;
 
+          /* Too little energy for the minimum speed: kick at that speed with
+           * probability E_inject / (m v_min^2 / 2), so the expected energy is
+           * unchanged but it goes into fewer, faster kicks */
+          const float v_min = bh_props->adaf_wind_min_speed;
+          if (v_min > 0.f && bh_props->adaf_wind_speed < 0.f &&
+              v_kick < v_min) {
+            const float p_kick = (v_kick * v_kick) / (v_min * v_min);
+            const float rand_min = random_unit_interval(
+                bi->id + 3 * pj->id, ti_current, random_number_BH_kick);
+            if (rand_min < p_kick) {
+              v_kick = v_min;
+            } else {
+              v_kick = 0.f;
+              adaf_kick_flag = 0;
+            }
+          }
+
         } else {
           v_kick = 0.f;
         }
