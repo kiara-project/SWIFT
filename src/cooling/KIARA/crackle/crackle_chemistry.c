@@ -93,7 +93,8 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 
 	/* ISM flag: see whether we should be evolving dust and H2 */
 	int ism_flag = (gp.isrf_habing >= 0.);
-	if (gp.isrf_habing < 0.) gp.isrf_habing = 0.;
+	/* outside the ISM isrf_habing = -1 - G0 */
+	if (gp.isrf_habing < 0.) gp.isrf_habing = fmax(-gp.isrf_habing - 1., 0.);
 
 	/* initialize inteprolation of chemistry rate tables for this particle */
 	init_temperature_interpolation(&gp, chemistry, &interpolation, &cunits, grackle_rates, my_uvb_rates);
@@ -879,7 +880,8 @@ void crackle_cooling_time_part(grackle_part_data *gp, chemistry_data *chemistry,
 	lookup_chemistry_coeffs(chemistry->primordial_chemistry, grackle_rates, &my_rates, &interpolation);  
 	/* ISM flag: see whether we should be forming dust and evolving H2 */
 	int ism_flag = (gp->isrf_habing >= 0.);
-	if (gp->isrf_habing < 0.) gp->isrf_habing = 0.;
+	/* outside the ISM isrf_habing = -1 - G0 */
+	if (gp->isrf_habing < 0.) gp->isrf_habing = fmax(-gp->isrf_habing - 1., 0.);
 	/* Compute rate of change of thermal energy */
 	compute_edot(gp, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);  
 

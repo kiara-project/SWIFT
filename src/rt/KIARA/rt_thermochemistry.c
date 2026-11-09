@@ -207,6 +207,41 @@ static double rt_tchem_fuv_dust_optical_depth(
 }
 
 /**
+ * @brief Set the particle's G0 (Habing units) from the FUV photon group.
+ *
+ * With a reduced speed of light c_red, the photon energy density is c /
+ * c_red times too large for the (correct) photon flux, as the radiation is
+ * emitted at the true rate but moves at c_red. G0 is a physical energy
+ * density, so G0 = E_FUV (c_red / c) / u_Habing. Below the density
+ * threshold (the IGM) G0 = 0.
+ *
+ * @param p The #part.
+ * @param E Physical radiation energy densities of the groups.
+ * @param rt_props The #rt_props.
+ * @param phys_const The physical constants.
+ * @param cosmo The #cosmology.
+ */
+static void rt_tchem_set_G0(struct part *restrict p,
+                            const float E[RT_NGROUPS],
+                            const struct rt_props *rt_props,
+                            const struct phys_const *restrict phys_const,
+                            const struct cosmology *restrict cosmo) {
+
+  if (rt_props->fuv_group < 0) {
+    p->rt_data.G0 = -1.f;
+    return;
+  }
+  if (hydro_get_physical_density(p, cosmo) < rt_props->G0_min_density) {
+    p->rt_data.G0 = 0.f;
+    return;
+  }
+  const double c_ratio =
+      rt_part_get_reduced_speed_of_light(p) / phys_const->const_speed_light_c;
+  p->rt_data.G0 = fmax(E[rt_props->fuv_group], 0.f) * c_ratio /
+                  rt_props->habing_energy_density;
+}
+
+/**
  * @brief Run the RT chemistry instance of crackle on a particle.
  *
  * Directly on the particle, except with CRACKLE_VALIDATE (comparison with
@@ -289,6 +324,9 @@ void rt_tchem_first_init_part(struct part *restrict p,
                               const struct unit_system *restrict us,
                               const struct cooling_function_data *cooling,
                               const struct cosmology *restrict cosmo) {
+
+  /* No radiation yet */
+  p->rt_data.G0 = (rt_props->fuv_group >= 0) ? 0.f : -1.f;
 
   if (rt_props->set_equilibrium_initial_ionization_mass_fractions) {
     float XHI, XHII, XHeI, XHeII, XHeIII;
@@ -395,6 +433,9 @@ INLINE void rt_do_thermochemistry(
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
+
+  /* G0 for the cooling (G0_computation_method 8) */
+  rt_tchem_set_G0(p, radiation_energy_density, rt_props, phys_const, cosmo);
 
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
@@ -598,6 +639,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
+
+  /* G0 for the cooling (G0_computation_method 8) */
+  rt_tchem_set_G0(p, radiation_energy_density, rt_props, phys_const, cosmo);
 
   /* Compute the iact_rates for the cooling grackle data. */
   gr_float *iact_rates = (gr_float *)malloc(5 * sizeof(gr_float));

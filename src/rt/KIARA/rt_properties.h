@@ -164,6 +164,14 @@ struct rt_props {
    * units). In the subgrid ISM only the dust of the warm phase absorbs. */
   double dust_opacity_FUV;
 
+  /*! Habing energy density, 6-13.6 eV (5.29e-14 erg cm^-3), in internal
+   * units: G0 = 1 */
+  double habing_energy_density;
+
+  /*! Physical gas density below which G0 from RT is set to 0 (internal
+   * units), so that the IGM gets none */
+  double G0_min_density;
+
   /* Grackle Stuff */
   /* ------------- */
 
@@ -313,9 +321,9 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
   message("%s", messagestring);
   if (rtp->fuv_group >= 0)
     message(
-        "Photon group %d is the non-ionizing FUV group, dust opacity %g "
-        "(internal units)",
-        rtp->fuv_group, rtp->dust_opacity_FUV);
+        "Photon group %d is the non-ionizing FUV group, dust opacity %g, G0 "
+        "above density %g (internal units)",
+        rtp->fuv_group, rtp->dust_opacity_FUV, rtp->G0_min_density);
 
   if (rtp->stellar_emission_model == rt_stellar_emission_model_const) {
     strcpy(messagestring, "Using constant stellar emission rates: [ ");
@@ -414,6 +422,24 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
     rtp->dust_opacity_FUV = kappa_cgs *
                             units_cgs_conversion_factor(us, UNIT_CONV_MASS) /
                             (length_cgs * length_cgs);
+  }
+
+  /* G0 from the FUV group: the Habing energy density, and the hydrogen
+   * number density (physical, cgs) below which G0 = 0 */
+  rtp->habing_energy_density =
+      5.29e-14 / units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_DENSITY);
+  rtp->G0_min_density = 0.;
+  if (rtp->fuv_group >= 0) {
+    const double nH_min =
+        parser_get_opt_param_double(params, "KIARART:G0_nH_min_cgs", 1.e-3);
+    const double m_H_cgs =
+        phys_const->const_proton_mass *
+        units_cgs_conversion_factor(us, UNIT_CONV_MASS);
+    /* the hydrogen mass fraction is read below */
+    rtp->G0_min_density =
+        nH_min * m_H_cgs /
+        parser_get_param_float(params, "KIARART:hydrogen_mass_fraction") /
+        units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
   }
 
   /* Get stellar emission rate model related parameters */

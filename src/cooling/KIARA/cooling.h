@@ -765,12 +765,38 @@ INLINE static double cooling_get_SNe_rate(
 }
 
 /**
+ * @brief The ISRF passed to crackle as isrf_habing.
+ *
+ * crackle takes the sign of isrf_habing as its ISM flag: G0 >= 0 in the
+ * subgrid ISM, and -1 - G0 outside it. Outside the ISM G0 is non-zero only
+ * when it comes from the RT (G0_computation_method 8); with the other
+ * methods it is -1, as before.
+ *
+ * @param p The #part, with cooling_data.G0 set.
+ * @param cooling The #cooling_function_data.
+ */
+__attribute__((always_inline)) INLINE static float cooling_crackle_isrf(
+    const struct part *restrict p,
+    const struct cooling_function_data *cooling) {
+
+  if (p->cooling_data.subgrid_temp == 0.f) {
+    const float G0 = (cooling->G0_computation_method == 8)
+                         ? fmaxf(p->cooling_data.G0, 0.f)
+                         : 0.f;
+    return -1.f - G0;
+  }
+  return p->cooling_data.G0;
+}
+
+/**
  * @brief Returns the value of G0 for given particle p
  *
  * The method is set by G0_computation_method: 0 none; 1 local SFR density
  * (with H self-shielding); 2 host galaxy sSFR; 3 sSFR if non-zero else local;
  * -3 local if non-zero else sSFR; 4 SN rate; 5 max(galaxy, particle sSFR) plus
- * SN rate; 6 FIRE-based fit. The result is scaled by G0_multiplier.
+ * SN rate; 6 FIRE-based fit; 7 local SFR density plus galaxy-scale field;
+ * 8 the FUV photon group of KIARA-RT (also outside the subgrid ISM, above a
+ * density threshold). The result is scaled by G0_multiplier.
  *
  * @param p Pointer to the particle data.
  * @param xp Pointer to the extended particle data.
@@ -787,6 +813,18 @@ __attribute__((always_inline)) INLINE static float cooling_compute_G0(
     const float rho, const float T_warm,
     const struct cooling_function_data *cooling, const float mstar,
     const float ssfr, const double SNe_rate) {
+
+#ifdef RT_KIARA
+  /* G0 from the FUV photon group of the RT, in and outside the subgrid ISM
+   * (set by the RT thermochemistry before the cooling) */
+  if (cooling->G0_computation_method == 8) {
+    if (p->rt_data.G0 < 0.f)
+      error(
+          "G0_computation_method 8 takes G0 from the RT, which needs a FUV "
+          "photon group below 13.6 eV (e.g. --with-rt=KIARA_4)");
+    return p->rt_data.G0 * cooling->G0_multiplier;
+  }
+#endif
 
   /* No ISRF outside subgrid ISM */
   if (p->cooling_data.subgrid_temp <= 0.f) return 0.f;

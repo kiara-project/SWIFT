@@ -56,6 +56,11 @@ struct rt_part_data {
     float flux[3];
   } flux[RT_NGROUPS];
 
+  /*! Interstellar radiation field from the FUV photon group, in Habing units
+   * (0 below the density threshold, -1 if there is no FUV group). Used by
+   * the cooling as G0 with G0_computation_method 8. */
+  float G0;
+
   /* Particle RT time step. */
   float flux_dt;
 

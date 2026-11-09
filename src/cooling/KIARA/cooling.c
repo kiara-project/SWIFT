@@ -523,12 +523,8 @@ void cooling_copy_to_grackle2(
     // p->chemistry_data.metal_mass_fraction_total, species_densities[19],
     // species_densities[20]);
 
-    /* Determine ISRF in Habing units based on chosen method, -1 == non-ISM */
-    if (p->cooling_data.subgrid_temp == 0.f) {
-      species_densities[22] = -1.f;
-    } else {
-      species_densities[22] = p->cooling_data.G0;
-    }
+    /* ISRF in Habing units; -1 - G0 == non-ISM (see cooling_crackle_isrf) */
+    species_densities[22] = cooling_crackle_isrf(p, cooling);
 
     data->isrf_habing = &species_densities[22];
 
@@ -1378,11 +1374,7 @@ void cooling_copy_to_crackle(
   if (cooling->use_grackle_dust_evol == 1) {
     dust_density = p->cooling_data.dust_mass / p->mass * rho;
     SNe_density = SNe_count / p->mass * rho;
-    if (p->cooling_data.subgrid_temp == 0.f) {
-      isrf = -1.f;
-    } else {
-      isrf = p->cooling_data.G0;
-    }
+    isrf = cooling_crackle_isrf(p, cooling);
     L_shield = cooling_H2_shielding_length(p, cooling);
     for (int i = 0; i < chemistry_element_count; i++) {
       const int slot = cooling_crackle_slot(i);
