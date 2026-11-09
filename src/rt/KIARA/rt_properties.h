@@ -160,6 +160,10 @@ struct rt_props {
   /*! Photon escape fraction of the FUV group (BPASS model) */
   double f_esc_FUV;
 
+  /*! Dust absorption opacity of the FUV group, per unit dust mass (internal
+   * units). In the subgrid ISM only the dust of the warm phase absorbs. */
+  double dust_opacity_FUV;
+
   /* Grackle Stuff */
   /* ------------- */
 
@@ -308,7 +312,10 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
   strcat(messagestring, "]");
   message("%s", messagestring);
   if (rtp->fuv_group >= 0)
-    message("Photon group %d is the non-ionizing FUV group", rtp->fuv_group);
+    message(
+        "Photon group %d is the non-ionizing FUV group, dust opacity %g "
+        "(internal units)",
+        rtp->fuv_group, rtp->dust_opacity_FUV);
 
   if (rtp->stellar_emission_model == rt_stellar_emission_model_const) {
     strcpy(messagestring, "Using constant stellar emission rates: [ ");
@@ -392,6 +399,22 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
 
   /* Is there a non-ionizing FUV group? */
   rtp->fuv_group = rt_props_find_fuv_group(rtp);
+
+  /* Dust opacity of the FUV group. The default, 9.1e4 cm^2 per g of dust, is
+   * crackle's H2_dust_shielding_cross_section (1.9e-21 cm^2 per H) at its
+   * local_dust_to_gas_ratio (0.009387) for a hydrogen mass fraction 0.754. */
+  rtp->dust_opacity_FUV = 0.;
+  if (rtp->fuv_group >= 0) {
+    const double kappa_cgs = parser_get_opt_param_double(
+        params, "KIARART:dust_opacity_FUV_cm2_per_g", 9.1e4);
+    if (kappa_cgs < 0.)
+      error("KIARART:dust_opacity_FUV_cm2_per_g must be >= 0, got %g",
+            kappa_cgs);
+    const double length_cgs = units_cgs_conversion_factor(us, UNIT_CONV_LENGTH);
+    rtp->dust_opacity_FUV = kappa_cgs *
+                            units_cgs_conversion_factor(us, UNIT_CONV_MASS) /
+                            (length_cgs * length_cgs);
+  }
 
   /* Get stellar emission rate model related parameters */
   /* -------------------------------------------------- */

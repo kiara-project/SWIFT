@@ -173,6 +173,40 @@ static gr_float rt_tchem_crackle_direct(
 }
 
 /**
+ * @brief Dust optical depth of the FUV photon group over the path the
+ * radiation travels in a step, L = c_red dt.
+ *
+ * In the subgrid ISM the cold clouds are opaque and absorb through their
+ * covering fraction; their dust is not counted here. The dust is split
+ * between the phases like the gas mass, so the warm phase holds a fraction
+ * f_warm = 1 - f_cold of it. With phi the cold volume filling fraction, the
+ * warm dust density (1 - f_cold) rho_d / (1 - phi) times the path through
+ * the warm phase (1 - phi) L gives tau = kappa (1 - f_cold) rho_d L.
+ *
+ * @param p The #part.
+ * @param rt_props The #rt_props.
+ * @param cosmo The #cosmology.
+ * @param f_warm Fraction of the dust that absorbs (1 - f_cold in the subgrid
+ * ISM, 1 outside it).
+ * @param dt The (physical) time step.
+ * @return the optical depth (0 if there is no FUV group).
+ */
+static double rt_tchem_fuv_dust_optical_depth(
+    const struct part *restrict p, const struct rt_props *rt_props,
+    const struct cosmology *restrict cosmo, const double f_warm,
+    const double dt) {
+
+  if (rt_props->fuv_group < 0 || rt_props->dust_opacity_FUV <= 0.) return 0.;
+  const float mass = hydro_get_mass(p);
+  if (mass <= 0.f || p->cooling_data.dust_mass <= 0.f) return 0.;
+
+  const double rho_dust = p->cooling_data.dust_mass / mass *
+                          hydro_get_physical_density(p, cosmo);
+  const double L = rt_part_get_reduced_speed_of_light(p) * dt;
+  return rt_props->dust_opacity_FUV * fmax(f_warm, 0.) * rho_dust * L;
+}
+
+/**
  * @brief Run the RT chemistry instance of crackle on a particle.
  *
  * Directly on the particle, except with CRACKLE_VALIDATE (comparison with
@@ -438,12 +472,17 @@ INLINE void rt_do_thermochemistry(
                           rt_props->average_photon_energy,
                           rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
+  /* Absorption of the FUV light by the dust */
+  const double tau_dust =
+      rt_tchem_fuv_dust_optical_depth(p, rt_props, cosmo, /*f_warm=*/1., dt);
+
   /* Now remove absorbed radiation */
   for (int g = 0; g < RT_NGROUPS; g++) {
     const float E_old = p->rt_data.radiation[g].energy_density;
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+    if (g == rt_props->fuv_group) f = 1. - (1. - f) * exp(-tau_dust);
 #ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
@@ -714,15 +753,21 @@ INLINE void rt_do_thermochemistry_with_subgrid(
       f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
     }
 
+    /* The FUV light is also absorbed by the dust of the warm phase */
+    const double tau_warm = rt_tchem_fuv_dust_optical_depth(
+        p, rt_props, cosmo, 1. - p->cooling_data.subgrid_fcold, dt);
+
     for (int g = 0; g < RT_NGROUPS; g++) {
+      const double f_g =
+          (g == rt_props->fuv_group) ? 1. - (1. - f) * exp(-tau_warm) : f;
       const float E_old = p->rt_data.radiation[g].energy_density;
 #ifdef SWIFT_KIARA_RT_DEBUG
       p->rt_data.debug_dE[1] -=
-          p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+          p->rt_data.radiation[g].energy_density * f_g * p->geometry.volume;
 #endif
-      p->rt_data.radiation[g].energy_density *= (1. - f);
+      p->rt_data.radiation[g].energy_density *= (1. - f_g);
       for (int i = 0; i < 3; i++) {
-        p->rt_data.radiation[g].flux[i] *= (1. - f);
+        p->rt_data.radiation[g].flux[i] *= (1. - f_g);
       }
       rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                                 p->rt_data.radiation[g].flux, E_old,
@@ -760,12 +805,17 @@ INLINE void rt_do_thermochemistry_with_subgrid(
       absorption_rates_new, rt_species_new, rt_props->average_photon_energy,
       rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
 
+  /* Absorption of the FUV light by all of the dust */
+  const double tau_dust =
+      rt_tchem_fuv_dust_optical_depth(p, rt_props, cosmo, /*f_warm=*/1., dt);
+
   /* Now remove absorbed radiation, using average absorption */
   for (int g = 0; g < RT_NGROUPS; g++) {
     const float E_old = p->rt_data.radiation[g].energy_density;
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+    if (g == rt_props->fuv_group) f = 1. - (1. - f) * exp(-tau_dust);
 #ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
