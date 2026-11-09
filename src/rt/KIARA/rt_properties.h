@@ -143,15 +143,22 @@ struct rt_props {
   /* Location of Stellar spectrum tables. */
   char stellar_table_path[200];
 
-  /* Storeage for the BPASS photon number table in a 3d array with three photon
-   * group 2d tables.
-   * ionizing_tables[0] = ionizing_HI_table
-   * ionizing_tables[1] = ionizing_HeI_table
-   * ionizing_tables[2] = ionizing_HeII_table*/
+  /* Storage for the BPASS photon number tables: one 2d table (metallicity,
+   * age) per photon group, read from the dataset of the group's band (see
+   * rt_props_bpass_table_name()): an optional FUV group, then HI, HeI and
+   * HeII. */
   double ***ionizing_tables;
 
-  /* Photon escape fraction from stellar emission model. */
+  /* Photon escape fraction from stellar emission model (ionizing groups). */
   double f_esc;
+
+  /*! Index of the FUV (non-ionizing, Habing band) photon group, or -1 if
+   * there is none. The FUV group is group 0, if it lies entirely below the
+   * HI ionization edge. */
+  int fuv_group;
+
+  /*! Photon escape fraction of the FUV group (BPASS model) */
+  double f_esc_FUV;
 
   /* Grackle Stuff */
   /* ------------- */
@@ -215,6 +222,67 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
 /* Function to read the table. */
 double **read_Bpass_from_hdf5(char *file_name, char *dataset_name);
 
+/*! Frequency of the HI ionization edge (13.6 eV), in Hz */
+#define RT_KIARA_NU_HI_HZ 3.288e15
+
+/**
+ * @brief Find the FUV photon group: group 0, if it lies entirely below the
+ * HI ionization edge (i.e. the next group starts at or above it).
+ *
+ * @param rtp The #rt_props, with the photon group edges set.
+ * @return the index of the FUV group, or -1 if there is none.
+ */
+__attribute__((always_inline)) INLINE static int rt_props_find_fuv_group(
+    const struct rt_props *rtp) {
+
+  if (RT_NGROUPS < 2) return -1;
+  /* Allow for rounding in the parameter file */
+  const float nu_HI = 0.99 * RT_KIARA_NU_HI_HZ;
+  if (rtp->photon_groups[0] < nu_HI && rtp->photon_groups[1] >= nu_HI)
+    return 0;
+  return -1;
+}
+
+/**
+ * @brief Name of the BPASS table (band) of a photon group: "FUV" for the
+ * FUV group, then "HI", "HeI" and "HeII" for the ionizing groups.
+ *
+ * @param rtp The #rt_props.
+ * @param g The photon group.
+ */
+__attribute__((always_inline)) INLINE static const char *
+rt_props_bpass_table_name(const struct rt_props *rtp, const int g) {
+
+  static const char *ionizing_names[3] = {"HI", "HeI", "HeII"};
+  const int n_fuv = (rtp->fuv_group >= 0) ? 1 : 0;
+  if (RT_NGROUPS - n_fuv != 3)
+    error(
+        "The BPASS model needs exactly 3 ionizing photon groups (HI, HeI, "
+        "HeII), plus optionally one FUV group below 13.6 eV; you have %d "
+        "groups, %d of them FUV",
+        RT_NGROUPS, n_fuv);
+  if (g == rtp->fuv_group) return "FUV";
+  return ionizing_names[g - n_fuv];
+}
+
+/**
+ * @brief Read the BPASS photon number tables of all photon groups.
+ *
+ * @param rtp The #rt_props, with the table path and photon groups set.
+ */
+__attribute__((always_inline)) INLINE static void rt_props_read_bpass_tables(
+    struct rt_props *rtp) {
+
+  rtp->ionizing_tables = malloc(RT_NGROUPS * sizeof(double **));
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    char dataset_name[64];
+    sprintf(dataset_name, "/Table_%s/block0_values",
+            rt_props_bpass_table_name(rtp, g));
+    rtp->ionizing_tables[g] =
+        read_Bpass_from_hdf5(rtp->stellar_table_path, dataset_name);
+  }
+}
+
 /* Now for the good stuff                */
 /* ------------------------------------- */
 
@@ -239,6 +307,8 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
   }
   strcat(messagestring, "]");
   message("%s", messagestring);
+  if (rtp->fuv_group >= 0)
+    message("Photon group %d is the non-ionizing FUV group", rtp->fuv_group);
 
   if (rtp->stellar_emission_model == rt_stellar_emission_model_const) {
     strcpy(messagestring, "Using constant stellar emission rates: [ ");
@@ -252,7 +322,10 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
              rt_stellar_emission_model_IlievTest) {
     message("Using Iliev+06 Test 4 stellar emission model.");
   } else if (rtp->stellar_emission_model == rt_stellar_emission_model_BPASS) {
-    message("Using BPASS stellar emission model.");
+    message("Using BPASS stellar emission model, escape fraction %g.",
+            rtp->f_esc);
+    if (rtp->fuv_group >= 0)
+      message("FUV photon escape fraction %g.", rtp->f_esc_FUV);
   } else {
     error("Unknown stellar emission model %d", rtp->stellar_emission_model);
   }
@@ -316,6 +389,9 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
           "Found index %d %.3g <= %.3g",
           g + 1, rtp->photon_groups[g + 1], rtp->photon_groups[g]);
   }
+
+  /* Is there a non-ionizing FUV group? */
+  rtp->fuv_group = rt_props_find_fuv_group(rtp);
 
   /* Get stellar emission rate model related parameters */
   /* -------------------------------------------------- */
@@ -508,6 +584,7 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   rtp->stellar_spectrum_blackbody_T = -1.;
   rtp->ionizing_tables = NULL;
   rtp->f_esc = -1.;
+  rtp->f_esc_FUV = -1.;
 
   rtp->stellar_spectrum_type =
       parser_get_param_int(params, "KIARART:stellar_spectrum_type");
@@ -547,30 +624,13 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
     rtp->f_esc =
         parser_get_param_float(params, "KIARART:photon_escape_fraction");
 
-    /* Read the table from BPASS. */
-    char *fname = malloc(256);
-    char *dataset_name_HI = "/Table_HI/block0_values";
-    char *dataset_name_HeI = "/Table_HeI/block0_values";
-    char *dataset_name_HeII = "/Table_HeII/block0_values";
-    /* Read stellar table filename. */
-    sprintf(fname, "%s", rtp->stellar_table_path);
+    /* The FUV light escapes its birth cloud differently */
+    if (rtp->fuv_group >= 0)
+      rtp->f_esc_FUV =
+          parser_get_param_float(params, "KIARART:photon_escape_fraction_FUV");
 
-    int num_tables = 3;
-    rtp->ionizing_tables = malloc(num_tables * sizeof(double **));
-
-    rtp->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
-    rtp->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
-    rtp->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
-
-    /* print table check. */
-    // for (hsize_t i = 0; i < 13; i++){
-    //      for (hsize_t j = 0; j < 22; j++) {
-    //           printf("%.2f\n", rtp->ionizing_tables[0][i][j]);
-    //	 }
-    //  }
-
-    /* free the data name. */
-    free(fname);
+    /* Read the tables from BPASS. */
+    rt_props_read_bpass_tables(rtp);
   } else {
     error("Selected unknown stellar spectrum type %d",
           rtp->stellar_spectrum_type);
@@ -682,23 +742,8 @@ __attribute__((always_inline)) INLINE static void rt_struct_restore(
   props->number_weighted_cross_sections = NULL;
   rt_cross_sections_init(props, phys_const, us);
 
-  /* Read the table from BPASS. */
-  char *fname = malloc(256);
-  char *dataset_name_HI = "/Table_HI/block0_values";
-  char *dataset_name_HeI = "/Table_HeI/block0_values";
-  char *dataset_name_HeII = "/Table_HeII/block0_values";
-  /* Read stellar table filename. */
-  sprintf(fname, "%s", props->stellar_table_path);
-
-  int num_tables = 3;
-  props->ionizing_tables = malloc(num_tables * sizeof(double **));
-
-  props->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
-  props->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
-  props->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
-
-  /* free the data name. */
-  free(fname);
+  /* Read the tables from BPASS. */
+  if (props->stellar_spectrum_type == 2) rt_props_read_bpass_tables(props);
 
   /* The RT parameters, in particular the reduced speed of light, are
    * not defined at compile time. So we need to write them down. */

@@ -205,20 +205,42 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
    * need to think a better way to read in.
    * Current values are using the values in first year review. */
   if (rt_props->stellar_spectrum_type == 2) {
-    /* Energy weighted cross section. unit cm^2 */
-    cse[0][0] = 3.21e-18, cse[0][1] = 0, cse[0][2] = 0;
-    cse[1][0] = 6.99e-19, cse[1][1] = 5.14e-18, cse[1][2] = 0;
-    cse[2][0] = 1.19e-19, cse[2][1] = 1.64e-18, cse[2][2] = 4.64e-19;
+    /* Per BPASS band (HI, HeI, HeII): energy and number weighted cross
+     * sections for the species HI, HeI, HeII (cm^2), and the average photon
+     * energy (erg) */
+    static const double cse_ion[3][3] = {{3.21e-18, 0., 0.},
+                                         {6.99e-19, 5.14e-18, 0.},
+                                         {1.19e-19, 1.64e-18, 4.64e-19}};
+    static const double csn_ion[3][3] = {{3.46e-18, 0., 0.},
+                                         {7.55e-19, 5.42e-18, 0.},
+                                         {1.19e-19, 1.65e-18, 4.55e-19}};
+    static const double av_energy_ion[3] = {2.864693e-11, 4.955534e-11,
+                                            8.834406e-11};
+    /* FUV band (6-13.6 eV): no photoionization. Its mean photon energy is
+     * 9.18 eV, from the BPASS table at Z = 0.014 integrated over 0-100 Myr
+     * (9.05-9.48 eV over the metallicities; see
+     * tools/make_kiara_rt_bpass_tables.py) */
+    const double av_energy_FUV = 9.18 * 1.602176634e-12;
 
-    /* Number weighted cross section. unit cm^2 */
-    csn[0][0] = 3.46e-18, csn[0][1] = 0, csn[0][2] = 0;
-    csn[1][0] = 7.55e-19, csn[1][1] = 5.42e-18, csn[1][2] = 0;
-    csn[2][0] = 1.19e-19, csn[2][1] = 1.65e-18, csn[2][2] = 4.55e-19;
-
-    /* Average photon energy. unit erg */
-    av_energy[0] = 2.864693e-11;
-    av_energy[1] = 4.955534e-11;
-    av_energy[2] = 8.834406e-11;
+    const int n_fuv = (rt_props->fuv_group >= 0) ? 1 : 0;
+    for (int group = 0; group < RT_NGROUPS; group++) {
+      /* Checks the group layout */
+      rt_props_bpass_table_name(rt_props, group);
+      if (group == rt_props->fuv_group) {
+        for (int s = 0; s < rt_ionizing_species_count; s++) {
+          cse[group][s] = 0.;
+          csn[group][s] = 0.;
+        }
+        av_energy[group] = av_energy_FUV;
+      } else {
+        const int b = group - n_fuv;
+        for (int s = 0; s < rt_ionizing_species_count; s++) {
+          cse[group][s] = cse_ion[b][s];
+          csn[group][s] = csn_ion[b][s];
+        }
+        av_energy[group] = av_energy_ion[b];
+      }
+    }
 
   } else {
 
@@ -433,7 +455,14 @@ double **read_Bpass_from_hdf5(char *file_name, char *dataset_name) {
 
   // Get the dimensions of the dataset
   hsize_t dims[2];  // Assuming a 2D dataset
+  if (H5Sget_simple_extent_ndims(dataspace) != 2)
+    error("Dataset %s in %s is not 2D.", dataset_name, file_name);
   H5Sget_simple_extent_dims(dataspace, dims, NULL);
+  /* rt_get_emission_this_step_BPASS() assumes 13 metallicities x 22 ages */
+  if (dims[0] != 13 || dims[1] != 22)
+    error("Dataset %s in %s has shape [%lu, %lu], expected [13, 22].",
+          dataset_name, file_name, (unsigned long)dims[0],
+          (unsigned long)dims[1]);
 
   // Use a buffer to read HDF5 dataset
   double *buffer = malloc(dims[0] * dims[1] * sizeof(double));

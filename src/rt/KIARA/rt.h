@@ -94,11 +94,15 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
         rt_props->average_photon_energy, phys_const, internal_units);
   } else if (rt_props->stellar_emission_model ==
              rt_stellar_emission_model_BPASS) {
+    double f_esc[RT_NGROUPS];
+    for (int g = 0; g < RT_NGROUPS; g++)
+      f_esc[g] = (g == rt_props->fuv_group) ? rt_props->f_esc_FUV
+                                            : rt_props->f_esc;
     rt_get_emission_this_step_BPASS(
         emission_this_step, sp->mass,
         sp->chemistry_data.metal_mass_fraction_total, star_age_begin_of_step,
         star_age, rt_props->ionizing_tables, rt_props->average_photon_energy,
-        phys_const, internal_units, rt_props->f_esc);
+        phys_const, internal_units, f_esc);
     /* Convert some quantities. */
     const double time_to_Myr =
         units_cgs_conversion_factor(internal_units, UNIT_CONV_TIME) /
