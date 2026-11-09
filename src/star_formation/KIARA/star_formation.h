@@ -155,6 +155,9 @@ struct star_formation {
     /*! For WN07, reference density (code units) where t_ref = t_ff */
     double wn07_tff_ref_density;
 
+    /*! For WN07, epsc is multiplied by a^k (0 = no redshift dependence) */
+    double wn07_epsc_redshift_exponent;
+
   } lognormal;
 };
 
@@ -459,6 +462,11 @@ INLINE static void star_formation_compute_SFR_wn07(
     error("wn07_epsc_method value of %d not recognised",
           starform->lognormal.wn07_epsc_method);
   }
+
+  /* Optional redshift dependence, epsc ~ a^k: lower efficiency (longer
+   * depletion times) at high redshift */
+  if (starform->lognormal.wn07_epsc_redshift_exponent != 0.)
+    epsc *= pow(cosmo->a, starform->lognormal.wn07_epsc_redshift_exponent);
 
   /* Restrict range to that specified in WN07 */
   epsc = min(epsc, 0.1);
@@ -1023,6 +1031,10 @@ INLINE static void starformation_init_backend(
               parameter_file, "KIARAStarFormation:wn07_tff_ref_density_cm3",
               500.) *
           1.673e-24 / rho_to_cgs;
+      starform->lognormal.wn07_epsc_redshift_exponent =
+          parser_get_opt_param_double(
+              parameter_file, "KIARAStarFormation:wn07_epsc_redshift_exponent",
+              0.);
       if (starform->lognormal.wn07_tff_exponent < 0. ||
           starform->lognormal.wn07_tff_exponent > 1.)
         error("KIARAStarFormation:wn07_tff_exponent must be in [0, 1]");
@@ -1055,10 +1067,11 @@ INLINE static void starformation_print_backend(
     message(
         "Star formation based on Wada+Norman 2007: critical "
         "density (code units) = %e, efficiency = %e, free-fall rate "
-        "~ t_ff^-%g with t_ref = t_ff at %e (code units)",
+        "~ t_ff^-%g with t_ref = t_ff at %e (code units), epsc ~ a^%g",
         starform->lognormal.rhocrit, starform->lognormal.epsilon,
         starform->lognormal.wn07_tff_exponent,
-        starform->lognormal.wn07_tff_ref_density);
+        starform->lognormal.wn07_tff_ref_density,
+        starform->lognormal.wn07_epsc_redshift_exponent);
   } else if (starform->SF_model == kiara_star_formation_lognormal) {
     message(
         "Star formation based on lognormal density pdf: "
