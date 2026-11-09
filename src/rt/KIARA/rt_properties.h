@@ -172,6 +172,15 @@ struct rt_props {
    * units), so that the IGM gets none */
   double G0_min_density;
 
+  /*! Fraction of the FUV group's photons in the Lyman-Werner band
+   * (11.2-13.6 eV) */
+  double FUV_LW_photon_fraction;
+
+  /*! Ratio of the LW photon density per unit G0 of the FUV group's spectrum
+   * to that of the Draine (1978) field, on which crackle's H2 ISRF
+   * photodissociation rate per G0 is based */
+  double H2_LW_spectral_factor;
+
   /* Grackle Stuff */
   /* ------------- */
 
@@ -726,9 +735,54 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   rtp->number_weighted_cross_sections = NULL;
   rt_cross_sections_init(rtp, phys_const, us);
 
+  /* H2 photodissociation by the FUV group */
+  /* ------------------------------------- */
+
+  /* crackle's H2 ISRF photodissociation rate per G0 assumes the Draine
+   * (1978) spectrum, which has a fraction 0.1058 of its 6-13.6 eV photons in
+   * the LW band and a mean photon energy of 8.603 eV. For the same G0 the
+   * FUV group has f_LW / <E> over that many LW photons. The default f_LW is
+   * the BPASS (Chabrier, 100 Msun) value at Z = 0.014 over 0-100 Myr
+   * (0.19-0.26 over the metallicities; tools/make_kiara_rt_bpass_tables.py).
+   */
+  rtp->FUV_LW_photon_fraction = 0.;
+  rtp->H2_LW_spectral_factor = 1.;
+  if (rtp->fuv_group >= 0) {
+    rtp->FUV_LW_photon_fraction = parser_get_opt_param_double(
+        params, "KIARART:FUV_LW_photon_fraction", 0.208);
+    if (rtp->FUV_LW_photon_fraction < 0. || rtp->FUV_LW_photon_fraction > 1.)
+      error("KIARART:FUV_LW_photon_fraction must be in [0, 1], got %g",
+            rtp->FUV_LW_photon_fraction);
+    const double E_FUV_eV =
+        rtp->average_photon_energy[rtp->fuv_group] / 1.602176634e-12;
+    if (E_FUV_eV <= 0.) error("FUV group has mean photon energy %g", E_FUV_eV);
+    rtp->H2_LW_spectral_factor =
+        (rtp->FUV_LW_photon_fraction / E_FUV_eV) / (0.1058 / 8.603);
+    if (engine_rank == 0)
+      message(
+          "FUV group: LW photon fraction %g, mean photon energy %.3g eV: H2 "
+          "photodissociation per G0 is %.3g times that of the Draine field",
+          rtp->FUV_LW_photon_fraction, E_FUV_eV, rtp->H2_LW_spectral_factor);
+  }
+
   /* Finishers */
   /* --------- */
 }
+
+/**
+ * @brief Give the RT crackle instance the dust, H2 and ISRF parameters of
+ * the cooling (KIARACooling), and re-initialise it.
+ *
+ * The cooling is set up after the RT, so this is called once both are
+ * (and again on restart). With a FUV group, the H2 ISRF photodissociation
+ * rate per G0 is scaled by #rt_props.H2_LW_spectral_factor.
+ *
+ * @param rtp The #rt_props.
+ * @param cooling The #cooling_function_data.
+ */
+struct cooling_function_data;
+void rt_props_sync_crackle_with_cooling(
+    struct rt_props *rtp, const struct cooling_function_data *cooling);
 
 /**
  * @brief Update the RT properties at the start of a step (the grackle

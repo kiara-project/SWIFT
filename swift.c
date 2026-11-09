@@ -1317,6 +1317,13 @@ int main(int argc, char *argv[]) {
     }
     if (myrank == 0) cooling_print(&cooling_func);
 
+#ifdef RT_KIARA
+    /* The KIARA-RT crackle instance takes the dust/H2/ISRF parameters of the
+     * cooling, which is only now set up */
+    if (with_rt && (with_cooling || with_temperature))
+      rt_props_sync_crackle_with_cooling(&rt_properties, &cooling_func);
+#endif
+
     /* Initialise the star formation law and its properties */
     bzero(&starform, sizeof(struct star_formation));
     if (with_star_formation) {

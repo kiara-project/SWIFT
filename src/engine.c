@@ -4679,6 +4679,12 @@ void engine_struct_restore(struct engine *e, FILE *stream) {
   rt_struct_restore(rt_properties, stream, e->physical_constants,
                     e->internal_units, cosmo);
   e->rt_props = rt_properties;
+#ifdef RT_KIARA
+  /* The KIARA-RT crackle instance takes the dust/H2/ISRF parameters of the
+   * cooling (restored above) */
+  if (e->policy & engine_policy_rt)
+    rt_props_sync_crackle_with_cooling(rt_properties, cooling_func);
+#endif
 
   struct black_holes_props *black_holes_properties =
       (struct black_holes_props *)malloc(sizeof(struct black_holes_props));

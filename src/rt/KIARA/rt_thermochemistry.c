@@ -878,3 +878,54 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   /* Clean up after yourself. */
   free(iact_rates);
 }
+
+/**
+ * @brief Give the RT crackle instance the dust, H2 and ISRF parameters of
+ * the cooling (KIARACooling), and re-initialise it.
+ *
+ * The cooling is set up after the RT, so this is called once both are
+ * (and again on restart). With a FUV group, the H2 ISRF photodissociation
+ * rate per G0 is scaled by #rt_props.H2_LW_spectral_factor.
+ *
+ * @param rtp The #rt_props.
+ * @param cooling The #cooling_function_data.
+ */
+void rt_props_sync_crackle_with_cooling(
+    struct rt_props *rtp, const struct cooling_function_data *cooling) {
+
+  chemistry_data *chemistry = &rtp->grackle_chemistry_data;
+
+  /* The rate tables depend on these parameters: rebuild them */
+  local_free_chemistry_data(chemistry, &rtp->grackle_chemistry_rates);
+
+  cooling_set_crackle_dust_parameters(cooling, chemistry);
+  chemistry->H2_isrf_dissociation_rate *= rtp->H2_LW_spectral_factor;
+
+  if (engine_rank == 0) {
+    message(
+        "RT crackle instance: dust, H2 and ISRF parameters from the cooling; "
+        "H2 ISRF photodissociation %s, rate %.3g s^-1 per G0, Sternberg "
+        "limit %s",
+        chemistry->H2_isrf_dissociation ? "on" : "off",
+        chemistry->H2_isrf_dissociation_rate,
+        chemistry->H2_sternberg_limit ? "on" : "off");
+    if (cooling->G0_computation_method == 8 &&
+        !chemistry->H2_isrf_dissociation)
+      message(
+          "WARNING: G0 comes from the RT, but KIARACooling:"
+          "H2_isrf_dissociation is off, so the RT does not dissociate H2");
+  }
+
+#ifdef CRACKLE_VALIDATE
+  crackle_validate_init(crackle_validate_local, chemistry, &rtp->grackle_units,
+                        sizeof(chemistry_data), sizeof(code_units),
+                        sizeof(grackle_field_data));
+#endif
+
+  if (local_initialize_chemistry_data(chemistry, &rtp->grackle_chemistry_rates,
+                                      &rtp->grackle_units) == 0)
+    error("Error in initialize_chemistry_data");
+
+  /* The UV background rates and crackle units for the current step */
+  rt_tchem_prepare_step(rtp);
+}

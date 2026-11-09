@@ -230,6 +230,8 @@ void cooling_init_units(const struct unit_system *us,
                         const struct phys_const *phys_const,
                         struct cooling_function_data *cooling);
 void cooling_init_grackle(struct cooling_function_data *cooling);
+void cooling_set_crackle_dust_parameters(
+    const struct cooling_function_data *cooling, chemistry_data *chemistry);
 
 void cooling_init_backend(struct swift_params *parameter_file,
                           const struct unit_system *us,
