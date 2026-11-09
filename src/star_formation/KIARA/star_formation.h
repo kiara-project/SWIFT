@@ -463,6 +463,10 @@ INLINE static void star_formation_compute_SFR_wn07(
           starform->lognormal.wn07_epsc_method);
   }
 
+  /* Galaxy-based efficiency, before any redshift scaling; the BH fuel
+   * (dense_gas_fraction below) uses this one */
+  const double epsc_galaxy = fmax(fmin(epsc, 0.1), 0.001);
+
   /* Optional redshift dependence, epsc ~ a^k: lower efficiency (longer
    * depletion times) at high redshift */
   if (starform->lognormal.wn07_epsc_redshift_exponent != 0.)
@@ -481,8 +485,10 @@ INLINE static void star_formation_compute_SFR_wn07(
   /* fraction of dense gas */
   const double f_c = 0.5 * erfc(z);
 
-  /* Store dense gas fraction, corrected for sSFR dependence of SF efficiency */
-  p->sf_data.dense_gas_fraction = fmin(f_c * epsc / 0.01, 1.f);
+  /* Store dense gas fraction, corrected for sSFR dependence of SF efficiency.
+   * It is the BH torque-accretion fuel, so the SF-law redshift scaling of
+   * epsc (wn07_epsc_redshift_exponent) is left out of it */
+  p->sf_data.dense_gas_fraction = fmin(f_c * epsc_galaxy / 0.01, 1.f);
 
   /* This is the SFR density from eq. 17, except use actual density rho_V
    * not estimated density rho_c, per free-fall time
