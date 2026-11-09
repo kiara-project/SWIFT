@@ -774,8 +774,9 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
  * the cooling (KIARACooling), and re-initialise it.
  *
  * The cooling is set up after the RT, so this is called once both are
- * (and again on restart). With a FUV group, the H2 ISRF photodissociation
- * rate per G0 is scaled by #rt_props.H2_LW_spectral_factor.
+ * (and again on restart). With G0 from the RT (G0_computation_method 8),
+ * the H2 ISRF photodissociation rate per G0 is scaled by
+ * #rt_props.H2_LW_spectral_factor.
  *
  * @param rtp The #rt_props.
  * @param cooling The #cooling_function_data.

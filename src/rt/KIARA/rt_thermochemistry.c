@@ -884,8 +884,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
  * the cooling (KIARACooling), and re-initialise it.
  *
  * The cooling is set up after the RT, so this is called once both are
- * (and again on restart). With a FUV group, the H2 ISRF photodissociation
- * rate per G0 is scaled by #rt_props.H2_LW_spectral_factor.
+ * (and again on restart). With G0 from the RT (G0_computation_method 8),
+ * the H2 ISRF photodissociation rate per G0 is scaled by
+ * #rt_props.H2_LW_spectral_factor.
  *
  * @param rtp The #rt_props.
  * @param cooling The #cooling_function_data.
@@ -899,7 +900,10 @@ void rt_props_sync_crackle_with_cooling(
   local_free_chemistry_data(chemistry, &rtp->grackle_chemistry_rates);
 
   cooling_set_crackle_dust_parameters(cooling, chemistry);
-  chemistry->H2_isrf_dissociation_rate *= rtp->H2_LW_spectral_factor;
+  /* The LW factor converts a G0 of the FUV group's spectrum, so it applies
+   * only when G0 comes from the RT */
+  if (cooling->G0_computation_method == 8)
+    chemistry->H2_isrf_dissociation_rate *= rtp->H2_LW_spectral_factor;
 
   if (engine_rank == 0) {
     message(
