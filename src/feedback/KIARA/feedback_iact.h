@@ -495,6 +495,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
                          hydro_get_physical_density(pj, cosmo));
 
     pj->feedback_data.number_of_times_decoupled += 1;
+    xpj->feedback_data.bh_launch_type = 0;
 
     /* Kicked and handled */
     pj->feedback_data.kick_id = -1;
@@ -744,12 +745,37 @@ feedback_do_chemical_enrichment_of_gas_around_star(
   }
 
 #if COOLING_GRACKLE_MODE >= 2
-  /* Compute kernel-smoothed contribution to number of SNe going off
-   * this timestep */
+  /* Kernel-weighted share of the SNe that went off in the star */
   pj->feedback_data.SNe_ThisTimeStep +=
       si->feedback_data.SNe_ThisTimeStep * Omega_frac;
   pj->feedback_data.SNe_ThisTimeStep =
       fmax(pj->feedback_data.SNe_ThisTimeStep, 0.);
+
+#if KIARA_DUST_N_BINS > 0
+  /* The gas's dust in each material and size bin, plus the star's dust with
+   * the size spectrum of its channel (SNII or AGB) */
+  const double *source_shape =
+      fb_props->dust_source_shape[si->feedback_data.dust_source_agb];
+  double bin_mass[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+  kiara_dust_bin_masses(pj->cooling_data.dust_size_distribution,
+                        pj->cooling_data.dust_mass,
+                        pj->cooling_data.dust_mass_fraction[dust_element_C],
+                        fb_props->dust_source_shape[0], bin_mass);
+  {
+    double delta_C = 0., delta_sil = 0.;
+    for (int d = 0; d < dust_element_count; d++) {
+      const double delta = si->feedback_data.delta_dust_mass[d] * Omega_frac;
+      if (d == dust_element_C)
+        delta_C += delta;
+      else
+        delta_sil += delta;
+    }
+    for (int b = 0; b < KIARA_DUST_N_BINS; b++) {
+      bin_mass[kiara_dust_carbonaceous][b] += delta_C * source_shape[b];
+      bin_mass[kiara_dust_silicate][b] += delta_sil * source_shape[b];
+    }
+  }
+#endif
 
   /* Spread dust ejecta to gas */
   for (int d = 0; d < dust_element_count; d++) {
@@ -799,6 +825,20 @@ feedback_do_chemical_enrichment_of_gas_around_star(
       pj->cooling_data.dust_mass_fraction[d] = 0.f;
     }
   }
+
+#if KIARA_DUST_N_BINS > 0
+  /* The new size distribution, rescaled to the new dust of each material */
+  {
+    const double dust = (pj->cooling_data.dust_mass >= FLT_MIN)
+                            ? pj->cooling_data.dust_mass
+                            : 0.;
+    const double f_C = pj->cooling_data.dust_mass_fraction[dust_element_C];
+    const double m_material[KIARA_DUST_N_MATERIALS] = {f_C * dust,
+                                                       (1. - f_C) * dust};
+    kiara_dust_set_distribution(pj->cooling_data.dust_size_distribution,
+                                bin_mass, m_material, source_shape);
+  }
+#endif
 
 #endif
 

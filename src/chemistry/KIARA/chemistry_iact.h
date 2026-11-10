@@ -322,6 +322,31 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_chemistry(
 #endif
 }
 
+#if KIARA_DUST_N_BINS > 0
+/**
+ * @brief The physical length of a particle's current time-step, as passed to
+ * chemistry_end_force() (runner_others.c).
+ *
+ * @param p The #part.
+ * @param time_base The system's minimal time-step.
+ * @param ti_current The current time on the integer time-line.
+ * @param cosmo The current cosmological model.
+ * @param with_cosmology Are we running with cosmology?
+ */
+__attribute__((always_inline)) INLINE static double chemistry_part_time_step(
+    const struct part *p, const double time_base,
+    const integertime_t ti_current, const struct cosmology *cosmo,
+    const int with_cosmology) {
+  if (with_cosmology) {
+    const integertime_t ti_step = get_integer_timestep(p->time_bin);
+    const integertime_t ti_begin =
+        get_integer_time_begin(ti_current - 1, p->time_bin);
+    return cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+  }
+  return get_timestep(p->time_bin, time_base);
+}
+#endif
+
 /**
  * @brief Computes the mass exchanged between the firehose stream
  * and the ambient medium. Note that either i or j could be the stream
@@ -694,6 +719,35 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
     chj->dm_dust_Z[d] += new_pj_dust_mass_Z - old_pj_dust_mass_Z;
   }
 
+#if KIARA_DUST_N_BINS > 0
+  /* The same mixing for the dust in each material and size bin (its shape),
+   * as a rate per unit gas mass over each particle's own step, so that it
+   * adds to the diffusion in dZ_dust_bins_dt */
+  {
+    const double rate_i =
+        1. / (mi *
+              chemistry_part_time_step(pi, time_base, ti_current, cosmo,
+                                       with_cosmology) *
+              cosmo->a3_inv * cosmo->a2_inv);
+    const double rate_j =
+        1. / (mj *
+              chemistry_part_time_step(pj, time_base, ti_current, cosmo,
+                                       with_cosmology) *
+              cosmo->a3_inv * cosmo->a2_inv);
+    for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+      for (int b = 0; b < KIARA_DUST_N_BINS; b++) {
+        const float Mb_i =
+            pi->cooling_data.dust_size_distribution[m][b] * pi_dust_mass;
+        const float Mb_j =
+            pj->cooling_data.dust_size_distribution[m][b] * pj_dust_mass;
+        chi->dZ_dust_bins_dt[m][b] +=
+            ((pii_weight - 1.f) * Mb_i + pji_weight * Mb_j) * rate_i;
+        chj->dZ_dust_bins_dt[m][b] +=
+            ((pjj_weight - 1.f) * Mb_j + pij_weight * Mb_i) * rate_j;
+      }
+  }
+#endif
+
   /* Update particles' internal energy per unit mass */
   const float old_pi_u = hydro_get_drifted_comoving_internal_energy(pi);
   const float old_pj_u = hydro_get_drifted_comoving_internal_energy(pj);
@@ -873,6 +927,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_diffusion(
         chi->dZ_dust_dt[d] += coef_i * dZd_ij;
         chj->dZ_dust_dt[d] -= coef_j * dZd_ij;
       }
+#if KIARA_DUST_N_BINS > 0
+      /* The same for the dust in each material and size bin (its shape) */
+      for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+        for (int b = 0; b < KIARA_DUST_N_BINS; b++) {
+          const float dZb_ij =
+              Di * pi->cooling_data.dust_size_distribution[m][b] -
+              Dj * pj->cooling_data.dust_size_distribution[m][b];
+          chi->dZ_dust_bins_dt[m][b] += coef_i * dZb_ij;
+          chj->dZ_dust_bins_dt[m][b] -= coef_j * dZb_ij;
+        }
+#endif
     }
 #endif
   }
@@ -939,6 +1004,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_diffusion(
                              Dj * pj->cooling_data.dust_mass_fraction[d];
         chi->dZ_dust_dt[d] += coef_i * dZd_ij;
       }
+#if KIARA_DUST_N_BINS > 0
+      for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+        for (int b = 0; b < KIARA_DUST_N_BINS; b++)
+          chi->dZ_dust_bins_dt[m][b] +=
+              coef_i * (Di * pi->cooling_data.dust_size_distribution[m][b] -
+                        Dj * pj->cooling_data.dust_size_distribution[m][b]);
+#endif
     }
 #endif
   }

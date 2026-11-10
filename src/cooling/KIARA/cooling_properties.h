@@ -20,6 +20,12 @@
 #define SWIFT_COOLING_PROPERTIES_KIARA_H
 
 /* include grackle */
+/* The particle layout depends on the configured number of dust size bins:
+ * never fall back to the stand-alone default of dust.h here */
+#ifndef KIARA_DUST_N_BINS
+#error "config.h must be included before the KIARA cooling headers"
+#endif
+#include "chemistry/KIARA/dust.h"
 #include "crackle/grackle.h"
 
 /**
@@ -114,8 +120,8 @@ struct cooling_function_data {
    * its cooling time (internal units) */
   double firehose_rho_max;
 
-  /*! Timescale (internal units) over which the SN rate deposited on gas
-   * particles by stellar feedback decays (0: used for one cooling step) */
+  /*! E-folding time (internal units) over which gas particles use the SNe
+   * deposited on them by stellar feedback (0: all in the next step) */
   double SNe_smoothing_time;
 
   /*! track H2 formation; this is set within the code based on selection options
@@ -163,6 +169,29 @@ struct cooling_function_data {
   /*! Limit the oxygen in dust to the oxides of the refractory dust elements
    * (MgO, SiO2, CaO, FeO), as grains hold O only bound to them */
   int dust_oxygen_stoichiometric_cap;
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Representative (physical) radius of each grain-size bin (micron) */
+  double dust_grain_sizes[KIARA_DUST_N_BINS];
+
+  /*! Source assumed for dust without a size history: 0 = SNII, 1 = AGB */
+  int dust_initial_source;
+
+  /*! The normalised mass spectrum of that source on the grain-size grid */
+  double dust_initial_distribution[KIARA_DUST_N_BINS];
+
+  /*! Grain-grain collisions between the size bins (Li et al. 2021):
+   * coagulation and shattering on/off */
+  int dust_coagulation;
+  int dust_shattering;
+
+  /*! Material density of the grains, for the collisions (g/cm^3) */
+  double dust_grain_density;
+
+  /*! Cap on the grain velocity dispersion in the collisions, in units of
+   * the velocity dispersion of the gas across the kernel (<= 0: no cap) */
+  double dust_collision_velocity_cap;
+#endif
 
   /*! H2 photodissociation by the ISRF G0, self- and dust-shielded (0 = off:
    * only the UVB dissociates H2) */

@@ -1,4 +1,10 @@
 
+/* The number of KIARA dust size bins (config.h) sets grackle_part_data */
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+#include "chemistry/KIARA/dust.h"
+
 #include "crackle_namespace.h"
 #include "grackle_types.h"
 #include "grackle_chemistry_data.h"
@@ -125,7 +131,30 @@ typedef struct
 
   cr_float SNe_density; // Crackle needs the number of SNe per unit volume (in code units)
 
+#if KIARA_DUST_N_BINS > 0
+  /* Size-resolved dust: fraction of the dust mass in each material (carbonaceous, silicate) and grain-size bin, the bin
+   * radii (micron), and the grain surface area per dust mass relative to 0.1 micron grains (0.1 micron / a_eff) */
+  double dust_bins[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+  const double *dust_grain_sizes;
+  double dust_area_factor;
+#endif
+
 } grackle_part_data;
+
+/**
+ * @brief Grain surface area per dust mass relative to 0.1 micron grains, which scales the surface processes (H2
+ * formation on grains, gas-grain heat exchange, photoelectric heating, recombination onto grains). Exactly 1 without
+ * size-resolved dust.
+ */
+static inline double crackle_dust_area_factor(const grackle_part_data *gp)
+{
+#if KIARA_DUST_N_BINS > 0
+	return gp->dust_area_factor;
+#else
+	(void)gp;
+	return 1.;
+#endif
+}
 
 /**
  * @brief Initialise the evolved (non-input) quantities of a particle before

@@ -31,6 +31,7 @@
 #include <string.h>
 
 /* Local includes. */
+#include "chemistry/KIARA/dust_sources.h"
 #include "chemistry_struct.h"
 #include "error.h"
 #include "hydro.h"
@@ -271,6 +272,9 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
     cpd->dZ_dust_dt[d] = 0.f;
 #endif
   }
+#if COOLING_GRACKLE_MODE >= 2 && KIARA_DUST_N_BINS > 0
+  kiara_dust_distribution_zero(cpd->dZ_dust_bins_dt);
+#endif
 
 #if COOLING_GRACKLE_MODE >= 2
   cpd->local_sfr_density = 0.f;
@@ -304,6 +308,11 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
   const float h_inv_dim = pow_dimension(h_inv); /* 1/h^d */
 
   struct chemistry_part_data *cpd = &p->chemistry_data;
+
+#if KIARA_DUST_N_BINS > 0
+  /* Not known without the shear tensor */
+  cpd->velocity_dispersion = -1.f;
+#endif
 
   /* If diffusion is on, finish up shear tensor & particle's diffusion coeff */
   if (cd->diffusion_flag == 1 && cd->C_Smagorinsky > 0.f) {
@@ -359,6 +368,12 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
     }
 
     velocity_gradient_norm = sqrtf(velocity_gradient_norm);
+
+#if KIARA_DUST_N_BINS > 0
+    /* The velocity difference across the kernel, for the dust collisions */
+    cpd->velocity_dispersion =
+        cosmo->a * p->h * kernel_gamma * velocity_gradient_norm;
+#endif
 
     /* Never set D for wind, or ISM particles */
     if (!(p->decoupled) && !(p->cooling_data.subgrid_temp > 0.f)) {
@@ -441,6 +456,9 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
 
   /* Reset the diffusion. */
   cpd->diffusion_coefficient = 0.f;
+#if KIARA_DUST_N_BINS > 0
+  cpd->velocity_dispersion = 0.f;
+#endif
 
   /* Reset the change in metallicity */
   cpd->dZ_dt_total = 0.f;
@@ -451,6 +469,9 @@ chemistry_part_has_no_neighbours(struct part *restrict p,
   for (int d = 0; d < dust_element_count; ++d) {
     cpd->dZ_dust_dt[d] = 0.f;
   }
+#if KIARA_DUST_N_BINS > 0
+  kiara_dust_distribution_zero(cpd->dZ_dust_bins_dt);
+#endif
 #endif
 
 #if COOLING_GRACKLE_MODE >= 2
@@ -867,19 +888,10 @@ __attribute__((always_inline)) INLINE static void chemistry_prepare_force(
     const struct chemistry_global_data *cd) {}
 
 /**
- * @brief Updates to the chemistry data after the hydro force loop.
- *
- * Finish off the diffusion by actually exchanging the metals
- *
- * @param p The particle to act upon.
- * @param xp The #xpart associated with p.
- * @param cosmo The current cosmological model.
- * @param with_cosmology Are we running with the cosmology?
- * @param time Current time of the simulation.
- * @param dt Time step (in physical units).
- * @param cd #chemistry_global_data containing chemistry information.
+ * @brief Firehose exchange and diffusion of the metals and dust at the end of
+ * the force loop (the body of chemistry_end_force()).
  */
-__attribute__((always_inline)) INLINE static void chemistry_end_force(
+__attribute__((always_inline)) INLINE static void chemistry_end_force_body(
     struct part *restrict p, struct xpart *xp, const struct cosmology *cosmo,
     const int with_cosmology, const double time, const double dt,
     const struct chemistry_global_data *cd) {
@@ -1141,6 +1153,9 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
     for (int d = 0; d < dust_element_count; d++) {
       ch->dZ_dust_dt[d] = 0.f;
     }
+#if KIARA_DUST_N_BINS > 0
+    kiara_dust_distribution_zero(ch->dZ_dust_bins_dt);
+#endif
 #endif
     return;
   }
@@ -1204,6 +1219,51 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force(
         " particle id=%lld due to metal diffusion",
         p->id);
   }
+}
+
+/**
+ * @brief Updates to the chemistry data after the hydro force loop.
+ *
+ * Finish off the diffusion by actually exchanging the metals
+ *
+ * @param p The particle to act upon.
+ * @param xp The #xpart associated with p.
+ * @param cosmo The current cosmological model.
+ * @param with_cosmology Are we running with the cosmology?
+ * @param time Current time of the simulation.
+ * @param dt Time step (in physical units).
+ * @param cd #chemistry_global_data containing chemistry information.
+ */
+__attribute__((always_inline)) INLINE static void chemistry_end_force(
+    struct part *restrict p, struct xpart *xp, const struct cosmology *cosmo,
+    const int with_cosmology, const double time, const double dt,
+    const struct chemistry_global_data *cd) {
+#if COOLING_GRACKLE_MODE >= 2 && KIARA_DUST_N_BINS > 0
+  if (dt == 0.) return;
+
+  /* The dust in each material and size bin before the exchanges */
+  struct cooling_part_data *co = &p->cooling_data;
+  double mass[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+  kiara_dust_bin_masses(co->dust_size_distribution, co->dust_mass,
+                        co->dust_mass_fraction[dust_element_C], NULL, mass);
+
+  chemistry_end_force_body(p, xp, cosmo, with_cosmology, time, dt, cd);
+
+  /* Add the exchanged dust (a rate per unit gas mass, as dZ_dust_dt) and
+   * rescale the rows to the new dust of each material */
+  const double to_mass = dt * cosmo->a3_inv * cosmo->a2_inv * hydro_get_mass(p);
+  for (int material = 0; material < KIARA_DUST_N_MATERIALS; material++)
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      mass[material][i] +=
+          p->chemistry_data.dZ_dust_bins_dt[material][i] * to_mass;
+  const double f_C = co->dust_mass_fraction[dust_element_C];
+  const double m_material[KIARA_DUST_N_MATERIALS] = {
+      f_C * co->dust_mass, (1. - f_C) * co->dust_mass};
+  kiara_dust_set_distribution(co->dust_size_distribution, mass, m_material,
+                              NULL);
+#else
+  chemistry_end_force_body(p, xp, cosmo, with_cosmology, time, dt, cd);
+#endif
 }
 
 /**
@@ -1356,6 +1416,28 @@ chemistry_transfer_part_to_bpart(struct chemistry_bpart_data *bp_data,
   for (int i = 0; i < chemistry_element_count; ++i)
     bp_data->metal_mass[i] += p_data->metal_mass_fraction[i] * nibble_mass;
 }
+
+#if COOLING_GRACKLE_MODE >= 2
+/**
+ * @brief Add a fraction of a gas particle's dust to the metals of a black hole
+ * that accretes it (the dust is metals, by element).
+ *
+ * @param bp_data The black hole data to add to.
+ * @param co The cooling data of the gas particle (its dust).
+ * @param fraction The fraction of the particle's dust accreted.
+ */
+__attribute__((always_inline)) INLINE static void chemistry_add_dust_to_bpart(
+    struct chemistry_bpart_data *bp_data, const struct cooling_part_data *co,
+    const double fraction) {
+
+  const double dust_mass = fraction * co->dust_mass;
+  for (int d = 0; d < dust_element_count; d++) {
+    const double mass = dust_mass * co->dust_mass_fraction[d];
+    bp_data->metal_mass[chemistry_element_of_dust(d)] += mass;
+    bp_data->metal_mass_total += mass;
+  }
+}
+#endif
 
 /**
  * @brief Add the chemistry data of a black hole to another one.

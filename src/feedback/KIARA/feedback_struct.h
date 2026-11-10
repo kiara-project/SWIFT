@@ -42,7 +42,8 @@ struct feedback_part_data {
   long long kick_id;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Number of SNe (of any type) going off in nearby stars */
+  /*! Number of SNe (of any type) deposited by neighbouring stars and not
+   * yet used (see cooling_get_SNe_rate()) */
   float SNe_ThisTimeStep;
 #endif
 };
@@ -50,7 +51,17 @@ struct feedback_part_data {
 /**
  * @brief Extra feedback fields carried by each hydro particles
  */
-struct feedback_xpart_data {};
+struct feedback_xpart_data {
+
+  /*! Comoving position where a BH last kicked this particle */
+  double bh_launch_pos[3];
+
+  /*! Cosmic time (internal units) of that BH kick */
+  float bh_launch_time;
+
+  /*! 0 = not in a BH-launched flight, 1 = jet, 2 = other BH wind */
+  int bh_launch_type;
+};
 
 /**
  * @brief Feedback fields carried by each star particles
@@ -97,12 +108,18 @@ struct feedback_spart_data {
   float wind_velocity;
 
 #if COOLING_GRACKLE_MODE >= 2
-  /*! Number of SNe (of any type) going off within star during this step */
+  /*! Number of SNe (of any type) going off within the star over its last
+   * enrichment interval */
   double SNe_ThisTimeStep;
 
   /*! Dust mass formed in each #dust_element this step (float, like the gas
    * dust masses it is added to) */
   float delta_dust_mass[dust_element_count];
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Channel of that dust, for its size spectrum: 0 = SNII, 1 = AGB */
+  int dust_source_agb;
+#endif
 #endif
 
   /*! Initial stream radius for firehose model */

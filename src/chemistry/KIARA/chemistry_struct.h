@@ -21,6 +21,13 @@
 
 #include "inline.h"
 
+/* The particle layout depends on the configured number of dust size bins:
+ * never fall back to the stand-alone default of dust.h here */
+#ifndef KIARA_DUST_N_BINS
+#error "config.h must be included before the KIARA chemistry headers"
+#endif
+#include "chemistry/KIARA/dust.h"
+
 #define FIREHOSE_COOLLIM 0.1f            /* -u_new / u */
 #define FIREHOSE_HEATLIM 10.f            /* +u_new / u */
 #define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
@@ -210,6 +217,13 @@ struct chemistry_part_data {
   /*! Diffusion coefficient */
   float diffusion_coefficient;
 
+#if KIARA_DUST_N_BINS > 0
+  /*! Velocity dispersion of the gas across the kernel, H |S| from the
+   * trace-free shear (physical internal units; < 0 if not computed), which
+   * caps the grain velocities in the dust collisions */
+  float velocity_dispersion;
+#endif
+
   /*! Variation of the total metal mass */
   float dZ_dt_total;
 
@@ -228,6 +242,13 @@ struct chemistry_part_data {
 #if COOLING_GRACKLE_MODE >= 2
   /*! Variation of the dust mass (per unit gas mass) by dust element */
   float dZ_dust_dt[dust_element_count];
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Variation of the dust mass (per unit gas mass) in each material and
+   * size bin from diffusion and Firehose mixing. Only its shape is used: the
+   * amounts are those of dZ_dust_dt and dm_dust_Z */
+  float dZ_dust_bins_dt[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+#endif
 #endif
 
 #if COOLING_GRACKLE_MODE >= 2

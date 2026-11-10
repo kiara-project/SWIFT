@@ -1244,6 +1244,10 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_part(
   struct chemistry_bpart_data *bp_chem = &bp->chemistry_data;
   const struct chemistry_part_data *p_chem = &p->chemistry_data;
   chemistry_add_part_to_bpart(bp_chem, p_chem, gas_mass);
+#if defined(CHEMISTRY_KIARA) && COOLING_GRACKLE_MODE >= 2
+  /* ... and its dust */
+  chemistry_add_dust_to_bpart(bp_chem, &p->cooling_data, 1.);
+#endif
 
   /* This BH swallowed a gas particle */
   bp->number_of_gas_swallows++;
@@ -2531,6 +2535,11 @@ INLINE static void black_holes_create_from_gas(
   struct chemistry_bpart_data *bp_chem = &bp->chemistry_data;
   const struct chemistry_part_data *p_chem = &p->chemistry_data;
   chemistry_bpart_from_part(bp_chem, p_chem, gas_mass);
+#if defined(CHEMISTRY_KIARA) && COOLING_GRACKLE_MODE >= 2
+  /* The gas particle's dust is metals of the black hole too */
+  chemistry_add_dust_to_bpart(bp_chem, &p->cooling_data, 1.);
+  bp_chem->formation_metallicity += p->cooling_data.dust_mass / gas_mass;
+#endif
 
   /* No swallowed angular momentum */
   bp->swallowed_angular_momentum[0] = 0.f;

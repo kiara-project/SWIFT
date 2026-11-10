@@ -662,6 +662,12 @@ runner_iact_nonsym_bh_gas_swallow(
       struct chemistry_part_data *pj_chem = &pj->chemistry_data;
       chemistry_transfer_part_to_bpart(bi_chem, pj_chem, nibbled_mass,
                                        nibbled_mass / pj_mass_orig);
+#if defined(CHEMISTRY_KIARA) && COOLING_GRACKLE_MODE >= 2
+      /* The nibbled gas takes its share of the dust with it */
+      chemistry_add_dust_to_bpart(bi_chem, &pj->cooling_data,
+                                  nibbled_mass / pj_mass_orig);
+      pj->cooling_data.dust_mass *= new_gas_mass / pj_mass_orig;
+#endif
     }
 
     /* This particle is swallowed by the BH with the largest ID of all the
@@ -1167,6 +1173,23 @@ runner_iact_nonsym_bh_gas_feedback(
           /* Later will apply velocity as if it was flagged to swallow */
           adaf_kick_flag = 1;
 
+          /* Too little energy for the minimum speed: kick at that speed with
+           * probability E_inject / (m v_min^2 / 2), so the expected energy is
+           * unchanged but it goes into fewer, faster kicks */
+          const float v_min = bh_props->adaf_wind_min_speed;
+          if (v_min > 0.f && bh_props->adaf_wind_speed < 0.f &&
+              v_kick < v_min) {
+            const float p_kick = (v_kick * v_kick) / (v_min * v_min);
+            const float rand_min = random_unit_interval(
+                bi->id + 3 * pj->id, ti_current, random_number_BH_kick);
+            if (rand_min < p_kick) {
+              v_kick = v_min;
+            } else {
+              v_kick = 0.f;
+              adaf_kick_flag = 0;
+            }
+          }
+
         } else {
           v_kick = 0.f;
         }
@@ -1274,6 +1297,11 @@ runner_iact_nonsym_bh_gas_feedback(
   int flagged_to_kick =
       jet_flag || (swallow_flag && !adaf_heat_flag) || adaf_kick_flag;
 
+  /* Diagnostic: no quasar/slim-disk wind kicks (jets and ADAF unaffected) */
+  if (!bh_props->quasar_wind_kicks && !jet_flag && !adaf_heat_flag &&
+      (bi->state == BH_states_quasar || bi->state == BH_states_slim_disk))
+    flagged_to_kick = 0;
+
   /* Kick the particle if is was tagged only */
   if (v_kick > 0.f && flagged_to_kick) {
 
@@ -1371,6 +1399,13 @@ runner_iact_nonsym_bh_gas_feedback(
           bh_props->rho_to_n_cgs, m_dot_wind, v_kick, bi->h, cosmo);
       pj->chemistry_data.exchanged_mass = 0.f;
 
+      /* Record the launch, for the optional recoupling log */
+      xpj->feedback_data.bh_launch_pos[0] = pj->x[0];
+      xpj->feedback_data.bh_launch_pos[1] = pj->x[1];
+      xpj->feedback_data.bh_launch_pos[2] = pj->x[2];
+      xpj->feedback_data.bh_launch_time = cosmo->time;
+      xpj->feedback_data.bh_launch_type = jet_flag ? 1 : 2;
+
       /* Count number of decouplings, also reset decoupling for jets */
       if (jet_flag) {
         if (bh_props->jet_decouple_time_factor > 0.f) {
@@ -1465,6 +1500,9 @@ runner_iact_nonsym_bh_gas_feedback(
       for (int d = 0; d < dust_element_count; d++) {
         pj->cooling_data.dust_mass_fraction[d] = 0.f;
       }
+#if KIARA_DUST_N_BINS > 0
+      kiara_dust_distribution_zero(pj->cooling_data.dust_size_distribution);
+#endif
 
       /* All of the dust is metals */
       pj->chemistry_data.metal_mass_fraction_total +=

@@ -47,6 +47,9 @@ extern chemistry_data *grackle_data;
 
 /* Local includes. */
 #include "chemistry.h"
+#include "chemistry/KIARA/dust_coagulation.h"
+#include "chemistry/KIARA/dust_evolution.h"
+#include "chemistry/KIARA/dust_shattering.h"
 #include "cooling_io.h"
 #include "entropy_floor.h"
 #include "error.h"
@@ -55,6 +58,7 @@ extern chemistry_data *grackle_data;
 #include "parser.h"
 #include "part.h"
 #include "physical_constants.h"
+#include "random.h"
 #include "star_formation.h"
 #include "units.h"
 
@@ -257,6 +261,9 @@ void cooling_first_init_part(const struct phys_const *restrict phys_const,
   for (int d = 0; d < dust_element_count; d++) {
     p->cooling_data.dust_mass_fraction[d] = 0.f;
   }
+#if KIARA_DUST_N_BINS > 0
+  kiara_dust_distribution_zero(p->cooling_data.dust_size_distribution);
+#endif
 
   p->cooling_data.dust_temperature = 0.f;
 #endif
@@ -327,6 +334,20 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
           cooling->H2_shield_mean_density);
   message("H2 Sternberg+14 molecular-fraction limit = %d",
           cooling->H2_sternberg_limit);
+#if KIARA_DUST_N_BINS > 0
+  message(
+      "Dust size bins: %d per material (carbonaceous, silicate), radii "
+      "%g to %g micron, dust without a size history from %s",
+      KIARA_DUST_N_BINS, cooling->dust_grain_sizes[0],
+      cooling->dust_grain_sizes[KIARA_DUST_N_BINS - 1],
+      cooling->dust_initial_source ? "AGB" : "SNII");
+  message(
+      "Dust grain collisions in the ISM: coagulation %d, shattering %d "
+      "(grain density %g g/cm^3, grain velocities capped at %g x the gas "
+      "velocity dispersion)",
+      cooling->dust_coagulation, cooling->dust_shattering,
+      cooling->dust_grain_density, cooling->dust_collision_velocity_cap);
+#endif
   message("Thermal time = %g", cooling->thermal_time);
   message("Specific Heating Rates flag = %i",
           cooling->provide_specific_heating_rates);
@@ -462,14 +483,15 @@ static double cooling_H2_shielding_length(
  * @param p The #part.
  * @param xp The #xpart.
  * @param cooling The #cooling_function_data used in the run.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param rho The particle density (grackle units).
  * @param species_densities Buffer holding the densities passed to grackle.
  */
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
-    const struct cooling_function_data *restrict cooling, const double dt,
-    gr_float rho, gr_float species_densities[N_SPECIES]) {
+    const struct cooling_function_data *restrict cooling,
+    const double SNe_count, gr_float rho,
+    gr_float species_densities[N_SPECIES]) {
   /* HM */
   species_densities[6] = xp->cooling_data.HM_frac * rho;
   data->HM_density = &species_densities[6];
@@ -488,10 +510,8 @@ void cooling_copy_to_grackle2(
     species_densities[20] =
         p->cooling_data.dust_mass / p->mass * species_densities[12];
     data->dust_density = &species_densities[20];
-    species_densities[21] = p->feedback_data.SNe_ThisTimeStep * dt / p->mass *
-                            species_densities[12];
-    /* need to pass the number of SNe per volume of particle;
-     * recall SNe_ThisTimeStep is the SNe rate */
+    /* The number of SNe the particle uses in this call, per volume */
+    species_densities[21] = SNe_count / p->mass * species_densities[12];
 
     // if (species_densities[21] > 1.e15) message("SNe_density: %g %g %g
     // %g\n",p->mass, species_densities[12], p->feedback_data.SNe_ThisTimeStep,
@@ -592,14 +612,15 @@ void cooling_copy_to_grackle2(
  * @param p The #part.
  * @param xp The #xpart.
  * @param cooling The #cooling_function_data used in the run.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param rho The particle density (grackle units).
  * @param species_densities Buffer holding the densities passed to grackle.
  */
 void cooling_copy_to_grackle2(
     grackle_field_data *data, const struct part *p, const struct xpart *xp,
-    const struct cooling_function_data *restrict cooling, const double dt,
-    gr_float rho, gr_float species_densities[N_SPECIES]) {
+    const struct cooling_function_data *restrict cooling,
+    const double SNe_count, gr_float rho,
+    gr_float species_densities[N_SPECIES]) {
   data->HM_density = NULL;
   data->H2I_density = NULL;
   data->H2II_density = NULL;
@@ -987,7 +1008,7 @@ void cooling_crackle_compare_inputs(long long id) {
  * @param cooling The #cooling_function_data used in the run.
  * @param p The #part.
  * @param xp The #xpart.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param T_warm The warm-ISM EoS temperature of the particle (K).
  * @param species_densities Buffer holding the values passed to grackle.
  * @param iact_rates The RT heating and ionisation rates passed to grackle.
@@ -997,7 +1018,7 @@ void cooling_copy_to_grackle(
     grackle_field_data *data, const struct unit_system *restrict us,
     const struct cosmology *restrict cosmo,
     const struct cooling_function_data *restrict cooling, const struct part *p,
-    const struct xpart *xp, const double dt, const double T_warm,
+    const struct xpart *xp, const double SNe_count, const double T_warm,
     gr_float species_densities[N_SPECIES], gr_float *iact_rates, int mode) {
 
   /* Grid description for a single particle. Grackle only reads these, so
@@ -1078,8 +1099,8 @@ void cooling_copy_to_grackle(
 
   cooling_copy_to_grackle1(data, p, xp, species_densities[12],
                            species_densities);
-  cooling_copy_to_grackle2(data, p, xp, cooling, dt, species_densities[12],
-                           species_densities);
+  cooling_copy_to_grackle2(data, p, xp, cooling, SNe_count,
+                           species_densities[12], species_densities);
   cooling_copy_to_grackle3(data, p, xp, species_densities[12],
                            species_densities);
 
@@ -1187,6 +1208,51 @@ void cooling_prepare_crackle_step(struct cooling_function_data *cooling) {
     error("Error in crackle_prepare_step.");
 }
 
+#if KIARA_DUST_N_BINS > 0
+/**
+ * @brief Give crackle the grain-size distribution of a particle's dust.
+ *
+ * The bins are fractions of the dust mass. Each material's row is rescaled to
+ * the material's share of the dust (carbon in carbonaceous grains, the other
+ * dust elements in silicates and oxides), so that the bins always agree with
+ * the element composition however the dust arrived; a material with dust but
+ * no size history gets the spectrum of KIARACooling:dust_initial_source.
+ *
+ * @param gp The crackle particle data.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p The #part.
+ */
+static void cooling_dust_bins_to_crackle(
+    grackle_part_data *gp, const struct cooling_function_data *cooling,
+    const struct part *p) {
+
+  float rows[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+  if (p->cooling_data.dust_mass > 0.f) {
+    const float f_C =
+        fminf(fmaxf(p->cooling_data.dust_mass_fraction[dust_element_C], 0.f),
+              1.f);
+    for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+      for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+        rows[m][i] = p->cooling_data.dust_size_distribution[m][i];
+    kiara_dust_distribution_rescale_material(rows[kiara_dust_carbonaceous],
+                                             f_C,
+                                             cooling->dust_initial_distribution);
+    kiara_dust_distribution_rescale_material(rows[kiara_dust_silicate],
+                                             1.f - f_C,
+                                             cooling->dust_initial_distribution);
+  } else {
+    kiara_dust_distribution_zero(rows);
+  }
+  for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      gp->dust_bins[m][i] = rows[m][i];
+  gp->dust_grain_sizes = cooling->dust_grain_sizes;
+  gp->dust_area_factor = kiara_dust_area_factor(
+      cooling->dust_grain_sizes,
+      (const double(*)[KIARA_DUST_N_BINS])gp->dust_bins, 0.1);
+}
+#endif
+
 /**
  * @brief Fill the crackle state of a particle directly from the particle.
  *
@@ -1199,18 +1265,16 @@ void cooling_prepare_crackle_step(struct cooling_function_data *cooling) {
  * @param cooling The #cooling_function_data used in the run.
  * @param p The #part.
  * @param xp The #xpart.
- * @param dt The time-step of this particle.
+ * @param SNe_count The number of SNe the particle uses in this call.
  * @param T_warm The warm-ISM EoS temperature (used outside the subgrid ISM).
  * @param iact_rates The RT interaction rates (zeroed in the subgrid ISM).
  * @param mode 0 solve, 1 cooling time, 2 temperature.
  */
-void cooling_copy_to_crackle(grackle_part_data *gp,
-                             const struct cosmology *restrict cosmo,
-                             const struct cooling_function_data *restrict
-                                 cooling,
-                             const struct part *p, const struct xpart *xp,
-                             const double dt, const double T_warm,
-                             gr_float *iact_rates, int mode) {
+void cooling_copy_to_crackle(
+    grackle_part_data *gp, const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling, const struct part *p,
+    const struct xpart *xp, const double SNe_count, const double T_warm,
+    gr_float *iact_rates, int mode) {
 
   const chemistry_data *chemistry = &cooling->chemistry;
 
@@ -1313,7 +1377,7 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
   gr_float dust_metals[NUM_METAL_SPECIES_GRACKLE] = {0.};
   if (cooling->use_grackle_dust_evol == 1) {
     dust_density = p->cooling_data.dust_mass / p->mass * rho;
-    SNe_density = p->feedback_data.SNe_ThisTimeStep * dt / p->mass * rho;
+    SNe_density = SNe_count / p->mass * rho;
     if (p->cooling_data.subgrid_temp == 0.f) {
       isrf = -1.f;
     } else {
@@ -1353,6 +1417,9 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
       gp->dust_metalDensity[i] = dust_metals[i];
     }
     gp->SNe_density = SNe_density;
+#if KIARA_DUST_N_BINS > 0
+    cooling_dust_bins_to_crackle(gp, cooling, p);
+#endif
   } else {
     gp->dust_density = 0.;
     gp->SNe_density = 0.;
@@ -1360,6 +1427,12 @@ void cooling_copy_to_crackle(grackle_part_data *gp,
       gp->gas_metalDensity[i] = 0.;
       gp->dust_metalDensity[i] = 0.;
     }
+#if KIARA_DUST_N_BINS > 0
+    for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+      for (int i = 0; i < KIARA_DUST_N_BINS; i++) gp->dust_bins[m][i] = 0.;
+    gp->dust_grain_sizes = cooling->dust_grain_sizes;
+    gp->dust_area_factor = 1.;
+#endif
   }
 
   /* Never pass a non-finite value to crackle */
@@ -1460,10 +1533,18 @@ void cooling_copy_from_crackle(const grackle_part_data *gp, struct part *p,
                 chemistry_element_of_dust(d))] *
             rhoinv;
       }
+#if KIARA_DUST_N_BINS > 0
+      for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+        for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+          p->cooling_data.dust_size_distribution[m][i] = gp->dust_bins[m][i];
+#endif
     } else {
       for (int d = 0; d < dust_element_count; d++) {
         p->cooling_data.dust_mass_fraction[d] = 0.f;
       }
+#if KIARA_DUST_N_BINS > 0
+      kiara_dust_distribution_zero(p->cooling_data.dust_size_distribution);
+#endif
     }
   }
 }
@@ -1583,9 +1664,12 @@ static gr_float cooling_grackle_driver_fields(
   }*/
 
   /* load particle information from particle to grackle data */
-  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, T_warm,
+  const double SNe_count =
+      cooling_get_SNe_rate(cooling, p,
+                           cooling_get_SNe_step(cooling, p, dt, 0)) *
+      dt;
+  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, SNe_count, T_warm,
                           species_densities, iact_rates, mode);
-
 
   /* Run Grackle in desired mode */
   gr_float return_value = 0.f;
@@ -1697,8 +1781,12 @@ static gr_float cooling_crackle_driver(
   chemistry_data *chemistry = (chemistry_data *)&cooling->chemistry;
 
   grackle_part_data gp;
-  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, dt, T_warm, iact_rates,
-                          mode);
+  const double SNe_count =
+      cooling_get_SNe_rate(cooling, p,
+                           cooling_get_SNe_step(cooling, p, dt, 0)) *
+      dt;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, SNe_count, T_warm,
+                          iact_rates, mode);
 
   gr_float return_value = 0.f;
   switch (mode) {
@@ -1947,6 +2035,277 @@ float cooling_get_temperature(
   return temperature;
 }
 
+#if KIARA_DUST_N_BINS > 0
+/**
+ * @brief Thermal sputtering of size-resolved dust (Tsai & Mathews 1995).
+ *
+ * Every grain is eroded by the same da = 0.1 micron dt / t_sput(0.1 micron)
+ * (Li et al. 2021), so grains smaller than da are destroyed. The dust lost by
+ * each material (carbonaceous, silicate) is returned to the gas from its
+ * elements in proportion to their dust masses. As without size bins, at most
+ * half of the dust is destroyed in one call.
+ *
+ * @param us The internal system of units.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param dt The time-step of this particle.
+ * @param T_K The gas temperature (K).
+ * @param rho_cgs The physical gas density (g/cm^3).
+ */
+static void cooling_sputter_dust_bins(
+    const struct unit_system *restrict us,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, const double dt, const double T_K,
+    const double rho_cgs) {
+
+  const double a_ref = 0.1; /* micron */
+  const double *radius = cooling->dust_grain_sizes;
+  const double mass_p = hydro_get_mass(p);
+  const double dust_old = p->cooling_data.dust_mass;
+
+  /* Sputtering time-scale of a_ref grains and the erosion over dt */
+  const double tsp_ref = 1.7e8 * 3.15569251e7 /
+                         units_cgs_conversion_factor(us, UNIT_CONV_TIME) *
+                         (1.e-27 / rho_cgs) * (pow(2.e6 / T_K, 2.5) + 1.0);
+  const double da = a_ref * dt / tsp_ref;
+
+  /* Dust in each material and bin (rows consistent with the composition) */
+  const double f_C =
+      fmin(fmax(p->cooling_data.dust_mass_fraction[dust_element_C], 0.), 1.);
+  const double m_mat[KIARA_DUST_N_MATERIALS] = {f_C * dust_old,
+                                                (1. - f_C) * dust_old};
+  double after[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+  double dm[KIARA_DUST_N_MATERIALS], dm_tot = 0.;
+  for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++) {
+    float row[KIARA_DUST_N_BINS];
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      row[i] = p->cooling_data.dust_size_distribution[m][i];
+    kiara_dust_distribution_rescale_material(
+        row, (m == kiara_dust_carbonaceous) ? f_C : 1. - f_C,
+        cooling->dust_initial_distribution);
+    double in[KIARA_DUST_N_BINS];
+    double sum = 0.;
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++) sum += row[i];
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      in[i] = (sum > 0.) ? row[i] / sum * m_mat[m] : 0.;
+    const double left =
+        kiara_dust_radius_remap(radius, in, -da, 1., 1, after[m]);
+    dm[m] = fmax(m_mat[m] - left, 0.);
+    dm_tot += dm[m];
+  }
+
+  /* Limit the destruction to half of the dust */
+  if (dm_tot > 0.5 * dust_old) {
+    const double f = 0.5 * dust_old / dm_tot;
+    for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++) dm[m] *= f;
+    dm_tot = 0.5 * dust_old;
+  }
+  if (dm_tot <= 0.) return;
+  const double dust_new = dust_old - dm_tot;
+
+  /* Return the lost dust to the gas, by element */
+  p->chemistry_data.metal_mass_fraction_total += dm_tot / mass_p;
+  for (int d = 0; d < dust_element_count; d++) {
+    const int m = (d == dust_element_C) ? kiara_dust_carbonaceous
+                                        : kiara_dust_silicate;
+    const double dust_d = p->cooling_data.dust_mass_fraction[d] * dust_old;
+    const double lost_d = (m_mat[m] > 0.) ? dust_d / m_mat[m] * dm[m] : 0.;
+    const int elem = chemistry_element_of_dust(d);
+    p->chemistry_data.metal_mass_fraction[elem] += lost_d / mass_p;
+    p->cooling_data.dust_mass_fraction[d] =
+        (dust_new > 0.) ? (dust_d - lost_d) / dust_new : 0.;
+  }
+  p->cooling_data.dust_mass = dust_new;
+
+  /* The eroded shapes, rescaled to each material's remaining dust */
+  for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++) {
+    double left = 0.;
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++) left += after[m][i];
+    const double m_left = m_mat[m] - dm[m];
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      p->cooling_data.dust_size_distribution[m][i] =
+          (left > 0. && dust_new > 0.) ? after[m][i] / left * m_left / dust_new
+                                       : 0.f;
+  }
+
+  /* Make sure that X + Y + Z + D = 1 (Z is gas-phase only) */
+  const float Y_He = p->chemistry_data.metal_mass_fraction[chemistry_element_He];
+  p->chemistry_data.metal_mass_fraction[chemistry_element_H] =
+      1.f - Y_He - p->chemistry_data.metal_mass_fraction_total -
+      p->cooling_data.dust_mass / mass_p;
+  if (p->chemistry_data.metal_mass_fraction[chemistry_element_H] > 1.f ||
+      p->chemistry_data.metal_mass_fraction[chemistry_element_H] < 0.f)
+    error(
+        "Hydrogen fraction exeeds unity or is negative for particle id=%lld "
+        "due to dust sputtering",
+        p->id);
+}
+
+/**
+ * @brief Grain-grain collisions, coagulation and shattering, between the
+ * size bins (Li et al. 2021, section 2.5.3).
+ *
+ * Grains are coupled to the turbulence of the gas, the turbulent velocity at
+ * the Jeans length following Larson's law (Li Eq. 15). Each bin gets a random
+ * velocity per step, with Gaussian components of dispersion sigma_gr/sqrt(3);
+ * pairs below the coagulation threshold of Hirashita & Yan (2009, Eq. 8)
+ * stick, pairs above 2 km/s shatter (Hirashita & Yan 2009, section 2.3).
+ * Grains only collide with grains of their own material. The collisions
+ * conserve each material's dust mass, so they only change the bins.
+ *
+ * The collisions only happen in the ISM, above the density threshold of the
+ * subgrid ISM, and the grain velocities are capped at
+ * KIARACooling:dust_collision_velocity_cap times the velocity dispersion of
+ * the gas across the kernel. In the subgrid ISM they happen in the cold phase,
+ * at the density and temperature crackle uses.
+ *
+ * @param phys_const The physical constants in internal units.
+ * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle' extended data.
+ * @param dt The time-step of this particle.
+ * @param time The current time, for the random numbers.
+ */
+static void cooling_dust_collisions(
+    const struct phys_const *restrict phys_const,
+    const struct unit_system *restrict us,
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, const double dt,
+    const double time) {
+
+  if (!cooling->dust_coagulation && !cooling->dust_shattering) return;
+  const double dust = p->cooling_data.dust_mass;
+  const double mass_p = hydro_get_mass(p);
+  if (!(dust > 0.) || !(dt > 0.) || !(mass_p > 0.)) return;
+
+  /* Only in the ISM: gas above the density threshold of the subgrid ISM
+   * (Li et al.'s turbulent cascade up to the Jeans length does not hold for
+   * the kpc Jeans lengths of diffuse gas) */
+  if (!(warm_ISM_temperature(p, cooling, phys_const, cosmo) > 0.f)) return;
+
+  /* The phase the grains are in: the cold phase of star-forming gas */
+  double rho, u;
+  if (p->cooling_data.subgrid_temp > 0.f &&
+      p->cooling_data.subgrid_fcold > 1.e-6f) {
+    rho = cooling_get_subgrid_density(p, xp);
+    u = cooling_convert_temp_to_u(p->cooling_data.subgrid_temp,
+                                  xp->cooling_data.e_frac, cooling, p, xp);
+  } else {
+    rho = hydro_get_physical_density(p, cosmo);
+    u = hydro_get_physical_internal_energy(p, xp, cosmo);
+  }
+  const double rho_cgs =
+      rho * units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
+  const double c_s =
+      sqrt(hydro_gamma * hydro_gamma_minus_one * u *
+           units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS));
+  const double rho_dust_cgs = dust / mass_p * rho_cgs;
+  const double dt_s = dt * units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+  if (!(rho_cgs > 0.) || !(c_s > 0.) || !isfinite(rho_cgs) || !isfinite(c_s))
+    return;
+
+  struct kiara_dust_collision_grid grid;
+  if (!kiara_dust_collision_grid_init(&grid, cooling->dust_grain_sizes,
+                                      cooling->dust_grain_density))
+    error("Invalid dust grain-size grid or grain density");
+
+  /* The bins (fractions of the dust mass), matched to the composition */
+  const float f_C = fminf(
+      fmaxf(p->cooling_data.dust_mass_fraction[dust_element_C], 0.f), 1.f);
+  float rows[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+  for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      rows[m][i] = p->cooling_data.dust_size_distribution[m][i];
+  kiara_dust_distribution_rescale_material(rows[kiara_dust_carbonaceous], f_C,
+                                           cooling->dust_initial_distribution);
+  kiara_dust_distribution_rescale_material(rows[kiara_dust_silicate], 1.f - f_C,
+                                           cooling->dust_initial_distribution);
+
+  /* Velocity dispersion of the grains in each bin (cm/s), at most the cap
+   * times the velocity dispersion of the gas across the kernel: the grains
+   * are dragged by the gas turbulence, so they do not move faster than it */
+  const double sigma_gas = p->chemistry_data.velocity_dispersion *
+                           units_cgs_conversion_factor(us, UNIT_CONV_VELOCITY);
+  const double sigma_max =
+      (cooling->dust_collision_velocity_cap > 0. &&
+       p->chemistry_data.velocity_dispersion >= 0.f)
+          ? cooling->dust_collision_velocity_cap * sigma_gas
+          : INFINITY;
+  if (!(sigma_max > 0.)) return;
+  double sigma[KIARA_DUST_N_BINS];
+  for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+    sigma[i] =
+        fmin(kiara_dust_collision_velocity_dispersion(
+                 grid.radius[i], rho_cgs, c_s, cooling->dust_grain_density),
+             sigma_max) /
+        sqrt(3.);
+
+  /* Reproducible random numbers from the particle ID and the time */
+  integertime_t seed_time;
+  memcpy(&seed_time, &time, sizeof(seed_time));
+
+  struct kiara_dust_collision_operator op, shattering;
+  for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++) {
+    double row[KIARA_DUST_N_BINS], sum = 0.;
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++) {
+      row[i] = rows[m][i];
+      sum += row[i];
+    }
+    if (!(sum > 0.)) continue;
+
+    /* Gaussian velocity components (Box-Muller) */
+    double velocity[KIARA_DUST_N_BINS][3];
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      for (int k = 0; k < 3; k++) {
+        const int index = 2 * (3 * (KIARA_DUST_N_BINS * m + i) + k);
+        const double u1 =
+            1. - random_unit_interval_part_ID_and_index(
+                     p->id, index, seed_time, random_number_dust_collisions);
+        const double u2 = random_unit_interval_part_ID_and_index(
+            p->id, index + 1, seed_time, random_number_dust_collisions);
+        velocity[i][k] = sigma[i] * sqrt(-2. * log(u1)) * cos(2. * M_PI * u2);
+      }
+
+    /* Collision kernels and products; where both apply to a pair (never,
+     * with the default thresholds) the products are rate-weighted */
+    const enum kiara_dust_material material = (enum kiara_dust_material)m;
+    if (cooling->dust_coagulation)
+      kiara_dust_coagulation_operator_init(
+          &op, &grid, cooling->dust_grain_density, material, velocity);
+    else
+      memset(&op, 0, sizeof(op));
+    if (cooling->dust_shattering) {
+      kiara_dust_shattering_operator_init(
+          &shattering, &grid, cooling->dust_grain_density, material, velocity);
+      for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+        for (int j = i; j < KIARA_DUST_N_BINS; j++) {
+          const double rate = op.kernel[i][j] + shattering.kernel[i][j];
+          if (rate == 0.) continue;
+          const double w = shattering.kernel[i][j] / rate;
+          for (int k = 0; k < KIARA_DUST_N_BINS; k++)
+            op.product[i][j][k] = (1. - w) * op.product[i][j][k] +
+                                  w * shattering.product[i][j][k];
+          op.kernel[i][j] = rate;
+        }
+    }
+
+    if (!kiara_dust_collision_evolve(&grid, &op, rho_dust_cgs, dt_s, row))
+      error(
+          "Dust collisions failed for particle %lld (rho=%g g/cm^3, c_s=%g "
+          "cm/s, dust/gas=%g, dt=%g s)",
+          p->id, rho_cgs, c_s, dust / mass_p, dt_s);
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++) rows[m][i] = row[i];
+  }
+
+  for (int m = 0; m < KIARA_DUST_N_MATERIALS; m++)
+    for (int i = 0; i < KIARA_DUST_N_BINS; i++)
+      p->cooling_data.dust_size_distribution[m][i] = rows[m][i];
+}
+#endif
+
 /**
  * @brief Do dust sputtering and return metals back to gas phase
  *
@@ -1979,11 +2338,14 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
       const double rho_cgs = hydro_get_physical_density(p, cosmo) *
                              units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
 
+#if KIARA_DUST_N_BINS > 0
+      cooling_sputter_dust_bins(us, cooling, p, dt, Tstream_K, rho_cgs);
+#else
       /* sputtering timescale, Tsai & Mathews (1995) */
       const double tsp = 1.7e8 * 3.15569251e7 /
                          units_cgs_conversion_factor(us, UNIT_CONV_TIME) *
                          (cooling->dust_grainsize / 0.1) * (1.e-27 / rho_cgs) *
-                         (pow(2.e6 / Tstream, 2.5) + 1.0);
+                         (pow(2.e6 / Tstream_K, 2.5) + 1.0);
 
       const float dust_mass_old = p->cooling_data.dust_mass;
 
@@ -2051,6 +2413,7 @@ __attribute__((always_inline)) INLINE void cooling_sputter_dust(
             " particle id=%lld due to dust sputtering",
             p->id);
       }
+#endif
     }
   }
 }
@@ -2084,6 +2447,13 @@ __attribute__((always_inline)) INLINE void firehose_cooling_and_dust(
    * skip the extra grackle call here. */
   if (p->chemistry_data.radius_stream <= 0.f ||
       p->chemistry_data.rho_ambient <= 0.f) {
+    /* Gas that skips the cooling solve this step (decoupled, or with its
+     * cooling shut off, which in KIARA-RT still goes through the solve) has
+     * its dust sputtered here, as the solve would have done */
+    if (dt > 0. && p->cooling_data.subgrid_temp == 0.f &&
+        (p->decoupled || (!cooling->do_cooling_in_rt &&
+                          p->feedback_data.cooling_shutoff_delay_time > 0.f)))
+      cooling_sputter_dust(us, cosmo, cooling, p, xp, dt);
     return;
   }
 
@@ -2186,6 +2556,13 @@ void cooling_init_chemistry(
     p->cooling_data.dust_mass = init_dust_to_gas *
                                 cooling->self_enrichment_metallicity *
                                 (Z_sun_dust / Z_sun) * p->mass;
+#if KIARA_DUST_N_BINS > 0
+    /* This dust has the spectrum of dust without a size history */
+    kiara_dust_distribution_seed(
+        cooling->dust_initial_distribution,
+        p->cooling_data.dust_mass_fraction[dust_element_C],
+        p->cooling_data.dust_size_distribution);
+#endif
 
     p->chemistry_data.metal_mass_fraction[chemistry_element_He] =
         cooling->chemistry.SolarAbundances[0];
@@ -2252,8 +2629,11 @@ void cooling_do_grackle_cooling(
 
   /* Compute the ISRF */
   p->cooling_data.G0 =
-      fmax(cooling_compute_G0(p, xp, p->cooling_data.subgrid_dens, T_warm,
-                              cooling, galaxy_mstar, galaxy_ssfr),
+      fmax(cooling_compute_G0(
+               p, xp, p->cooling_data.subgrid_dens, T_warm, cooling,
+               galaxy_mstar, galaxy_ssfr,
+               cooling_get_SNe_rate(cooling, p,
+                                    cooling_get_SNe_step(cooling, p, dt, 0))),
            0.);
 
   /* Do grackle cooling */
@@ -2365,15 +2745,17 @@ void cooling_do_grackle_cooling(
 }
 
 /**
- * @brief Decay the SN rate deposited on a gas particle by stellar feedback,
- * once it has been used over a step of length dt. With no smoothing time,
- * it is dropped, so that each deposit is used for one step.
+ * @brief Remove the SNe a gas particle has used over its step of length dt
+ * from the number deposited on it by stellar feedback: a fraction
+ * 1 - exp(-dt / tau) of them for an SN smoothing time tau, all of them
+ * without one (see cooling_get_SNe_rate()). Particles that did not cool this
+ * step (decoupled or with cooling shut off) lose them in the same way.
  *
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param dt The time-step of this particle.
  */
-static INLINE void cooling_decay_SNe_rate(
+static INLINE void cooling_decay_SNe(
     const struct cooling_function_data *restrict cooling,
     struct part *restrict p, const double dt) {
 #if COOLING_GRACKLE_MODE >= 2
@@ -2424,11 +2806,17 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
   /* No cooling happens over zero time */
   if (dt == 0.f || dt_therm == 0.f) return;
 
+#if COOLING_GRACKLE_MODE >= 2 && KIARA_DUST_N_BINS > 0
+  /* Grain-grain collisions change the sizes of the dust, not its mass */
+  if (cooling->use_grackle_dust_evol)
+    cooling_dust_collisions(phys_const, us, cosmo, cooling, p, xp, dt, time);
+#endif
+
   /* In KIARA_RT we do cooling in rt_thermochemistry, so we don't do it here.
-   * This task runs before stellar feedback and RT in each step, so the SN
-   * rate deposited last step has already been used by RT: decay it here. */
+   * This task runs before stellar feedback and RT in each step, so the SNe
+   * deposited last step have already been used by RT: remove them here. */
   if (cooling->do_cooling_in_rt) {
-    cooling_decay_SNe_rate(cooling, p, dt);
+    cooling_decay_SNe(cooling, p, dt);
     return;
   }
 
@@ -2447,9 +2835,9 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
     p->cooling_data.ncool_this_step += 1;
   }
 
-  /* The SN rate deposited by stellar feedback has now been used (for the
-   * dust and G0) over this step */
-  cooling_decay_SNe_rate(cooling, p, dt);
+  /* The SNe deposited by stellar feedback have now been used (for the dust
+   * and G0) over this step */
+  cooling_decay_SNe(cooling, p, dt);
 }
 
 /**
@@ -2630,6 +3018,8 @@ void cooling_split_part(struct part *p, struct xpart *xp, double n) {
   xp->cooling_data.radiated_energy /= n;
 #if COOLING_GRACKLE_MODE >= 2
   p->cooling_data.dust_mass /= n;
+  /* The SNe deposited on the particle are shared between its n parts */
+  p->feedback_data.SNe_ThisTimeStep /= n;
 #endif
 }
 

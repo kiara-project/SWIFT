@@ -61,7 +61,9 @@ static void apply_sternberg_h2_limit(grackle_part_data *gp, const chemistry_data
 	if (gp->isrf_habing <= 0. || gp->rhoH <= 0. || gp->H2I_density <= 0. || gp->dust2gas <= tiny) return;
 	const double sigma_rel = gp->dust2gas / chemistry->local_dust_to_gas_ratio;
 	const double I_UV = gp->isrf_habing / 1.71;
-	const double alphaG = 1.54 * I_UV * (100. / fmax(gp->nH, tiny)) / (1. + sqrt(2.64 * sigma_rel));
+	/* alphaG is the ratio of dust absorption (per dust mass) to the H2 formation rate on grains (per grain area) */
+	const double alphaG = 1.54 * I_UV * (100. / fmax(gp->nH, tiny)) / (1. + sqrt(2.64 * sigma_rel))
+	                      / crackle_dust_area_factor(gp);
 	const double N_HI = log(0.5 * alphaG + 1.) / (chemistry->H2_dust_shielding_cross_section * sigma_rel);
 	const double N_H = cunits->dom * gp->rhoH * gp->H2_self_shielding_length * cunits->length_to_cgs;
 	const double fH2_max = fmax(1. - N_HI / fmax(N_H, tiny), 0.);
@@ -335,16 +337,21 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 	    if (crackle_h2_on_dust(chemistry)) {
 	        /* compute dust temperature */
 	        double gasgr = interpolate_rates(grackle_rates->gas_grain, interpolation->binfrac, interpolation->index);
-	        double gasgr_tdust = chemistry->local_dust_to_gas_ratio * gasgr * cunits->coolunit / mh;
+	        /* Gas-grain heat exchange per dust mass, proportional to the grain area */
+	        double gasgr_tdust = chemistry->local_dust_to_gas_ratio * gasgr * cunits->coolunit / mh
+	                             * crackle_dust_area_factor(gp);
 	        /* Get dust rates */
 	        //gp->tdust = calculate_dust_temp(gp->tgas, gp->nH, gasgr_tdust, grackle_rates->gamma_isrf * gp->isrf_habing, cunits->compton2, gp->tdust); // calc_tdust_1d_g()
 	        /* ISRF dust heating is not attenuated by f_shield: that is the H2 Lyman-Werner self-shielding factor, which does not apply to continuum absorption by grains */
 	        calculate_tdust_bisect(gp, gasgr_tdust, grackle_rates->gamma_isrf * gp->isrf_habing, cunits->compton2);
 		//if(gp->tdust < 2*cunits->compton2) printf("DUST td=%g gasgr=%g tcmb=%g isrf=%g\n",gp->tdust, gasgr_tdust, cunits->compton2, gp->isrf_habing);
 	        /* Gas-dust grain heat transfer rate */
-	        dust_species_rates(gp->tdust, gp->dust2gas, chemistry, grackle_rates, my_rates, interpolation);
+	        /* H2 formation on grains and the gas-grain heat transfer go with the grain area */
+	        dust_species_rates(gp->tdust, gp->dust2gas * crackle_dust_area_factor(gp), chemistry, grackle_rates,
+	                           my_rates, interpolation);
 	        if (gp->dust2gas > tiny) {
-	            edot_gasgr -= gasgr * (gp->tgas - gp->tdust) * gp->dust2gas * gp->rhoH * gp->rhoH;
+	            edot_gasgr -= gasgr * (gp->tgas - gp->tdust) * gp->dust2gas * crackle_dust_area_factor(gp) * gp->rhoH
+	                          * gp->rhoH;
 	            gp->edot += edot_gasgr;
 	        }
 	    }
@@ -360,7 +367,8 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 	if (chemistry->use_isrf_field && gp->isrf_habing > tiny && gp->dust2gas > tiny) {
 	    double gammah_eff = my_rates->gammah * 0.05 * gp->isrf_habing;  // Wolfire+1995 eq 1
 	    if (gp->tgas > 2.e4) gammah_eff = 0.;
-	    edot_pe += gammah_eff * gp->rhoH * cunits->dom_inv * gp->dust2gas / chemistry->local_dust_to_gas_ratio;
+	    edot_pe += gammah_eff * gp->rhoH * cunits->dom_inv * gp->dust2gas / chemistry->local_dust_to_gas_ratio
+	               * crackle_dust_area_factor(gp);
 	    gp->edot += edot_pe;
 	    //printf("pe %g %g %g\n",gp->edot,gp->dust2gas,gammah_eff);
 	}
@@ -369,7 +377,8 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 	if ((chemistry->use_dust_evol || chemistry->dust_chemistry) && gp->metallicity > tiny && gp->e_density > tiny && gp->isrf_habing > tiny) {
 	    const double regr = interpolate_rates(grackle_rates->regr, interpolation->binfrac, interpolation->index);
 	    const double grbeta = 0.74 * pow(gp->tgas, -0.068);
-	    edot_edust -= regr * pow(gp->isrf_habing * cunits->dom_inv / gp->e_density, grbeta) * gp->e_density * gp->rhoH * gp->dust2gas / chemistry->local_dust_to_gas_ratio;
+	    edot_edust -= regr * pow(gp->isrf_habing * cunits->dom_inv / gp->e_density, grbeta) * gp->e_density * gp->rhoH * gp->dust2gas / chemistry->local_dust_to_gas_ratio
+	                  * crackle_dust_area_factor(gp);
 	    gp->edot += edot_edust;
 	}
 

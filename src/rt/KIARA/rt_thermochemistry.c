@@ -71,6 +71,7 @@ void rt_tchem_prepare_step(struct rt_props *rtp) {
  * @param cooling The #cooling_function_data used in the run.
  * @param us The internal system of units.
  * @param dt The time-step (mode 0).
+ * @param SNe_count The number of SNe the particle uses in this call (mode 0).
  * @param iact_rates The RT interaction rates (zeroed in the subgrid ISM).
  * @param species (return) HI, HII, HeI, HeII, HeIII, e- densities after the
  * call.
@@ -82,11 +83,12 @@ static gr_float rt_tchem_crackle_fields(
     struct rt_props *rt_props, const struct cosmology *restrict cosmo,
     const struct cooling_function_data *restrict cooling,
     const struct unit_system *restrict us, const double dt,
-    gr_float iact_rates[5], gr_float species[6], const int mode) {
+    const double SNe_count, gr_float iact_rates[5], gr_float species[6],
+    const int mode) {
 
   gr_float species_densities[N_SPECIES] = {0.};
   grackle_field_data data;
-  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, dt, 0.,
+  cooling_copy_to_grackle(&data, us, cosmo, cooling, p, xp, SNe_count, 0.,
                           species_densities, iact_rates, 0);
 
 #ifdef CRACKLE_VALIDATE
@@ -137,10 +139,12 @@ static gr_float rt_tchem_crackle_direct(
     struct part *restrict p, struct xpart *restrict xp,
     struct rt_props *rt_props, const struct cosmology *restrict cosmo,
     const struct cooling_function_data *restrict cooling, const double dt,
-    gr_float iact_rates[5], gr_float species[6], const int mode) {
+    const double SNe_count, gr_float iact_rates[5], gr_float species[6],
+    const int mode) {
 
   grackle_part_data gp;
-  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, dt, 0., iact_rates, 0);
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, SNe_count, 0., iact_rates,
+                          0);
 
   /* A private copy, as crackle may write the temperature units */
   code_units units = rt_props->grackle_units;
@@ -176,18 +180,16 @@ static gr_float rt_tchem_crackle_direct(
  * CRACKLE_VALIDATE_DIRECT both paths are run and must agree bit for bit.
  * Same arguments and results as rt_tchem_crackle_fields().
  */
-static gr_float rt_tchem_crackle(struct part *restrict p,
-                                 struct xpart *restrict xp,
-                                 struct rt_props *rt_props,
-                                 const struct cosmology *restrict cosmo,
-                                 const struct cooling_function_data
-                                     *restrict cooling,
-                                 const struct unit_system *restrict us,
-                                 const double dt, gr_float iact_rates[5],
-                                 gr_float species[6], const int mode) {
+static gr_float rt_tchem_crackle(
+    struct part *restrict p, struct xpart *restrict xp,
+    struct rt_props *rt_props, const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    const struct unit_system *restrict us, const double dt,
+    const double SNe_count, gr_float iact_rates[5], gr_float species[6],
+    const int mode) {
 #if defined(CRACKLE_VALIDATE)
   return rt_tchem_crackle_fields(p, xp, rt_props, cosmo, cooling, us, dt,
-                                 iact_rates, species, mode);
+                                 SNe_count, iact_rates, species, mode);
 #elif defined(CRACKLE_VALIDATE_DIRECT)
   /* Both paths start from a snapshot of the particle (other tasks may write
    * parts of it meanwhile); the real update is then done on the particle */
@@ -202,7 +204,7 @@ static gr_float rt_tchem_crackle(struct part *restrict p,
   memcpy(iact_dir, iact_in, sizeof(iact_dir));
   const gr_float result_dir =
       rt_tchem_crackle_direct(&p_dir, &xp_dir, rt_props, cosmo, cooling, dt,
-                              iact_dir, species_dir, mode);
+                              SNe_count, iact_dir, species_dir, mode);
 
   /* The field path, on the inputs of the direct path (see
    * cooling_crackle_override_inputs()) */
@@ -212,8 +214,8 @@ static gr_float rt_tchem_crackle(struct part *restrict p,
   memcpy(iact_ref, iact_in, sizeof(iact_ref));
   cooling_crackle_override_inputs(1);
   const gr_float result_ref =
-      rt_tchem_crackle_fields(&p_ref, &xp_ref, rt_props, cosmo, cooling, us,
-                              dt, iact_ref, species_ref, mode);
+      rt_tchem_crackle_fields(&p_ref, &xp_ref, rt_props, cosmo, cooling, us, dt,
+                              SNe_count, iact_ref, species_ref, mode);
   cooling_crackle_override_inputs(0);
   cooling_crackle_compare_inputs(p->id);
   if (memcmp(species_dir, species_ref, sizeof(species_ref)) != 0)
@@ -225,10 +227,10 @@ static gr_float rt_tchem_crackle(struct part *restrict p,
   cooling_crackle_validate_direct(&p_dir, &p_ref, &xp_dir, &xp_ref, iact_dir,
                                   iact_ref, result_dir, result_ref, 10 + mode);
 
-  return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt,
+  return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt, SNe_count,
                                  iact_rates, species, mode);
 #else
-  return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt,
+  return rt_tchem_crackle_direct(p, xp, rt_props, cosmo, cooling, dt, SNe_count,
                                  iact_rates, species, mode);
 #endif
 }
@@ -369,8 +371,15 @@ INLINE void rt_do_thermochemistry(
   /* solve chemistry; species_new gets the HI, HII, HeI, HeII, HeIII and e-
    * densities after the step */
   gr_float species_new[6];
-  internal_energy_phys = rt_tchem_crackle(p, xp, rt_props, cosmo, cooling, us,
-                                          dt, iact_rates, species_new, 0);
+  /* The SNe the particle uses over this call (of a sub-cycle, or a part of
+   * one at retry depth > 0) */
+  const double SNe_count =
+      cooling_get_SNe_rate(cooling, p,
+                           cooling_get_SNe_step(cooling, p, dt, depth)) *
+      dt;
+  internal_energy_phys =
+      rt_tchem_crackle(p, xp, rt_props, cosmo, cooling, us, dt, SNe_count,
+                       iact_rates, species_new, 0);
 
   const float u_new = max(internal_energy_phys, u_minimal);
 
@@ -494,7 +503,7 @@ float rt_tchem_get_tchem_time(
   gr_float species[6];
   const gr_float tchem_time =
       rt_tchem_crackle((struct part *)p, (struct xpart *)xp, rt_props, cosmo,
-                       cooling, us, 0., iact_rates, species, 1);
+                       cooling, us, 0., 0., iact_rates, species, 1);
 
   return (float)tchem_time;
 }

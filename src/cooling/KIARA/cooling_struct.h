@@ -19,6 +19,13 @@
 #ifndef SWIFT_COOLING_STRUCT_KIARA_H
 #define SWIFT_COOLING_STRUCT_KIARA_H
 
+/* The particle layout depends on the configured number of dust size bins:
+ * never fall back to the stand-alone default of dust.h here */
+#ifndef KIARA_DUST_N_BINS
+#error "config.h must be included before the KIARA cooling headers"
+#endif
+#include "chemistry/KIARA/dust.h"
+
 /**
  * @brief Properties of the cooling stored in the #part data.
  */
@@ -41,6 +48,12 @@ struct cooling_part_data {
 
   /*! Fraction of the dust mass in each #dust_element */
   float dust_mass_fraction[dust_element_count];
+
+#if KIARA_DUST_N_BINS > 0
+  /*! Fraction of the dust mass in each material (#kiara_dust_material) and
+   * grain-size bin (increasing radius); they sum to 1 when there is dust */
+  float dust_size_distribution[KIARA_DUST_N_MATERIALS][KIARA_DUST_N_BINS];
+#endif
 
   /*! Dust temperature computed by grackle (K) */
   float dust_temperature;
