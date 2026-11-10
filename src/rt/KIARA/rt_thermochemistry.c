@@ -176,9 +176,9 @@ static gr_float rt_tchem_crackle_direct(
  * @brief Dust optical depth of the FUV photon group over the path the
  * radiation travels in a step, L = c_red dt.
  *
- * In the subgrid ISM the cold clouds are opaque and absorb through their
- * covering fraction; their dust is not counted here. The dust is split
- * between the phases like the gas mass, so the warm phase holds a fraction
+ * In the subgrid ISM this is the warm-phase part; the cloud dust is added
+ * in rt_tchem_fuv_ism_absorbed_fraction(). The dust is split between the
+ * phases like the gas mass, so the warm phase holds a fraction
  * f_warm = 1 - f_cold of it. With phi the cold volume filling fraction, the
  * warm dust density (1 - f_cold) rho_d / (1 - phi) times the path through
  * the warm phase (1 - phi) L gives tau = kappa (1 - f_cold) rho_d L.
@@ -204,6 +204,65 @@ static double rt_tchem_fuv_dust_optical_depth(
                           hydro_get_physical_density(p, cosmo);
   const double L = rt_part_get_reduced_speed_of_light(p) * dt;
   return rt_props->dust_opacity_FUV * fmax(f_warm, 0.) * rho_dust * L;
+}
+
+/**
+ * @brief Fraction of the FUV group absorbed this step in the subgrid ISM.
+ *
+ * Below the Lyman limit the gas absorbs only in resonance lines, most of
+ * which is re-emitted, so only dust absorbs, in both phases, at any subgrid
+ * temperature. The dust is split like the gas mass: f_c of it is in the
+ * clouds, at density f_c rho_d / phi, and the rest in the warm phase.
+ *
+ * Warm phase: tau_w = kappa (1 - f_c) rho_d L (see
+ * rt_tchem_fuv_dust_optical_depth()).
+ *
+ * Clouds: the light crosses N_x = L / (4 R_p / 3) particle chords this
+ * step (4 R / 3 is the mean chord of a sphere) and passes through a cloud
+ * on a fraction C of them. A cloud of radius R_cl = R_p (phi / N)^(1/3) has
+ * dust optical depth tau_cl = kappa (f_c rho_d / phi) (4 R_cl / 3) along a
+ * mean chord, so the transmission through the clouds is
+ * [1 - C (1 - exp(-tau_cl))]^N_x.
+ *
+ * In the optically thin limit C tau_cl N_x = kappa f_c rho_d L, so the
+ * total is kappa rho_d L whatever the phase split, as for a uniform medium;
+ * thick clouds absorb only through their covering fraction.
+ *
+ * @param p The #part.
+ * @param rt_props The #rt_props.
+ * @param cosmo The #cosmology.
+ * @param phi Volume filling fraction of the cold clouds.
+ * @param C Covering fraction of the cold clouds.
+ * @param R_p Physical particle radius.
+ * @param dt The (physical) time step.
+ * @return the absorbed fraction of the FUV energy (0 if no FUV group).
+ */
+static double rt_tchem_fuv_ism_absorbed_fraction(
+    const struct part *restrict p, const struct rt_props *rt_props,
+    const struct cosmology *restrict cosmo, const double phi, const double C,
+    const double R_p, const double dt) {
+
+  if (rt_props->fuv_group < 0 || rt_props->dust_opacity_FUV <= 0.) return 0.;
+  const float mass = hydro_get_mass(p);
+  if (mass <= 0.f || p->cooling_data.dust_mass <= 0.f) return 0.;
+
+  const double f_c = fmin(fmax(p->cooling_data.subgrid_fcold, 0.), 1.);
+  const double tau_w =
+      rt_tchem_fuv_dust_optical_depth(p, rt_props, cosmo, 1. - f_c, dt);
+  double log_T = -tau_w;
+
+  if (phi > 0. && C > 0. && R_p > 0.) {
+    const double rho_dust = p->cooling_data.dust_mass / mass *
+                            hydro_get_physical_density(p, cosmo);
+    const double R_cl = R_p * cbrt(phi / rt_props->ism_clouds_per_particle);
+    const double tau_cl = rt_props->dust_opacity_FUV * f_c * rho_dust / phi *
+                          (4. / 3.) * R_cl;
+    const double N_x =
+        rt_part_get_reduced_speed_of_light(p) * dt / ((4. / 3.) * R_p);
+    /* log of the transmission per chord, log(1 - C (1 - e^-tau_cl)) */
+    log_T += N_x * log1p(-C * (-expm1(-tau_cl)));
+  }
+  return -expm1(log_T);
 }
 
 /**
@@ -772,38 +831,40 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
   /* Update radiation fields */
 
-  /* In the subgrid ISM, only the cold clouds absorb, and they absorb all
-   * the radiation they cover; the warm medium between them is taken to be
-   * transparent. The clouds (cold mass fraction f_c at density rho_c) fill
-   * a fraction phi = f_c rho / rho_c of the particle volume. N clouds of
-   * equal size cover a fraction C = N^(1/3) phi^(2/3) of the particle cross
-   * section, so over the path L = c dt travelled this step the absorbed
-   * fraction is 1 - (1 - C)^(L / 2 R_p), with R_p the particle radius. */
+  /* In the subgrid ISM, the cold clouds (cold mass fraction f_c at density
+   * rho_c) fill a fraction phi = f_c rho / rho_c of the particle volume. N
+   * clouds of equal size cover a fraction C = N^(1/3) phi^(2/3) of the
+   * particle cross section.
+   * Ionizing groups: the clouds absorb all the ionizing radiation they
+   * cover and the warm medium between them is transparent, so over the
+   * path L = c dt travelled this step the absorbed fraction is
+   * 1 - (1 - C)^(L / 2 R_p), with R_p the particle radius.
+   * FUV group: only dust absorbs, in both phases; see
+   * rt_tchem_fuv_ism_absorbed_fraction(). */
   if (p->cooling_data.subgrid_temp > 0. &&
       p->cooling_data.subgrid_fcold > 1.e-6) {
 
-    double f = 0.;
-    if (p->cooling_data.subgrid_temp < rt_props->ism_cold_cloud_temperature) {
-      const double rho_phys = hydro_get_physical_density(p, cosmo);
-      const double rho_cold = cooling_get_subgrid_density(p, xp);
-      const double phi =
-          (rho_cold > 0.)
-              ? fmin(p->cooling_data.subgrid_fcold * rho_phys / rho_cold, 1.)
-              : 0.;
-      const double C =
-          fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
-      const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
-      const double L = rt_part_get_reduced_speed_of_light(p) * dt;
-      f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
-    }
+    const double rho_phys = hydro_get_physical_density(p, cosmo);
+    const double rho_cold = cooling_get_subgrid_density(p, xp);
+    const double phi =
+        (rho_cold > 0.)
+            ? fmin(p->cooling_data.subgrid_fcold * rho_phys / rho_cold, 1.)
+            : 0.;
+    const double C =
+        fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
+    const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
+    const double L = rt_part_get_reduced_speed_of_light(p) * dt;
 
-    /* The FUV light is also absorbed by the dust of the warm phase */
-    const double tau_warm = rt_tchem_fuv_dust_optical_depth(
-        p, rt_props, cosmo, 1. - p->cooling_data.subgrid_fcold, dt);
+    double f = 0.;
+    if (p->cooling_data.subgrid_temp < rt_props->ism_cold_cloud_temperature)
+      f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
+
+    const double f_fuv =
+        rt_tchem_fuv_ism_absorbed_fraction(p, rt_props, cosmo, phi, C, R_p, dt);
 
     for (int g = 0; g < RT_NGROUPS; g++) {
       const double f_g =
-          (g == rt_props->fuv_group) ? 1. - (1. - f) * exp(-tau_warm) : f;
+          (g == rt_props->fuv_group) ? f_fuv : f;
       const float E_old = p->rt_data.radiation[g].energy_density;
 #ifdef SWIFT_KIARA_RT_DEBUG
       p->rt_data.debug_dE[1] -=
