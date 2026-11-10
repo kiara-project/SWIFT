@@ -273,6 +273,10 @@ struct black_holes_props {
   /*! eps_f for the quasar mode */
   float quasar_coupling;
 
+  /*! Launch the quasar/slim-disk wind kicks? 0 skips them (diagnostic) while
+   * keeping the wind mass loading in f_accretion, so BH growth is unchanged */
+  int quasar_wind_kicks;
+
   /*! A multiplicative factor for delaying cooling on a particle in quasar mode
    */
   float quasar_cooling_shutoff_factor;
@@ -1070,6 +1074,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   }
   bp->quasar_coupling =
       parser_get_param_float(params, "ObsidianAGN:quasar_coupling");
+  bp->quasar_wind_kicks =
+      parser_get_opt_param_int(params, "ObsidianAGN:quasar_wind_kicks", 1);
+  if (engine_rank == 0 && !bp->quasar_wind_kicks)
+    message("Quasar/slim-disk wind kicks are OFF (f_accretion unchanged)");
   bp->slim_disk_coupling = parser_get_opt_param_float(
       params, "ObsidianAGN:slim_disk_coupling", bp->quasar_coupling);
 

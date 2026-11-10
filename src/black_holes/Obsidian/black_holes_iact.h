@@ -1297,6 +1297,11 @@ runner_iact_nonsym_bh_gas_feedback(
   int flagged_to_kick =
       jet_flag || (swallow_flag && !adaf_heat_flag) || adaf_kick_flag;
 
+  /* Diagnostic: no quasar/slim-disk wind kicks (jets and ADAF unaffected) */
+  if (!bh_props->quasar_wind_kicks && !jet_flag && !adaf_heat_flag &&
+      (bi->state == BH_states_quasar || bi->state == BH_states_slim_disk))
+    flagged_to_kick = 0;
+
   /* Kick the particle if is was tagged only */
   if (v_kick > 0.f && flagged_to_kick) {
 
