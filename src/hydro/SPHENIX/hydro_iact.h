@@ -101,22 +101,30 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   dv[2] = pi->v[2] - pj->v[2];
   const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
 
-  pi->viscosity.div_v -= faci * dvdr;
-  pj->viscosity.div_v -= facj * dvdr;
-
   /* Compute dv cross r */
   curlvr[0] = dv[1] * dx[2] - dv[2] * dx[1];
   curlvr[1] = dv[2] * dx[0] - dv[0] * dx[2];
   curlvr[2] = dv[0] * dx[1] - dv[1] * dx[0];
 
-  pi->density.rot_v[0] += faci * curlvr[0];
-  pi->density.rot_v[1] += faci * curlvr[1];
-  pi->density.rot_v[2] += faci * curlvr[2];
+  /* A coupled particle ignores decoupled (KIARA wind/jet) neighbours in its
+   * velocity divergence and curl (and hence its Balsara and viscosity
+   * switches), as in MAGMA2; they still count towards its density. */
+  if (!(pj->decoupled && !pi->decoupled)) {
+    pi->viscosity.div_v -= faci * dvdr;
 
-  /* Negative because of the change in sign of dx & dv. */
-  pj->density.rot_v[0] += facj * curlvr[0];
-  pj->density.rot_v[1] += facj * curlvr[1];
-  pj->density.rot_v[2] += facj * curlvr[2];
+    pi->density.rot_v[0] += faci * curlvr[0];
+    pi->density.rot_v[1] += faci * curlvr[1];
+    pi->density.rot_v[2] += faci * curlvr[2];
+  }
+
+  if (!(pi->decoupled && !pj->decoupled)) {
+    pj->viscosity.div_v -= facj * dvdr;
+
+    /* Negative because of the change in sign of dx & dv. */
+    pj->density.rot_v[0] += facj * curlvr[0];
+    pj->density.rot_v[1] += facj * curlvr[1];
+    pj->density.rot_v[2] += facj * curlvr[2];
+  }
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   pi->n_density += wi;
@@ -175,16 +183,20 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   dv[2] = pi->v[2] - pj->v[2];
   const float dvdr = dv[0] * dx[0] + dv[1] * dx[1] + dv[2] * dx[2];
 
-  pi->viscosity.div_v -= faci * dvdr;
-
   /* Compute dv cross r */
   curlvr[0] = dv[1] * dx[2] - dv[2] * dx[1];
   curlvr[1] = dv[2] * dx[0] - dv[0] * dx[2];
   curlvr[2] = dv[0] * dx[1] - dv[1] * dx[0];
 
-  pi->density.rot_v[0] += faci * curlvr[0];
-  pi->density.rot_v[1] += faci * curlvr[1];
-  pi->density.rot_v[2] += faci * curlvr[2];
+  /* A coupled particle ignores decoupled (KIARA wind/jet) neighbours in its
+   * velocity divergence and curl; they still count towards its density. */
+  if (!(pj->decoupled && !pi->decoupled)) {
+    pi->viscosity.div_v -= faci * dvdr;
+
+    pi->density.rot_v[0] += faci * curlvr[0];
+    pi->density.rot_v[1] += faci * curlvr[1];
+    pi->density.rot_v[2] += faci * curlvr[2];
+  }
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   pi->n_density += wi;
@@ -238,9 +250,16 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   const float new_v_sig =
       signal_velocity(dx, pi, pj, mu_ij, const_viscosity_beta);
 
+  /* A coupled particle ignores decoupled (KIARA wind/jet) neighbours in its
+   * signal velocity (time-step), Laplacian of u (conduction switch) and
+   * neighbour viscosity maximum (diffusion limiter), as in MAGMA2 where a
+   * decoupled neighbour neither exerts a force nor limits the time-step. */
+  const int grad_i = !(pj->decoupled && !pi->decoupled);
+  const int grad_j = !(pi->decoupled && !pj->decoupled);
+
   /* Update if we need to */
-  pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
-  pj->viscosity.v_sig = max(pj->viscosity.v_sig, new_v_sig);
+  if (grad_i) pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
+  if (grad_j) pj->viscosity.v_sig = max(pj->viscosity.v_sig, new_v_sig);
 
   /* Calculate Del^2 u for the thermal diffusion coefficient. */
   /* Need to get some kernel values F_ij = wi_dx */
@@ -253,15 +272,35 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   kernel_deval(uj, &wj, &wj_dx);
 
   const float delta_u_factor = (pi->u - pj->u) * r_inv;
-  pi->diffusion.laplace_u += pj->mass * delta_u_factor * wi_dx / pj->rho;
-  pj->diffusion.laplace_u -= pi->mass * delta_u_factor * wj_dx / pi->rho;
+  if (grad_i)
+    pi->diffusion.laplace_u += pj->mass * delta_u_factor * wi_dx / pj->rho;
+  if (grad_j)
+    pj->diffusion.laplace_u -= pi->mass * delta_u_factor * wj_dx / pi->rho;
 
   /* Set the maximal alpha from the previous step over the neighbours
    * (this is used to limit the diffusion in hydro_prepare_force) */
   const float alpha_i = pi->viscosity.alpha;
   const float alpha_j = pj->viscosity.alpha;
-  pi->force.alpha_visc_max_ngb = max(pi->force.alpha_visc_max_ngb, alpha_j);
-  pj->force.alpha_visc_max_ngb = max(pj->force.alpha_visc_max_ngb, alpha_i);
+  if (grad_i)
+    pi->force.alpha_visc_max_ngb = max(pi->force.alpha_visc_max_ngb, alpha_j);
+  if (grad_j)
+    pj->force.alpha_visc_max_ngb = max(pj->force.alpha_visc_max_ngb, alpha_i);
+
+  /* Density gradients (KIARA; identical to MAGMA2, all neighbours count).
+   * Normalised by h^-(d+1) / rho_i in hydro_end_gradient. */
+  const float mi = pi->mass;
+  const float mj = pj->mass;
+  const float drho_ij = pi->rho - pj->rho;
+  const float wi_dr = wi_dx * r_inv;
+  const float wj_dr = wj_dx * r_inv;
+
+  pi->rho_gradient[0] += mj * drho_ij * dx[0] * wi_dr;
+  pi->rho_gradient[1] += mj * drho_ij * dx[1] * wi_dr;
+  pi->rho_gradient[2] += mj * drho_ij * dx[2] * wi_dr;
+
+  pj->rho_gradient[0] += mi * drho_ij * dx[0] * wj_dr;
+  pj->rho_gradient[1] += mi * drho_ij * dx[1] * wj_dr;
+  pj->rho_gradient[2] += mi * drho_ij * dx[2] * wj_dr;
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   pi->n_gradient += wi;
@@ -318,9 +357,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
   const float new_v_sig =
       signal_velocity(dx, pi, pj, mu_ij, const_viscosity_beta);
 
-  /* Update if we need to */
-  pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
-
   /* Calculate Del^2 u for the thermal diffusion coefficient. */
   /* Need to get some kernel values F_ij = wi_dx */
   float wi, wi_dx;
@@ -329,13 +365,30 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
 
   kernel_deval(ui, &wi, &wi_dx);
 
-  const float delta_u_factor = (pi->u - pj->u) * r_inv;
-  pi->diffusion.laplace_u += pj->mass * delta_u_factor * wi_dx / pj->rho;
+  /* A coupled particle ignores decoupled (KIARA wind/jet) neighbours in its
+   * signal velocity, Laplacian of u and neighbour viscosity maximum. */
+  if (!(pj->decoupled && !pi->decoupled)) {
 
-  /* Set the maximal alpha from the previous step over the neighbours
-   * (this is used to limit the diffusion in hydro_prepare_force) */
-  const float alpha_j = pj->viscosity.alpha;
-  pi->force.alpha_visc_max_ngb = max(pi->force.alpha_visc_max_ngb, alpha_j);
+    /* Update if we need to */
+    pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
+
+    const float delta_u_factor = (pi->u - pj->u) * r_inv;
+    pi->diffusion.laplace_u += pj->mass * delta_u_factor * wi_dx / pj->rho;
+
+    /* Set the maximal alpha from the previous step over the neighbours
+     * (this is used to limit the diffusion in hydro_prepare_force) */
+    const float alpha_j = pj->viscosity.alpha;
+    pi->force.alpha_visc_max_ngb = max(pi->force.alpha_visc_max_ngb, alpha_j);
+  }
+
+  /* Density gradients (KIARA; identical to MAGMA2, all neighbours count) */
+  const float mj = pj->mass;
+  const float drho_ij = pi->rho - pj->rho;
+  const float wi_dr = wi_dx * r_inv;
+
+  pi->rho_gradient[0] += mj * drho_ij * dx[0] * wi_dr;
+  pi->rho_gradient[1] += mj * drho_ij * dx[1] * wi_dr;
+  pi->rho_gradient[2] += mj * drho_ij * dx[2] * wi_dr;
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   pi->n_gradient += wi;
@@ -404,6 +457,21 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   /* Are the particles moving towards each others ? */
   const float omega_ij = min(dvdr_Hubble, 0.f);
   const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
+
+  /* Get the time derivative for h (all neighbours count, as in MAGMA2). */
+  pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
+  pj->force.h_dt -= mi * dvdr * r_inv / rhoi * wj_dr;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  pi->n_force += wi + wj;
+  pj->n_force += wi + wj;
+  pi->N_force++;
+  pj->N_force++;
+#endif
+
+  /* If one or both are decoupled (KIARA wind/jet) they do not contribute to
+   * the acceleration or du/dt (as in MAGMA2) */
+  if (pi->decoupled || pj->decoupled) return;
 
   /* Compute sound speeds and signal velocity */
   const float v_sig = signal_velocity(dx, pi, pj, mu_ij, const_viscosity_beta);
@@ -479,17 +547,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   /* Internal energy time derivative */
   pi->u_dt += du_dt_i * mj;
   pj->u_dt += du_dt_j * mi;
-
-  /* Get the time derivative for h. */
-  pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
-  pj->force.h_dt -= mi * dvdr * r_inv / rhoi * wj_dr;
-
-#ifdef SWIFT_HYDRO_DENSITY_CHECKS
-  pi->n_force += wi + wj;
-  pj->n_force += wi + wj;
-  pi->N_force++;
-  pj->N_force++;
-#endif
 }
 
 /**
@@ -553,6 +610,18 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   /* Are the particles moving towards each others ? */
   const float omega_ij = min(dvdr_Hubble, 0.f);
   const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
+
+  /* Get the time derivative for h (all neighbours count, as in MAGMA2). */
+  pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  pi->n_force += wi + wj;
+  pi->N_force++;
+#endif
+
+  /* If one or both are decoupled (KIARA wind/jet) they do not contribute to
+   * the acceleration or du/dt (as in MAGMA2) */
+  if (pi->decoupled || pj->decoupled) return;
 
   /* Compute sound speeds and signal velocity */
   const float v_sig = signal_velocity(dx, pi, pj, mu_ij, const_viscosity_beta);
@@ -621,14 +690,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* Internal energy time derivative */
   pi->u_dt += du_dt_i * mj;
-
-  /* Get the time derivative for h. */
-  pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
-
-#ifdef SWIFT_HYDRO_DENSITY_CHECKS
-  pi->n_force += wi + wj;
-  pi->N_force++;
-#endif
 }
 
 #endif /* SWIFT_SPHENIX_HYDRO_IACT_H */
