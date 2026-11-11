@@ -299,6 +299,9 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, const int offset,
               const double star_age_end_of_step =
                   stars_compute_age(sp, e->cosmology, e->time, with_cosmology);
 
+              /* Nothing is emitted on the final step, see below */
+              if (!(e->ti_current < max_nr_timesteps)) dt_star = 0.;
+
               rt_compute_stellar_emission_rate(sp, e->time,
                                                star_age_end_of_step, dt_star,
                                                rt_props, phys_const, us);
@@ -491,6 +494,16 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, const int offset,
           /* Calculate age of the star at current time */
           const double star_age_end_of_step =
               stars_compute_age(sp, e->cosmology, e->time, with_cosmology);
+
+          /* The radiation emitted over a star's step is injected at the end
+           * of it and transported by the RT sub-cycles of the next step. The
+           * final step has no sub-cycles (engine_run_rt_sub_cycles), so the
+           * emission of the last step would sit untransported next to the
+           * stars in the final snapshot, ~100-1000 times the steady-state
+           * radiation there. Don't emit on the final step: the final
+           * snapshot then holds the radiation as transported after the
+           * previous emission, as every other snapshot does. */
+          if (!(e->ti_current < max_nr_timesteps)) dt_star = 0.;
 
           rt_compute_stellar_emission_rate(sp, e->time, star_age_end_of_step,
                                            dt_star, rt_props, phys_const, us);
