@@ -280,9 +280,9 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
   cpd->local_sfr_density = 0.f;
 #endif
 
-  if (cd->use_firehose_wind_model) {
-    firehose_init_ambient_quantities(p, cd);
-  }
+  /* Always reset: the density loop accumulates these whether or not the
+   * firehose model is on */
+  firehose_init_ambient_quantities(p, cd);
 }
 
 /**
@@ -422,6 +422,13 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
 
   if (cd->use_firehose_wind_model) {
     firehose_end_ambient_quantities(p, xp, cd, cosmo);
+  } else {
+    /* Without the firehose model nothing may use the (unnormalised) ambient
+     * sums of the density loop: zero them, so that decoupled winds get no
+     * mixing-layer cooling time (and are sputtered as other decoupled gas)
+     * and jets recouple on the timer and density alone, without a Mach test
+     * against meaningless ambient values */
+    firehose_init_ambient_quantities(p, cd);
   }
 
   /* The shear tensor shares memory with dZ_dt and is no longer needed, so
@@ -511,10 +518,6 @@ __attribute__((always_inline)) INLINE static void chemistry_first_init_part(
     }
   }
   chemistry_init_part(p, data);
-
-  if (data->use_firehose_wind_model) {
-    firehose_init_ambient_quantities(p, data);
-  }
 }
 
 /**
@@ -917,9 +920,21 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force_body(
     if (dv_phys > 0.f)
       hydro_set_v_sig_based_on_velocity_kick(p, cosmo, dv_phys);
 
-    p->v[0] += ch->dv[0];
-    p->v[1] += ch->dv[1];
-    p->v[2] += ch->dv[2];
+    /* The exchange must change the kicked velocity (v_full, also that of the
+     * gpart): p->v is only the predicted velocity, which the kick right after
+     * this resets to v_full. Changing p->v alone discards the momentum
+     * exchange while keeping the dissipated kinetic energy (added to u
+     * below), so a stream never slows down and keeps heating its ambient
+     * neighbours every step, creating energy. */
+    for (int k = 0; k < 3; k++) {
+      p->v[k] += ch->dv[k];
+      xp->v_full[k] += ch->dv[k];
+    }
+    if (p->gpart != NULL) {
+      p->gpart->v_full[0] = xp->v_full[0];
+      p->gpart->v_full[1] = xp->v_full[1];
+      p->gpart->v_full[2] = xp->v_full[2];
+    }
 
     /* Grab the comoving internal energy at last kick */
     const double u = hydro_get_drifted_comoving_internal_energy(p);

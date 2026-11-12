@@ -53,6 +53,7 @@
  * hydro/MAGMA2/hydro_parameters.h) */
 hydro_real_t magma2_slope_limiter_eta_crit = 0.;
 float magma2_fallback_min_neighbours = 0.f;
+float magma2_conductivity_alpha = const_conductivity_alpha_default;
 
 /**
  * @brief Set the MAGMA2 quantities that depend on the number of neighbours
@@ -593,5 +594,6 @@ void hydro_props_struct_restore(const struct hydro_props *p, FILE *stream) {
 
 #ifdef MAGMA2_SPH
   hydro_props_set_magma2_neighbour_quantities(p);
+  magma2_conductivity_alpha = p->diffusion.alpha;
 #endif
 }
