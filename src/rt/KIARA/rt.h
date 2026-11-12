@@ -32,6 +32,9 @@
 /*! Maximal interface-area ratio sum|A_ij| R / V used in the RT time-step
  * (3 for a sphere) */
 #define rt_area_ratio_max 10.f
+/*! Smallest factor applied to the speed of light by the local Courant
+ * reduction (keeps c > 0 in degenerate particles) */
+#define rt_c_scale_min 1.e-3f
 
 /**
  * @file src/rt/KIARA/rt.h
@@ -227,6 +230,8 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_reset_part_each_subcycle(p, cosmo, 0.);
 #ifdef SWIFT_KIARA_RT_DEBUG
   for (int k = 0; k < 6; k++) p->rt_data.debug_dE[k] = 0.f;
+  p->rt_data.debug_dE_onesided = 0.f;
+  p->rt_data.debug_dE_acc = 0.f;
   for (int k = 0; k < 2; k++) p->rt_data.debug_heat[k] = 0.f;
 #endif
   rt_part_reset_fluxes(p);
@@ -238,6 +243,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.volume_previous = 0.f;
   p->rt_data.area_sum = 0.f;
   p->rt_data.area_sum_last = 0.f;
+  p->rt_data.c_scale = 1.f;
 }
 
 /**
@@ -440,14 +446,17 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
    * of its volume. */
   /* Transport length: V / sum|A| from the interface areas of the last
    * transport step (capped, see below), or 1/10 of the volume radius before
-   * the first one. It is floored at the gravitational softening: transport
-   * is not resolved below it (in the dense ISM the absorption is done by the
-   * cold-cloud covering fraction), and the flux limiter in
-   * runner_iact_rt_flux_common keeps particles smaller than that positive.
-   */
+   * the first one. With KIARART:transport_length_floor_softening (default)
+   * it is floored at the gravitational softening: transport is not resolved
+   * below it (in the dense ISM the absorption is done by the cold-cloud
+   * covering fraction). Particles smaller than that then have steps longer
+   * than their Courant limit; the flux limiter in runner_iact_rt_flux_common
+   * keeps them positive, and with KIARART:local_cfl_reduced_c their speed of
+   * light is reduced by the same factor, so that the step satisfies the
+   * Courant condition (see rt_part_get_reduced_speed_of_light()). */
   const float R = powf(p->geometry.volume / hydro_dimension_unit_sphere,
                        hydro_dimension_inv);
-  float length;
+  float length, length_courant;
   if (p->rt_data.area_sum_last > 0.f) {
     /* Particles in very dense gas at the smoothing-length floor have many
      * more neighbours than usual, and so interface areas up to ~100x those
@@ -456,13 +465,24 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
     const float area = fminf(p->rt_data.area_sum_last,
                              rt_area_ratio_max * p->geometry.volume / R);
     length = p->geometry.volume / area;
+    length_courant = p->geometry.volume / p->rt_data.area_sum_last;
   } else {
     length = 0.1f * R;
+    length_courant = length;
   }
-  length = fmaxf(length, grav_props->epsilon_baryon_cur);
+  if (rt_props->transport_length_floor_softening)
+    length = fmaxf(length, grav_props->epsilon_baryon_cur);
+
+  /* The time step is set with the base speed of light: c_scale is derived
+   * from it and must not feed back. The particle is only written here, by
+   * the task computing its own time step. */
+  ((struct part *)p)->rt_data.c_scale =
+      rt_props->local_cfl_reduced_c
+          ? fmaxf(fminf(1.f, length_courant / length), rt_c_scale_min)
+          : 1.f;
 
   const float dt = rt_props->CFL_condition * cosmo->a * length /
-                   rt_part_get_reduced_speed_of_light(p);
+                   rt_part_get_base_reduced_speed_of_light(p);
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -617,9 +637,10 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 #endif
 
   struct rt_part_data *restrict rtd = &p->rt_data;
-  /* The fluxes are in comoving units over a physical time-step: with
-   * dU/dt + (1/a) div(F) = 0, the transport is slowed by 1/a */
-  const float Vinv = cosmo->a_inv / p->geometry.volume;
+  /* The accumulated fluxes are energies (and flux integrals), converted
+   * with the scale factor of each exchange in runner_iact_rt_flux_common()
+   * (with dU/dt + (1/a) div(F) = 0 the transport is slowed by 1/a) */
+  const float Vinv = 1.f / p->geometry.volume;
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
   const float redshift_factor =
@@ -633,7 +654,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 
     rtd->radiation[g].energy_density += rtd->flux[g].energy * Vinv;
 #ifdef SWIFT_KIARA_RT_DEBUG
-    rtd->debug_dE[2] += rtd->flux[g].energy * cosmo->a_inv;
+    rtd->debug_dE[2] += rtd->flux[g].energy;
     rtd->debug_dE[4] -= rtd->radiation[g].energy_density * redshift_factor *
                         p->geometry.volume;
 #endif

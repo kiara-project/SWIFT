@@ -59,6 +59,13 @@ struct rt_props {
   /* CFL condition */
   float CFL_condition;
 
+  /*! Floor the RT transport length at the gravitational softening */
+  int transport_length_floor_softening;
+
+  /*! Reduce the speed of light of particles whose RT time step is floored
+   * above the Courant limit, by the same factor */
+  int local_cfl_reduced_c;
+
   /* Factor to limit cooling time by */
   float f_limit_cooling_time;
 
@@ -333,6 +340,11 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
         "Photon group %d is the non-ionizing FUV group, dust opacity %g, G0 "
         "above density %g (internal units)",
         rtp->fuv_group, rtp->dust_opacity_FUV, rtp->G0_min_density);
+  message(
+      "RT transport length floored at the softening: %s; local Courant "
+      "reduction of the speed of light: %s",
+      rtp->transport_length_floor_softening ? "yes" : "no",
+      rtp->local_cfl_reduced_c ? "yes" : "no");
 
   if (rtp->stellar_emission_model == rt_stellar_emission_model_const) {
     strcpy(messagestring, "Using constant stellar emission rates: [ ");
@@ -530,6 +542,11 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   const float CFL = parser_get_param_float(params, "KIARART:CFL_condition");
   if (CFL <= 0.f) error("Invalid CFL number: %.3e <= 0.", CFL);
   rtp->CFL_condition = CFL;
+
+  rtp->transport_length_floor_softening = parser_get_opt_param_int(
+      params, "KIARART:transport_length_floor_softening", 1);
+  rtp->local_cfl_reduced_c =
+      parser_get_opt_param_int(params, "KIARART:local_cfl_reduced_c", 1);
 
   const float f_limit_cooling_time = parser_get_opt_param_float(
       params, "KIARART:f_limit_cooling_time", /*default=*/0.6);

@@ -33,6 +33,17 @@ struct rt_part_data {
    * clamps after transport, 4 redshifting, 5 drift correction */
   float debug_dE[6];
 
+  /*! DEBUG: the part of debug_dE[2] from exchanges in which only this
+   * particle was updated, its active partner being updated in its own call
+   * (non-symmetric interactions); sums to zero over all the particles if
+   * every such exchange has its counterpart */
+  float debug_dE_onesided;
+
+  /*! DEBUG: every transport increment of flux[].energy, added atomically
+   * when it is made (as energy); equals debug_dE[2] plus the pending energy
+   * unless increments to the accumulators were lost */
+  float debug_dE_acc;
+
   /*! DEBUG: cumulative RT photoheating (internal energy units), filled only
    * with KIARART:debug_grackle_heat: 0 delivered by Grackle (m * (u with RT
    * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
@@ -63,6 +74,11 @@ struct rt_part_data {
 
   /* Particle RT time step. */
   float flux_dt;
+
+  /*! Factor (<= 1) applied to the particle's reduced speed of light so that
+   * its RT time step satisfies the Courant condition (1 unless
+   * KIARART:local_cfl_reduced_c is set and the time step was floored) */
+  float c_scale;
 
   /*! Particle (comoving) volume when the radiation state was last updated
    * for a change of volume (0 until the first volume computation) */

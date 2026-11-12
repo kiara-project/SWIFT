@@ -161,6 +161,19 @@ INLINE static void rt_convert_area_ratio(const struct engine *engine,
   const float R = cbrtf(3.f * V / (4.f * M_PI));
   ret[0] = (V > 0.f) ? part->rt_data.area_sum_last * R / V : 0.f;
 }
+
+/**
+ * @brief DEBUG: photon energy received through transport and not yet applied
+ * (all groups), as rt_finalise_transport() will apply it.
+ */
+INLINE static void rt_convert_pending_transport(const struct engine *engine,
+                                                const struct part *part,
+                                                const struct xpart *xpart,
+                                                float *ret) {
+  float E = 0.f;
+  for (int g = 0; g < RT_NGROUPS; g++) E += part->rt_data.flux[g].energy;
+  ret[0] = E;
+}
 #endif
 
 /**
@@ -233,6 +246,26 @@ INLINE static int rt_write_particles(const struct part *parts,
       /*xparts=*/NULL, rt_convert_area_ratio,
       "Sum of interface areas times volume radius over volume (3 for a "
       "sphere)");
+  num_elements++;
+  list[num_elements] = io_make_output_field_convert_part(
+      "RTDebugPendingTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      /*xparts=*/NULL, rt_convert_pending_transport,
+      "Photon energy (all groups) received through transport and not yet "
+      "applied, which is not yet in the transport column of the budget");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugOneSidedTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      rt_data.debug_dE_onesided,
+      "Part of the transport column from non-symmetric exchanges in which "
+      "the active partner is updated in its own call (sums to zero over all "
+      "the particles if each has its counterpart)");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugTransportAccumulated", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      rt_data.debug_dE_acc,
+      "Transport increments of the flux accumulators, added atomically when "
+      "made; equals the transport column plus the pending energy unless "
+      "increments were lost");
   num_elements++;
 #endif
 

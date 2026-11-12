@@ -21,6 +21,7 @@
 
 #include "fvpm_geometry.h"
 #include "rt_debugging.h"
+#include "atomic.h"
 #include "rt_flux.h"
 #include "rt_gradients.h"
 
@@ -305,11 +306,15 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   const float mindt =
       (rtj->flux_dt > 0.f) ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
 
-  /* Accumulate the interface areas for the time-step criterion, for the
-   * particles whose fluxes are updated here */
+  /* Accumulate the interface areas of the particles' own transport steps,
+   * for the time-step criterion and the positivity limiter. Each interface
+   * is counted once per own step: an inactive neighbour (flux_dt < 0) also
+   * exchanges with every one of the active particle's steps in between its
+   * own, and counting those would inflate its area by the ratio of the
+   * steps. It gets the area from its own step's interactions. */
   if (mindt > 0.f) {
     rti->area_sum += Anorm;
-    if (mode == 1 || (rtj->flux_dt < 0.f)) rtj->area_sum += Anorm;
+    if (mode == 1 && rtj->flux_dt > 0.f) rtj->area_sum += Anorm;
   }
 
   /* The Riemann solver returns the F-equation flux divided by c (see
@@ -396,15 +401,28 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     }
 
     if (mindt > 0.f) {
-      rti->flux[g].energy -= totflux[0] * mindt;
-      rti->flux[g].flux[0] -= ci * totflux[1] * mindt;
-      rti->flux[g].flux[1] -= ci * totflux[2] * mindt;
-      rti->flux[g].flux[2] -= ci * totflux[3] * mindt;
+      /* The fluxes are in comoving units over a physical time step, with
+       * dU/dt + (1/a) div(F) = 0: the exchange is converted with the scale
+       * factor of the exchange itself, so that both particles apply the
+       * same energy even if they apply it at different times (an inactive
+       * neighbour only applies it at the end of its own, longer, step). */
+      const float dt_a = mindt / a;
+#ifdef SWIFT_KIARA_RT_DEBUG
+      if (!(mode == 1 || (rtj->flux_dt < 0.f)))
+        rti->debug_dE_onesided -= totflux[0] * dt_a;
+      atomic_add_f(&rti->debug_dE_acc, -totflux[0] * dt_a);
+      if (mode == 1 || (rtj->flux_dt < 0.f))
+        atomic_add_f(&rtj->debug_dE_acc, totflux[0] * dt_a);
+#endif
+      rti->flux[g].energy -= totflux[0] * dt_a;
+      rti->flux[g].flux[0] -= ci * totflux[1] * dt_a;
+      rti->flux[g].flux[1] -= ci * totflux[2] * dt_a;
+      rti->flux[g].flux[2] -= ci * totflux[3] * dt_a;
       if (mode == 1 || (rtj->flux_dt < 0.f)) {
-        rtj->flux[g].energy += totflux[0] * mindt;
-        rtj->flux[g].flux[0] += cj * totflux[1] * mindt;
-        rtj->flux[g].flux[1] += cj * totflux[2] * mindt;
-        rtj->flux[g].flux[2] += cj * totflux[3] * mindt;
+        rtj->flux[g].energy += totflux[0] * dt_a;
+        rtj->flux[g].flux[0] += cj * totflux[1] * dt_a;
+        rtj->flux[g].flux[1] += cj * totflux[2] * dt_a;
+        rtj->flux[g].flux[2] += cj * totflux[3] * dt_a;
       }
     }
     // if (g==0 && totflux[0] != 0. && (Ei > 1.e60 || Ej > 1.e60))

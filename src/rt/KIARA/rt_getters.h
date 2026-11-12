@@ -78,7 +78,7 @@ rt_part_get_radiation_state_vector(const struct part *restrict p, int group,
 }
 
 /**
- * @brief Get the reduced speed of light of a particle (internal units).
+ * @brief Get the base reduced speed of light of a particle (internal units).
  *
  * Uniform unless the variable reduced speed of light is enabled, in which case
  * it grows as (h / varc_h_ref)^varc_alpha above the comoving smoothing length
@@ -89,7 +89,7 @@ rt_part_get_radiation_state_vector(const struct part *restrict p, int group,
  * @param p Particle.
  */
 __attribute__((always_inline)) INLINE static float
-rt_part_get_reduced_speed_of_light(const struct part *restrict p) {
+rt_part_get_base_reduced_speed_of_light(const struct part *restrict p) {
 
   const float c_min = rt_params.reduced_speed_of_light;
   if (rt_params.varc_h_ref_inv == 0.f) return c_min;
@@ -98,6 +98,25 @@ rt_part_get_reduced_speed_of_light(const struct part *restrict p) {
   const float c =
       c_min * (rt_params.varc_alpha == 1.f ? x : powf(x, rt_params.varc_alpha));
   return fminf(c, rt_params.reduced_speed_of_light_max);
+}
+
+/**
+ * @brief Get the reduced speed of light used for the particle's transport
+ * and photon interactions (internal units).
+ *
+ * The base value (rt_part_get_base_reduced_speed_of_light()) times the
+ * particle's c_scale, which is < 1 where the RT time step is floored above
+ * the Courant limit and KIARART:local_cfl_reduced_c is set: there the
+ * radiation is transported more slowly instead of with an unstable step.
+ * Everything that converts between the radiation energy density and a
+ * physical flux (G0, absorption over a step) uses this value, so the
+ * steady-state physical radiation field is unchanged.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static float
+rt_part_get_reduced_speed_of_light(const struct part *restrict p) {
+  return rt_part_get_base_reduced_speed_of_light(p) * p->rt_data.c_scale;
 }
 
 /**
