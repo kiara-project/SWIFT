@@ -52,6 +52,19 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
   }
 
   rtd->area_sum_grad = 0.f;
+  rtd->shed_wsum = 0.f;
+}
+
+/**
+ * @brief Is the particle ineligible for RT transport: decoupled (in a wind)
+ * or with its cooling shut off.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static int rt_part_is_ineligible(
+    const struct part *restrict p) {
+  return (p->decoupled > 0) ||
+         (p->feedback_data.cooling_shutoff_delay_time != 0.f);
 }
 
 /**
@@ -70,15 +83,48 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
 __attribute__((always_inline)) INLINE static int rt_check_ineligible(
     struct part *restrict pi, struct part *restrict pj, float r2) {
 
-  int ineligible = 0;
+  return rt_part_is_ineligible(pi) || rt_part_is_ineligible(pj);
+}
 
-  /* Ineligible if particles are in a wind or have their cooling shutoff */
-  if (pi->decoupled > 0.f) ineligible = 1;
-  if (pi->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
-  if (pj->decoupled > 0.f) ineligible = 1;
-  if (pj->feedback_data.cooling_shutoff_delay_time) ineligible = 1;
+/**
+ * @brief Does the particle give its radiation to its neighbours? True for
+ * a particle that is ineligible for transport (a wind particle or one with
+ * its cooling shut off) but still holds radiation, as a particle does when
+ * it is kicked: the particles are markers of the photon fluid, which is not
+ * kicked with the gas.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static int rt_part_sheds_radiation(
+    const struct part *restrict p) {
 
-  return ineligible;
+  if (!rt_part_is_ineligible(p)) return 0;
+  for (int g = 0; g < RT_NGROUPS; g++)
+    if (p->rt_data.radiation[g].energy_density > 0.f) return 1;
+  return 0;
+}
+
+/**
+ * @brief Gradient loop part of the hand-over of the radiation of a particle
+ * ineligible for transport (rt_part_sheds_radiation()) to its eligible
+ * neighbours: sum their kernel weights. The transport loop then gives each
+ * the fraction W_ij / sum W of the radiation energy
+ * (rt_shed_radiation_exchange()).
+ *
+ * @param r2 Comoving squared distance.
+ * @param h_exp Smoothing length of the shedding particle.
+ * @param p_exp The (possibly) shedding particle.
+ * @param p_rec The (possibly) receiving neighbour.
+ */
+__attribute__((always_inline)) INLINE static void rt_shed_collect(
+    const float r2, const float h_exp, struct part *restrict p_exp,
+    const struct part *restrict p_rec) {
+
+  if (rt_part_is_ineligible(p_rec) || !rt_part_sheds_radiation(p_exp)) return;
+  if (r2 >= kernel_gamma2 * h_exp * h_exp) return;
+  float w;
+  kernel_eval(sqrtf(r2) / h_exp, &w);
+  p_exp->rt_data.shed_wsum += w;
 }
 
 /**
@@ -262,6 +308,10 @@ __attribute__((always_inline)) INLINE static void rt_gradients_collect(
   pj->rt_data.debug_calls_iact_gradient_interaction += 1;
 #endif
 
+  /* Hand-over of the radiation of particles ineligible for transport */
+  rt_shed_collect(r2, hi, pi, pj);
+  rt_shed_collect(r2, hj, pj, pi);
+
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
 
@@ -406,6 +456,9 @@ __attribute__((always_inline)) INLINE static void rt_gradients_nonsym_collect(
   rt_debug_sequence_check(pi, 2, __func__);
   pi->rt_data.debug_calls_iact_gradient_interaction += 1;
 #endif
+
+  /* Hand-over of the radiation of particles ineligible for transport */
+  rt_shed_collect(r2, hi, pi, pj);
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;

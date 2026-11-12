@@ -323,7 +323,34 @@ INLINE static int rt_write_stars(const struct spart *sparts,
                                  struct io_props *list) {
   int num_elements = 0;
 
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /* DEBUG: photon energy budget of the gas the stars formed from */
+  list[num_elements] = io_make_output_field(
+      "RTDebugEnergyBudget", FLOAT, 6, UNIT_CONV_ENERGY, 0.f, sparts,
+      rt_data.debug_dE,
+      "Photon energy budget (as for the gas) of the gas particle the star "
+      "formed from, at its conversion; the radiation it handed to the star "
+      "is taken out of the injected column");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugEmissionCarry", FLOAT, RT_NGROUPS, UNIT_CONV_ENERGY, 0.f,
+      sparts, rt_data.emission_carry,
+      "Photon energy held by the star to add to its next emission");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugOneSidedTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, sparts,
+      rt_data.debug_dE_onesided,
+      "RTDebugOneSidedTransport of the gas particle the star formed from");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugTransportAccumulated", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, sparts,
+      rt_data.debug_dE_acc,
+      "RTDebugTransportAccumulated of the gas particle the star formed from");
+  num_elements++;
+#endif
+
 #ifdef SWIFT_RT_DEBUG_CHECKS
+  list += num_elements;
   num_elements += 4;
   list[0] = io_make_output_field("RTDebugHydroIact", INT, 1, UNIT_CONV_NO_UNITS,
                                  0, sparts, rt_data.debug_iact_hydro_inject,

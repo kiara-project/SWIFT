@@ -75,6 +75,11 @@ struct rt_part_data {
   /* Particle RT time step. */
   float flux_dt;
 
+  /*! Sum of the kernel weights of the neighbours eligible for transport,
+   * for a particle that is not (decoupled or with its cooling shut off) and
+   * gives its radiation to them (see rt_shed_collect()) */
+  float shed_wsum;
+
   /*! Factor (<= 1) applied to the particle's reduced speed of light so that
    * its RT time step satisfies the Courant condition (1 unless
    * KIARART:local_cfl_reduced_c is set and the time step was floored) */
@@ -195,6 +200,25 @@ struct rt_spart_data {
 
   /*! Neighbour weigths in each octant surrounding the star */
   float octant_weights[8];
+
+  /*! Energy to add to the next emission (total energy): the emission of
+   * steps without gas neighbours, and the radiation of the gas particle the
+   * star formed from */
+  float emission_carry[RT_NGROUPS];
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /*! DEBUG: photon energy budget (rt_part_data.debug_dE) of the gas particle
+   * the star formed from, frozen at the conversion, with the radiation
+   * handed to the star moved out of the injected column (it is injected
+   * again, and counted there, by the star) */
+  float debug_dE[6];
+
+  /*! DEBUG: rt_part_data.debug_dE_onesided of that gas particle */
+  float debug_dE_onesided;
+
+  /*! DEBUG: rt_part_data.debug_dE_acc of that gas particle */
+  float debug_dE_acc;
+#endif
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   /* data to store during entire run */

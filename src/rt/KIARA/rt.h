@@ -124,8 +124,12 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
           rt_props->stellar_emission_model);
   }
 
-  for (int g = 0; g < RT_NGROUPS; g++)
-    sp->rt_data.emission_this_step[g] = emission_this_step[g];
+  /* Add the emission not injected in earlier steps */
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    sp->rt_data.emission_this_step[g] =
+        emission_this_step[g] + sp->rt_data.emission_carry[g];
+    sp->rt_data.emission_carry[g] = 0.f;
+  }
 }
 
 /**
@@ -300,6 +304,15 @@ __attribute__((always_inline)) INLINE static void rt_reset_spart(
 __attribute__((always_inline)) INLINE static void rt_first_init_spart(
     struct spart *restrict sp) {
 
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    sp->rt_data.emission_this_step[g] = 0.f;
+    sp->rt_data.emission_carry[g] = 0.f;
+  }
+#ifdef SWIFT_KIARA_RT_DEBUG
+  for (int i = 0; i < 6; i++) sp->rt_data.debug_dE[i] = 0.f;
+  sp->rt_data.debug_dE_onesided = 0.f;
+  sp->rt_data.debug_dE_acc = 0.f;
+#endif
   rt_init_spart(sp);
   rt_reset_spart(sp);
 #ifdef SWIFT_RT_DEBUG_CHECKS
@@ -340,11 +353,54 @@ __attribute__((always_inline)) INLINE static void rt_spart_has_no_neighbours(
     struct spart *sp) {
 
   /* Reset energy to be injected so that global statistics
-   * checks still work */
+   * checks still work; it is carried over to the next emission */
   for (int g = 0; g < RT_NGROUPS; g++) {
+    sp->rt_data.emission_carry[g] += sp->rt_data.emission_this_step[g];
     sp->rt_data.emission_this_step[g] = 0.f;
   }
   message("WARNING: found star without neighbours");
+}
+
+/**
+ * @brief Give the radiation of a gas particle that turns into a star to the
+ * new star, which injects it into its neighbours with its next emission.
+ *
+ * This includes the energy the particle has received from its neighbours
+ * since its last transport step and not yet applied (rt_finalise_transport()).
+ * The new star is zeroed when it is created (cell_add_spart()), so its
+ * carry starts empty.
+ *
+ * @param p The gas particle being converted.
+ * @param sp The new star particle.
+ */
+__attribute__((always_inline)) INLINE static void rt_convert_part_to_spart(
+    const struct part *restrict p, struct spart *restrict sp) {
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /* Keep the gas particle's budget entries, which would otherwise leave the
+   * gas budget with it, so that each column can be summed over all the
+   * particles (gas and stars) */
+  for (int i = 0; i < 6; i++) sp->rt_data.debug_dE[i] = p->rt_data.debug_dE[i];
+  sp->rt_data.debug_dE_onesided = p->rt_data.debug_dE_onesided;
+  sp->rt_data.debug_dE_acc = p->rt_data.debug_dE_acc;
+#endif
+
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    /* As applied in rt_finalise_transport() */
+    const float E_pending = p->rt_data.flux[g].energy;
+    const float E =
+        p->rt_data.radiation[g].energy_density * p->geometry.volume +
+        E_pending;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    sp->rt_data.debug_dE[2] += E_pending;
+#endif
+    if (E > 0.f) {
+      sp->rt_data.emission_carry[g] += E;
+#ifdef SWIFT_KIARA_RT_DEBUG
+      sp->rt_data.debug_dE[0] -= E;
+#endif
+    }
+  }
 }
 
 /**

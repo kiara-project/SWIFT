@@ -59,10 +59,12 @@ runner_iact_nonsym_rt_injection_prep(const float r2, const float dx[3],
   /* Gas particle must be within stars' smoothing length to receive energy */
   if (hi * hi < r2) return;
 
-  /* Don't give photon energy to wind/non-cooling particles */
-  if (pj->decoupled || pj->feedback_data.decoupling_delay_time > 0.f ||
-      pj->feedback_data.cooling_shutoff_delay_time)
-    return;
+  /* All the neighbours receive photons, including winds and particles with
+   * their cooling shut off: these are ineligible for transport and hand
+   * their radiation over to their eligible neighbours in the next transport
+   * step (rt_shed_radiation_exchange()). Skipping them here would lose the
+   * share of the particles kicked between this loop and the injection, and
+   * the prep and injection loops must use the same set of neighbours. */
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   si->rt_data.debug_iact_hydro_inject_prep += 1;
@@ -136,10 +138,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
   /* Gas particle must be within stars' smoothing length to receive energy */
   if (hi * hi < r2) return;
 
-  /* Don't give photon energy to wind/non-cooling particles */
-  if (pj->decoupled || pj->feedback_data.decoupling_delay_time > 0.f ||
-      pj->feedback_data.cooling_shutoff_delay_time)
-    return;
+  /* All the neighbours receive photons (see
+   * runner_iact_nonsym_rt_injection_prep()) */
 
   /* Compute the weight of the neighbouring particle */
   const float hi_inv = 1.f / hi;
@@ -222,6 +222,56 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
 }
 
 /**
+ * @brief Transport loop part of the hand-over of the radiation of a particle
+ * ineligible for transport (rt_part_sheds_radiation()) to its eligible
+ * neighbours: over the shedding particle's RT step, neighbour j receives the
+ * fraction W_ij / sum_k W_ik (sum from the gradient loop, rt_shed_collect())
+ * of its radiation energy, isotropically (no flux). The energy is moved
+ * through the flux accumulators applied in rt_finalise_transport(), and the
+ * shedding particle loses exactly what its neighbours gain.
+ *
+ * As for the fluxes, each particle of the pair is updated in exactly one
+ * call: p_exp if update_exp, p_rec if update_rec.
+ *
+ * @param r2 Comoving squared distance.
+ * @param h_exp Smoothing length of the shedding particle.
+ * @param p_exp The (possibly) shedding particle.
+ * @param p_rec The (possibly) receiving neighbour.
+ * @param a Current scale factor.
+ * @param update_exp Update the shedding particle in this call?
+ * @param update_rec Update the receiving particle in this call?
+ */
+__attribute__((always_inline)) INLINE static void rt_shed_radiation_exchange(
+    const float r2, const float h_exp, struct part *restrict p_exp,
+    struct part *restrict p_rec, const float a, const int update_exp,
+    const int update_rec) {
+
+  /* Only over the shedding particle's own RT step */
+  if (p_exp->rt_data.flux_dt <= 0.f || p_exp->rt_data.shed_wsum <= 0.f) return;
+  if (rt_part_is_ineligible(p_rec) || !rt_part_sheds_radiation(p_exp)) return;
+  if (r2 >= kernel_gamma2 * h_exp * h_exp) return;
+
+  float w;
+  kernel_eval(sqrtf(r2) / h_exp, &w);
+  const float frac = w / p_exp->rt_data.shed_wsum;
+
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    /* The accumulators hold energy (rt_finalise_transport adds
+     * flux.energy / V) */
+    const float dE = p_exp->rt_data.radiation[g].energy_density *
+                     p_exp->geometry.volume * frac;
+    if (update_exp) p_exp->rt_data.flux[g].energy -= dE;
+    if (update_rec) p_rec->rt_data.flux[g].energy += dE;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    if (update_exp) atomic_add_f(&p_exp->rt_data.debug_dE_acc, -dE);
+    if (update_rec) atomic_add_f(&p_rec->rt_data.debug_dE_acc, dE);
+    if (update_exp && !update_rec) p_exp->rt_data.debug_dE_onesided -= dE;
+    if (update_rec && !update_exp) p_rec->rt_data.debug_dE_onesided += dE;
+#endif
+  }
+}
+
+/**
  * @brief Flux calculation between particle i and particle j
  *
  * This method calls runner_iact_rt_fluxes_common with mode 1.
@@ -252,6 +302,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     pj->rt_data.debug_calls_iact_transport_interaction += 1;
   }
 #endif
+
+  /* Hand-over of the radiation of particles ineligible for transport, with
+   * the same rule for which particles are updated as for the fluxes */
+  const int update_j = (mode == 1 || pj->rt_data.flux_dt < 0.f);
+  rt_shed_radiation_exchange(r2, hi, pi, pj, a, /*update_exp=*/1, update_j);
+  rt_shed_radiation_exchange(r2, hj, pj, pi, a, update_j, /*update_rec=*/1);
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
