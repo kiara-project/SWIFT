@@ -30,6 +30,10 @@
 #include "../../cooling/KIARA/crackle/grackle.h"
 extern chemistry_data *grackle_data;
 
+/*! Case B hydrogen recombination coefficient at 10^4 K [cm^3 s^-1], for the
+ * recombination limit of the ionizing absorption by the subgrid ISM clouds */
+#define rt_ism_cloud_alpha_B 2.59e-13
+
 /**
  * @file src/rt/KIARA/rt_thermochemistry.c
  * @brief Main header file for the KIARA M1 closure radiative transfer scheme
@@ -835,10 +839,18 @@ INLINE void rt_do_thermochemistry_with_subgrid(
    * rho_c) fill a fraction phi = f_c rho / rho_c of the particle volume. N
    * clouds of equal size cover a fraction C = N^(1/3) phi^(2/3) of the
    * particle cross section.
-   * Ionizing groups: the clouds absorb all the ionizing radiation they
-   * cover and the warm medium between them is transparent, so over the
-   * path L = c dt travelled this step the absorbed fraction is
-   * 1 - (1 - C)^(L / 2 R_p), with R_p the particle radius.
+   * Ionizing groups: the warm medium between the clouds is transparent and
+   * the clouds absorb all the ionizing radiation they cover, at any subgrid
+   * temperature (a neutral cloud is very optically thick above the Lyman
+   * limit). Over the path L = c dt travelled this step the light crosses
+   * L / (4 R_p / 3) mean particle chords, so the absorbed fraction is
+   * 1 - (1 - C)^(3 L / 4 R_p), with R_p the particle radius. The clouds
+   * can however only absorb as many photons as they recombine: if the
+   * radiation would ionize them faster, the excess passes through (the
+   * clouds are ionized, as in a Stroemgren sphere). The number of ionizing
+   * photons absorbed this step is therefore capped at
+   * alpha_B n_H,cl^2 phi V dt, with n_H,cl the hydrogen density of the
+   * clouds and alpha_B the case B recombination coefficient at 10^4 K.
    * FUV group: only dust absorbs, in both phases; see
    * rt_tchem_fuv_ism_absorbed_fraction(). */
   if (p->cooling_data.subgrid_temp > 0. &&
@@ -856,15 +868,47 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     const double L = rt_part_get_reduced_speed_of_light(p) * dt;
 
     double f = 0.;
-    if (p->cooling_data.subgrid_temp < rt_props->ism_cold_cloud_temperature)
-      f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
+    if (C > 0. && R_p > 0.)
+      f = (C < 1.) ? -expm1(L / ((4. / 3.) * R_p) * log1p(-C)) : 1.;
+
+    /* Recombination limit of the clouds */
+    if (f > 0. && rho_cold > 0.) {
+      const double X_H_in =
+          p->chemistry_data.metal_mass_fraction[chemistry_element_H];
+      const double X_H = (X_H_in > 0.) ? X_H_in : 0.76;
+      const double n_H_cl =
+          X_H * rho_cold *
+          units_cgs_conversion_factor(us, UNIT_CONV_DENSITY) /
+          (phys_const->const_proton_mass *
+           units_cgs_conversion_factor(us, UNIT_CONV_MASS));
+      const double length_cgs =
+          units_cgs_conversion_factor(us, UNIT_CONV_LENGTH);
+      const double V_phys_cgs = p->geometry.volume * cosmo->a * cosmo->a *
+                                cosmo->a * length_cgs * length_cgs *
+                                length_cgs;
+      const double dt_cgs =
+          dt * units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+      const double N_rec = rt_ism_cloud_alpha_B * n_H_cl * n_H_cl * phi *
+                           V_phys_cgs * dt_cgs;
+
+      /* Ionizing photons that would be absorbed without the limit */
+      const double E_to_erg =
+          units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+      double N_abs = 0.;
+      for (int g = 0; g < RT_NGROUPS; g++) {
+        if (g == rt_props->fuv_group) continue;
+        const double E_g = fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+                           p->geometry.volume * E_to_erg;
+        N_abs += f * E_g / rt_props->average_photon_energy[g];
+      }
+      if (N_abs > N_rec) f *= N_rec / N_abs;
+    }
 
     const double f_fuv =
         rt_tchem_fuv_ism_absorbed_fraction(p, rt_props, cosmo, phi, C, R_p, dt);
 
     for (int g = 0; g < RT_NGROUPS; g++) {
-      const double f_g =
-          (g == rt_props->fuv_group) ? f_fuv : f;
+      const double f_g = (g == rt_props->fuv_group) ? f_fuv : f;
       const float E_old = p->rt_data.radiation[g].energy_density;
 #ifdef SWIFT_KIARA_RT_DEBUG
       p->rt_data.debug_dE[1] -=

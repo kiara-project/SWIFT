@@ -113,10 +113,6 @@ struct rt_props {
   int debug_grackle_heat;
 #endif
 
-  /*! Subgrid ISM: cold clouds (subgrid temperature below this, in K) absorb
-   * all radiation they cover; the warm medium between them is transparent */
-  float ism_cold_cloud_temperature;
-
   /*! Subgrid ISM: number of cold clouds per gas particle (sets the covering
    * fraction for a given cold volume filling fraction) */
   float ism_clouds_per_particle;
@@ -631,8 +627,6 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
       params, "KIARART:skip_thermochemistry", /* default = */ 0);
 
   /* Cold clouds in the subgrid ISM */
-  rtp->ism_cold_cloud_temperature = parser_get_opt_param_float(
-      params, "KIARART:ism_cold_cloud_temperature_K", 300.f);
   rtp->ism_clouds_per_particle = parser_get_opt_param_float(
       params, "KIARART:ism_clouds_per_particle", 1.f);
   if (rtp->ism_clouds_per_particle <= 0.f)
