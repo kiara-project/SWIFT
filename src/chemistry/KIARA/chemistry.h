@@ -280,9 +280,9 @@ __attribute__((always_inline)) INLINE static void chemistry_init_part(
   cpd->local_sfr_density = 0.f;
 #endif
 
-  if (cd->use_firehose_wind_model) {
-    firehose_init_ambient_quantities(p, cd);
-  }
+  /* Always reset: the density loop accumulates these whether or not the
+   * firehose model is on */
+  firehose_init_ambient_quantities(p, cd);
 }
 
 /**
@@ -422,6 +422,13 @@ __attribute__((always_inline)) INLINE static void chemistry_end_density(
 
   if (cd->use_firehose_wind_model) {
     firehose_end_ambient_quantities(p, xp, cd, cosmo);
+  } else {
+    /* Without the firehose model nothing may use the (unnormalised) ambient
+     * sums of the density loop: zero them, so that decoupled winds get no
+     * mixing-layer cooling time (and are sputtered as other decoupled gas)
+     * and jets recouple on the timer and density alone, without a Mach test
+     * against meaningless ambient values */
+    firehose_init_ambient_quantities(p, cd);
   }
 
   /* The shear tensor shares memory with dZ_dt and is no longer needed, so
@@ -511,10 +518,6 @@ __attribute__((always_inline)) INLINE static void chemistry_first_init_part(
     }
   }
   chemistry_init_part(p, data);
-
-  if (data->use_firehose_wind_model) {
-    firehose_init_ambient_quantities(p, data);
-  }
 }
 
 /**
