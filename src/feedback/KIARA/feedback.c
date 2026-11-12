@@ -1812,6 +1812,10 @@ void feedback_props_init(struct feedback_props *fp,
       params, "KIARAFeedback:FIRE_velocity_normalization");
   fp->FIRE_velocity_slope =
       parser_get_param_double(params, "KIARAFeedback:FIRE_velocity_slope");
+  fp->FIRE_velocity_Hz_exponent = parser_get_opt_param_float(
+      params, "KIARAFeedback:FIRE_velocity_Hz_exponent", 1.f / 3.f);
+  fp->FIRE_velocity_Hz_max_boost = parser_get_opt_param_float(
+      params, "KIARAFeedback:FIRE_velocity_Hz_max_boost", 0.f);
   fp->FIRE_eta_normalization =
       parser_get_param_double(params, "KIARAFeedback:FIRE_eta_normalization");
   fp->FIRE_eta_break =
@@ -1892,6 +1896,10 @@ void feedback_props_init(struct feedback_props *fp,
       params, "KIARAFeedback:jet_recouple_nH_cgs", 0.13);
   fp->jet_recouple_mach = parser_get_opt_param_double(
       params, "KIARAFeedback:jet_recouple_mach", 10.);
+  fp->bh_recouple_log = parser_get_opt_param_int(
+      params, "KIARAFeedback:bh_recouple_log", 0);
+  if (engine_rank == 0 && fp->bh_recouple_log)
+    message("Logging BH_RECOUPLE lines for BH-launched (jet/wind) particles");
   if (engine_rank == 0)
     message("Jets recouple below nH=%g cm^-3 or below Mach %g",
             fp->jet_recouple_nH_cgs, fp->jet_recouple_mach);
@@ -1974,6 +1982,11 @@ void feedback_props_init(struct feedback_props *fp,
     message("Feedback FIRE velocity normalization: %g",
             fp->FIRE_velocity_normalization);
     message("Feedback FIRE velocity slope: %g", fp->FIRE_velocity_slope);
+    message(
+        "Feedback wind circular velocity scales as (H/H0)^%g, extra factor "
+        "(H/H0)^(%g - 1/3) capped at %g (0 = no cap)",
+        fp->FIRE_velocity_Hz_exponent, fp->FIRE_velocity_Hz_exponent,
+        fp->FIRE_velocity_Hz_max_boost);
     message("Feedback velocity scatter: %g", fp->kick_velocity_scatter);
     if (fp->vwind_sigma_sfr_slope != 0.f) {
       message(

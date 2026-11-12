@@ -187,6 +187,35 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
                             p->chemistry_data.radius_stream < 0.f ||
                             rho_nH_cgs < rho_recouple_cgs);
 
+      /* Optional log of where and why BH-launched particles recouple */
+      if (recouple && p->decoupled != 1 && fb_props->bh_recouple_log &&
+          xp->feedback_data.bh_launch_type > 0) {
+        const int reason = (timer_recouple ? 1 : 0) +
+                           (p->chemistry_data.radius_stream < 0.f ? 2 : 0) +
+                           (rho_nH_cgs < rho_recouple_cgs ? 4 : 0);
+        double d2 = 0.;
+        float v2 = 0.f;
+        for (int k = 0; k < 3; k++) {
+          double dx = p->x[k] - xp->feedback_data.bh_launch_pos[k];
+          const double box = e->s->dim[k];
+          if (dx > 0.5 * box) dx -= box;
+          if (dx < -0.5 * box) dx += box;
+          d2 += dx * dx;
+          v2 += xp->v_full[k] * xp->v_full[k];
+        }
+        const double t_flight =
+            (cosmo->time - xp->feedback_data.bh_launch_time) *
+            fb_props->time_to_Myr;
+        const float u_phys = hydro_get_physical_internal_energy(p, xp, cosmo);
+        message(
+            "BH_RECOUPLE: z=%.4f id=%lld type=%d reason=%d t_flight=%.3g Myr "
+            "dist=%.3g pkpc v=%.4g km/s nH=%.3g T=%.3g",
+            cosmo->z, p->id, xp->feedback_data.bh_launch_type, reason, t_flight,
+            sqrt(d2) * cosmo->a * fb_props->length_to_kpc,
+            sqrtf(v2) * cosmo->a_inv / fb_props->kms_to_internal, rho_nH_cgs,
+            u_phys / fb_props->temp_to_u_factor);
+      }
+
       if (recouple && p->decoupled == 1) {
         /* If it is recoupling, do one more decoupled step to set timestep etc
          */
@@ -194,6 +223,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
       } else if (recouple) {
         /* extra decoupled step is done, now properly recouple */
         feedback_recouple_set_flags(p, xp, cosmo);
+        xp->feedback_data.bh_launch_type = 0;
       } else {
         /* Reset subgrid properties if decoupled for safety */
         cooling_subgrid_exit(&p->cooling_data, &xp->cooling_data,
@@ -383,6 +413,11 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
 #if COOLING_GRACKLE_MODE >= 2
   p->feedback_data.SNe_ThisTimeStep = 0.f;
 #endif
+  xp->feedback_data.bh_launch_pos[0] = 0.;
+  xp->feedback_data.bh_launch_pos[1] = 0.;
+  xp->feedback_data.bh_launch_pos[2] = 0.;
+  xp->feedback_data.bh_launch_time = 0.f;
+  xp->feedback_data.bh_launch_type = 0;
 }
 
 /**
@@ -402,7 +437,9 @@ __attribute__((always_inline)) INLINE static void feedback_prepare_spart(
  *        in code units
  *
  * The circular velocity follows from the galaxy stellar mass (Dutton+11,
- * scaled with (H/H0)^(1/3)); the wind speed is FIRE_velocity_normalization
+ * scaled with (H/H0)^(1/3), or (H/H0)^FIRE_velocity_Hz_exponent with the
+ * extra factor capped at FIRE_velocity_Hz_max_boost); the wind speed is
+ * FIRE_velocity_normalization
  * times v_circ (with an optional power of v_circ/200 km/s), with a uniform
  * random scatter and an optional high-redshift suppression.
  *
@@ -434,9 +471,21 @@ feedback_compute_kick_velocity(const float galaxy_stellar_mass,
      measurements by Dutton+11 */
 
   /* Dutton+11 eq 6: log (M* / 1e10) = -0.61 + 4.51 log (vdisk / 100) */
-  const float v_circ_km_s =
+  const float H_ratio = cosmo->H / cosmo->H0;
+  float v_circ_km_s =
       100.f * powf(4.0738f * galaxy_stellar_mass_Msun * 1.e-10f, 0.221729f) *
-      pow(cosmo->H / cosmo->H0, 1.f / 3.f);
+      powf(H_ratio, 1.f / 3.f);
+
+  /* Optional extra redshift dependence: v_circ ~ (H/H0)^FIRE_velocity_Hz_
+   * exponent instead of the fixed-halo-mass 1/3, with the extra factor
+   * optionally capped. Passes through the FIRE velocity slope below. */
+  if (fb_props->FIRE_velocity_Hz_exponent != 1.f / 3.f) {
+    float boost =
+        powf(H_ratio, fb_props->FIRE_velocity_Hz_exponent - 1.f / 3.f);
+    if (fb_props->FIRE_velocity_Hz_max_boost > 0.f)
+      boost = fminf(boost, fb_props->FIRE_velocity_Hz_max_boost);
+    v_circ_km_s *= boost;
+  }
 
   const float rand_for_scatter =
       random_unit_interval(sp_id, ti_current, random_number_stellar_feedback_2);

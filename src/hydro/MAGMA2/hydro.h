@@ -2123,8 +2123,13 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 
   const float h_inv = 1.f / p->h;
 
-  /* Predict smoothing length */
-  const float w1 = p->force.h_dt * h_inv * dt_drift;
+  /* Predict smoothing length, never drifting below h_min (the floor the
+   * density loop also applies). A stale, large negative h_dt on a long step
+   * would otherwise shrink h towards zero and overflow the predicted rho. The
+   * density is scaled by the same factor, so rho h^3 is conserved. */
+  float w1 = p->force.h_dt * h_inv * dt_drift;
+  if (hydro_props->h_min > 0.f)
+    w1 = fmaxf(w1, fminf(logf(hydro_props->h_min * h_inv), 0.f));
   if (fabsf(w1) < 0.2f)
     p->h *= approx_expf(w1); /* 4th order expansion of exp(w) */
   else

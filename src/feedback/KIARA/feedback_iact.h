@@ -495,6 +495,7 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
                          hydro_get_physical_density(pj, cosmo));
 
     pj->feedback_data.number_of_times_decoupled += 1;
+    xpj->feedback_data.bh_launch_type = 0;
 
     /* Kicked and handled */
     pj->feedback_data.kick_id = -1;

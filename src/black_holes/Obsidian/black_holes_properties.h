@@ -273,6 +273,10 @@ struct black_holes_props {
   /*! eps_f for the quasar mode */
   float quasar_coupling;
 
+  /*! Launch the quasar/slim-disk wind kicks? 0 skips them (diagnostic) while
+   * keeping the wind mass loading in f_accretion, so BH growth is unchanged */
+  int quasar_wind_kicks;
+
   /*! A multiplicative factor for delaying cooling on a particle in quasar mode
    */
   float quasar_cooling_shutoff_factor;
@@ -282,6 +286,11 @@ struct black_holes_props {
 
   /*! The wind speed of the ADAF outflow */
   float adaf_wind_speed;
+
+  /*! Minimum ADAF kick speed (internal units) in whole-kernel mode: a share of
+   * the energy too small for it gives a kick at this speed with probability
+   * E / (m v_min^2 / 2) instead of a smaller kick (0 = off) */
+  float adaf_wind_min_speed;
 
   /*! The mass loading of the ADAF wind */
   float adaf_wind_mass_loading;
@@ -1065,6 +1074,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   }
   bp->quasar_coupling =
       parser_get_param_float(params, "ObsidianAGN:quasar_coupling");
+  bp->quasar_wind_kicks =
+      parser_get_opt_param_int(params, "ObsidianAGN:quasar_wind_kicks", 1);
+  if (engine_rank == 0 && !bp->quasar_wind_kicks)
+    message("Quasar/slim-disk wind kicks are OFF (f_accretion unchanged)");
   bp->slim_disk_coupling = parser_get_opt_param_float(
       params, "ObsidianAGN:slim_disk_coupling", bp->quasar_coupling);
 
@@ -1166,6 +1179,18 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_wind_speed = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_wind_speed_km_s", 0.f);
   bp->adaf_wind_speed *= bp->kms_to_internal;
+
+  bp->adaf_wind_min_speed = parser_get_opt_param_float(
+      params, "ObsidianAGN:adaf_wind_min_speed_km_s", 0.f);
+  bp->adaf_wind_min_speed *= bp->kms_to_internal;
+  if (bp->adaf_wind_min_speed < 0.f)
+    error("ObsidianAGN:adaf_wind_min_speed_km_s must be >= 0");
+  if (bp->adaf_wind_min_speed > 0.f && bp->adaf_wind_speed < 0.f &&
+      bp->adaf_wind_min_speed > fabs(bp->adaf_wind_speed))
+    error("ObsidianAGN:adaf_wind_min_speed_km_s exceeds |adaf_wind_speed_km_s|");
+  if (engine_rank == 0 && bp->adaf_wind_min_speed > 0.f)
+    message("ADAF kicks below %g km/s are made stochastic at that speed",
+            bp->adaf_wind_min_speed / bp->kms_to_internal);
 
   const float f_psi =
       parser_get_opt_param_float(params, "ObsidianAGN:adaf_f_quasar_psi", -1.f);

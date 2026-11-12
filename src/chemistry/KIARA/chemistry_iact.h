@@ -411,6 +411,15 @@ firehose_compute_mass_exchange(
   if (i_stream && pi->chemistry_data.radius_stream <= 0.f) return 0.f;
   if (j_stream && pj->chemistry_data.radius_stream <= 0.f) return 0.f;
 
+  /* No mixing with dense (ISM) ambient gas: a stream crosses gas denser
+   * than firehose_nh_ambient_max ballistically, as a plain decoupled wind,
+   * and only mixes with (and is slowed down by) the more diffuse gas
+   * outside. Comoving densities. */
+  const struct part *p_amb = i_stream ? pj : pi;
+  if (hydro_get_comoving_density(p_amb) >
+      cd->firehose_ambient_rho_max * cosmo->a * cosmo->a * cosmo->a)
+    return 0.f;
+
   /* Stream particle cannot be an AGN jet particle
   if (i_stream &&
           pi->feedback_data.number_of_times_decoupled >= 10000) return 0.f;

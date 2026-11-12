@@ -33,6 +33,7 @@
 #include "common_io.h"
 #include "error.h"
 #include "inline.h"
+#include "parser.h"
 
 /**
  * @file MAGMA2/hydro_parameters.h
@@ -50,8 +51,13 @@
 /*! Alpha viscosity, usually =1.0. For lower N_ngb, should be higher */
 #define const_viscosity_alpha 2.0
 
-/*! Alpha conductivity, usually =0.05. At lower N_ngb, should be higher */
-#define const_conductivity_alpha 0.075
+/*! Alpha conductivity, usually =0.05. At lower N_ngb, should be higher.
+ * Default of the run-time parameter SPH:conductivity_alpha. */
+#define const_conductivity_alpha_default 0.075
+
+/*! Alpha conductivity used in the interactions (set at run time from
+ * SPH:conductivity_alpha, see diffusion_init) */
+#define const_conductivity_alpha magma2_conductivity_alpha
 
 /* The number of neighbours is set by SPH:target_neighbours (or
  * SPH:resolution_eta) at run time; the quantities that depend on it are the
@@ -168,7 +174,10 @@
 struct viscosity_global_data {};
 
 /*! Thermal diffusion parameters */
-struct diffusion_global_data {};
+struct diffusion_global_data {
+  /*! Artificial conductivity alpha (SPH:conductivity_alpha) */
+  float alpha;
+};
 
 /* Functions for reading from parameter file */
 
@@ -194,6 +203,10 @@ extern hydro_real_t magma2_slope_limiter_eta_crit;
 /*! Use the SPH fallback below this many neighbours,
  * const_fallback_min_neighbour_fraction * target_neighbours */
 extern float magma2_fallback_min_neighbours;
+
+/*! Artificial conductivity alpha, from SPH:conductivity_alpha (diffusion_init)
+ */
+extern float magma2_conductivity_alpha;
 
 /* Viscosity */
 
@@ -261,7 +274,12 @@ static INLINE void viscosity_print_snapshot(
 static INLINE void diffusion_init(struct swift_params *params,
                                   const struct unit_system *us,
                                   const struct phys_const *phys_const,
-                                  struct diffusion_global_data *diffusion) {}
+                                  struct diffusion_global_data *diffusion) {
+  diffusion->alpha = parser_get_opt_param_float(
+      params, "SPH:conductivity_alpha", const_conductivity_alpha_default);
+  if (diffusion->alpha < 0.f) error("SPH:conductivity_alpha must be >= 0");
+  magma2_conductivity_alpha = diffusion->alpha;
+}
 
 /**
  * @brief Initialises a diffusion struct to sensible numbers for mocking
@@ -270,7 +288,10 @@ static INLINE void diffusion_init(struct swift_params *params,
  * @param diffusion: pointer to the diffusion_global_data struct to be filled.
  **/
 static INLINE void diffusion_init_no_hydro(
-    struct diffusion_global_data *diffusion) {}
+    struct diffusion_global_data *diffusion) {
+  diffusion->alpha = const_conductivity_alpha_default;
+  magma2_conductivity_alpha = diffusion->alpha;
+}
 
 /**
  * @brief Prints out the diffusion parameters at the start of a run.
@@ -280,8 +301,7 @@ static INLINE void diffusion_init_no_hydro(
  **/
 static INLINE void diffusion_print(
     const struct diffusion_global_data *diffusion) {
-  message("Artificial conductivity alpha set to %.3f",
-          const_conductivity_alpha);
+  message("Artificial conductivity alpha set to %.3f", diffusion->alpha);
 }
 
 #ifdef HAVE_HDF5
@@ -293,8 +313,7 @@ static INLINE void diffusion_print(
  **/
 static INLINE void diffusion_print_snapshot(
     hid_t h_grpsph, const struct diffusion_global_data *diffusion) {
-  io_write_attribute_f(h_grpsph, "Conductivity alpha",
-                       const_conductivity_alpha);
+  io_write_attribute_f(h_grpsph, "Conductivity alpha", diffusion->alpha);
 }
 #endif
 

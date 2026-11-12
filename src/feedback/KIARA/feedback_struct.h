@@ -51,7 +51,17 @@ struct feedback_part_data {
 /**
  * @brief Extra feedback fields carried by each hydro particles
  */
-struct feedback_xpart_data {};
+struct feedback_xpart_data {
+
+  /*! Comoving position where a BH last kicked this particle */
+  double bh_launch_pos[3];
+
+  /*! Cosmic time (internal units) of that BH kick */
+  float bh_launch_time;
+
+  /*! 0 = not in a BH-launched flight, 1 = jet, 2 = other BH wind */
+  int bh_launch_type;
+};
 
 /**
  * @brief Feedback fields carried by each star particles
