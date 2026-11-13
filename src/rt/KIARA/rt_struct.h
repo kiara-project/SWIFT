@@ -75,6 +75,15 @@ struct rt_part_data {
   /* Particle RT time step. */
   float flux_dt;
 
+  /*! Stellar emission received and not yet added to the radiation (total
+   * energy): stars spread their emission over their time step, see
+   * rt_inject_pending_emission() */
+  float emission_pending[RT_NGROUPS];
+
+  /*! Rate (energy per physical time) at which emission_pending is added to
+   * the radiation, the sum of the rates of the stars it came from */
+  float emission_rate[RT_NGROUPS];
+
   /*! Sum of the kernel weights of the neighbours eligible for transport,
    * for a particle that is not (decoupled or with its cooling shut off) and
    * gives its radiation to them (see rt_shed_collect()) */
@@ -197,6 +206,11 @@ struct rt_spart_data {
   /* Stellar energy emission that will be injected in to gas.
    * Total energy, not density, not rate! */
   float emission_this_step[RT_NGROUPS];
+
+  /*! Physical time over which emission_this_step is emitted (the star's
+   * time step): the gas neighbours add it to their radiation at the rate
+   * emission_this_step / emission_dt (0: at once) */
+  float emission_dt;
 
   /*! Neighbour weigths in each octant surrounding the star */
   float octant_weights[8];

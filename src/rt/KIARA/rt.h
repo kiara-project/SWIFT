@@ -123,6 +123,9 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
           rt_props->stellar_emission_model);
   }
 
+  /* The neighbours add it to their radiation over the star's time step */
+  sp->rt_data.emission_dt = dt;
+
   /* Add the emission not injected in earlier steps */
   for (int g = 0; g < RT_NGROUPS; g++) {
     sp->rt_data.emission_this_step[g] =
@@ -247,6 +250,10 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.area_sum = 0.f;
   p->rt_data.area_sum_last = 0.f;
   p->rt_data.c_scale = 1.f;
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    p->rt_data.emission_pending[g] = 0.f;
+    p->rt_data.emission_rate[g] = 0.f;
+  }
 }
 
 /**
@@ -399,6 +406,10 @@ __attribute__((always_inline)) INLINE static void rt_convert_part_to_spart(
       sp->rt_data.debug_dE[0] -= E;
 #endif
     }
+    /* Stellar emission not yet added to the radiation: not yet injected,
+     * so it goes to the new star's carry without a budget entry */
+    if (p->rt_data.emission_pending[g] > 0.f)
+      sp->rt_data.emission_carry[g] += p->rt_data.emission_pending[g];
   }
 }
 
@@ -669,6 +680,46 @@ __attribute__((always_inline)) INLINE static void rt_end_gradient(
 }
 
 /**
+ * @brief Add to the particle's radiation the stellar emission it received
+ * for this RT step.
+ *
+ * A star spreads the emission of its time step over that step: its gas
+ * neighbours receive their share as emission_pending, with the rate
+ * share / (star time step) (runner_iact_rt_inject()), and add rate * dt of
+ * it to their radiation each RT step until it is used up. Injecting it all
+ * at once instead, at the start of a step of up to Myr, leaves the dense gas
+ * around the stars without radiation most of the time, as the radiation
+ * leaves it within ~kyr. The energy added is exactly what the stars gave.
+ *
+ * @param p The particle.
+ * @param dt The particle's RT time step (physical).
+ */
+__attribute__((always_inline)) INLINE static void rt_inject_pending_emission(
+    struct part *restrict p, const double dt) {
+
+  struct rt_part_data *restrict rtd = &p->rt_data;
+  const float Vinv = 1.f / p->geometry.volume;
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    if (rtd->emission_pending[g] <= 0.f) {
+      rtd->emission_pending[g] = 0.f;
+      rtd->emission_rate[g] = 0.f;
+      continue;
+    }
+    float dE = rtd->emission_rate[g] * dt;
+    if (!(dE < rtd->emission_pending[g])) {
+      /* Used up (or no rate: at once) */
+      dE = rtd->emission_pending[g];
+      rtd->emission_rate[g] = 0.f;
+    }
+    rtd->emission_pending[g] -= dE;
+    rtd->radiation[g].energy_density += dE * Vinv;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    rtd->debug_dE[0] += dE;
+#endif
+  }
+}
+
+/**
  * @brief finishes up the transport step
  *
  * @param p particle to work on
@@ -697,6 +748,9 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
    * with the scale factor of each exchange in runner_iact_rt_flux_common()
    * (with dU/dt + (1/a) div(F) = 0 the transport is slowed by 1/a) */
   const float Vinv = 1.f / p->geometry.volume;
+
+  /* Stellar emission received from the neighbouring stars this RT step */
+  rt_inject_pending_emission(p, dt);
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
   const float redshift_factor =

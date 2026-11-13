@@ -341,6 +341,8 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
       "reduction of the speed of light: %s",
       rtp->transport_length_floor_softening ? "yes" : "no",
       rtp->local_cfl_reduced_c ? "yes" : "no");
+  message("RT transport interface areas capped at %.3g x V / R (sphere: 3)",
+          rt_params.area_ratio_max);
 
   if (rtp->stellar_emission_model == rt_stellar_emission_model_const) {
     strcpy(messagestring, "Using constant stellar emission rates: [ ");

@@ -180,14 +180,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
   const float Vinv = 1.f / pj->geometry.volume;
 
   /* Nurse, the patient is ready now */
+  const float emission_dt = si->rt_data.emission_dt;
   for (int g = 0; g < RT_NGROUPS; g++) {
-    /* Inject energy. */
+    /* Hand over the energy, which the particle adds to its radiation over
+     * the star's time step (rt_inject_pending_emission()) */
     const float injected_energy_density =
         si->rt_data.emission_this_step[g] * weight * Vinv;
-    pj->rt_data.radiation[g].energy_density += injected_energy_density;
-#ifdef SWIFT_KIARA_RT_DEBUG
-    pj->rt_data.debug_dE[0] += injected_energy_density * pj->geometry.volume;
-#endif
+    const float E_share = injected_energy_density * pj->geometry.volume;
+    pj->rt_data.emission_pending[g] += E_share;
+    /* No time step (e.g. the first one): add it all in the next RT step */
+    pj->rt_data.emission_rate[g] +=
+        (emission_dt > 0.f) ? E_share / emission_dt : FLT_MAX;
     if (g == 0 &&
         injected_energy_density * pj->geometry.volume * 1.98841e+53 > 1.e57)
       message(

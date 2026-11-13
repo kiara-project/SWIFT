@@ -166,6 +166,15 @@ INLINE static void rt_convert_area_ratio(const struct engine *engine,
  * @brief DEBUG: photon energy received through transport and not yet applied
  * (all groups), as rt_finalise_transport() will apply it.
  */
+INLINE static void rt_convert_emission_pending(const struct engine *engine,
+                                               const struct part *part,
+                                               const struct xpart *xpart,
+                                               float *ret) {
+  float E = 0.f;
+  for (int g = 0; g < RT_NGROUPS; g++) E += part->rt_data.emission_pending[g];
+  ret[0] = E;
+}
+
 INLINE static void rt_convert_pending_transport(const struct engine *engine,
                                                 const struct part *part,
                                                 const struct xpart *xpart,
@@ -266,6 +275,13 @@ INLINE static int rt_write_particles(const struct part *parts,
       /*xparts=*/NULL, rt_convert_area_ratio,
       "Sum of interface areas times volume radius over volume (3 for a "
       "sphere)");
+  num_elements++;
+  list[num_elements] = io_make_output_field_convert_part(
+      "RTDebugEmissionPending", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      /*xparts=*/NULL, rt_convert_emission_pending,
+      "Stellar emission (all groups) received from the stars and not yet "
+      "added to the radiation, which is not yet in the injected column of "
+      "the budget");
   num_elements++;
   list[num_elements] = io_make_output_field_convert_part(
       "RTDebugPendingTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
