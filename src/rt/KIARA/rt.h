@@ -31,7 +31,6 @@
 
 /*! Maximal interface-area ratio sum|A_ij| R / V used in the RT time-step
  * (3 for a sphere) */
-#define rt_area_ratio_max 10.f
 /*! Smallest factor applied to the speed of light by the local Courant
  * reduction (keeps c > 0 in degenerate particles) */
 #define rt_c_scale_min 1.e-3f
@@ -515,13 +514,14 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
   float length, length_courant;
   if (p->rt_data.area_sum_last > 0.f) {
     /* Particles in very dense gas at the smoothing-length floor have many
-     * more neighbours than usual, and so interface areas up to ~100x those
-     * of a sphere (sum|A| R / V = 3): cap the area at
-     * rt_area_ratio_max V / R. */
+     * more neighbours than usual, and so interface areas up to ~1000x those
+     * of a sphere (sum|A| R / V = 3). The transport only uses them up to
+     * rt_params.area_ratio_max V / R (see rt_part_get_area_scale()), so the
+     * time step and c_scale do too. */
     const float area = fminf(p->rt_data.area_sum_last,
-                             rt_area_ratio_max * p->geometry.volume / R);
+                             rt_params.area_ratio_max * p->geometry.volume / R);
     length = p->geometry.volume / area;
-    length_courant = p->geometry.volume / p->rt_data.area_sum_last;
+    length_courant = length;
   } else {
     length = 0.1f * R;
     length_courant = length;

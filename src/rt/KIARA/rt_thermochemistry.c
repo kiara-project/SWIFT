@@ -206,7 +206,7 @@ static double rt_tchem_fuv_dust_optical_depth(
 
   const double rho_dust = p->cooling_data.dust_mass / mass *
                           hydro_get_physical_density(p, cosmo);
-  const double L = rt_part_get_reduced_speed_of_light(p) * dt;
+  const double L = rt_part_get_effective_speed_of_light(p) * dt;
   return rt_props->dust_opacity_FUV * fmax(f_warm, 0.) * rho_dust * L;
 }
 
@@ -262,7 +262,7 @@ static double rt_tchem_fuv_ism_absorbed_fraction(
     const double tau_cl = rt_props->dust_opacity_FUV * f_c * rho_dust / phi *
                           (4. / 3.) * R_cl;
     const double N_x =
-        rt_part_get_reduced_speed_of_light(p) * dt / ((4. / 3.) * R_p);
+        rt_part_get_effective_speed_of_light(p) * dt / ((4. / 3.) * R_p);
     /* log of the transmission per chord, log(1 - C (1 - e^-tau_cl)) */
     log_T += N_x * log1p(-C * (-expm1(-tau_cl)));
   }
@@ -275,7 +275,10 @@ static double rt_tchem_fuv_ism_absorbed_fraction(
  * With a reduced speed of light c_red, the photon energy density is c /
  * c_red times too large for the (correct) photon flux, as the radiation is
  * emitted at the true rate but moves at c_red. G0 is a physical energy
- * density, so G0 = E_FUV (c_red / c) / u_Habing. Below the density
+ * density, so G0 = E_FUV (c_eff / c) / u_Habing, with c_eff the speed at
+ * which the radiation leaves the particle
+ * (rt_part_get_effective_speed_of_light(); c_red except in dense gas whose
+ * interface areas exceed those of a sphere). Below the density
  * threshold (the IGM) G0 = 0.
  *
  * @param p The #part.
@@ -299,7 +302,7 @@ static void rt_tchem_set_G0(struct part *restrict p,
     return;
   }
   const double c_ratio =
-      rt_part_get_reduced_speed_of_light(p) / phys_const->const_speed_light_c;
+      rt_part_get_effective_speed_of_light(p) / phys_const->const_speed_light_c;
   p->rt_data.G0 = fmax(E[rt_props->fuv_group], 0.f) * c_ratio /
                   rt_props->habing_energy_density;
 }
@@ -504,7 +507,7 @@ INLINE void rt_do_thermochemistry(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_zero,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* solve chemistry; species_new gets the HI, HII, HeI, HeII, HeIII and e-
    * densities after the step */
@@ -569,12 +572,12 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(absorption_rates_new, species_new,
                           rt_props->average_photon_energy,
-                          rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+                          rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* Absorption of the FUV light by the dust */
   const double tau_dust =
@@ -640,7 +643,7 @@ float rt_tchem_get_tchem_time(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_zero,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* Compute 'cooling' time (mode 1 leaves the particle unchanged) */
   gr_float species[6];
@@ -726,7 +729,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   // printf("=== RT computed interaction rates ===\n");
   // printf("RT RT_heating_rate         = %e\n", iact_rates[0]);
@@ -865,7 +868,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     const double C =
         fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
     const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
-    const double L = rt_part_get_reduced_speed_of_light(p) * dt;
+    const double L = rt_part_get_effective_speed_of_light(p) * dt;
 
     double f = 0.;
     if (C > 0. && R_p > 0.)
@@ -933,7 +936,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, rt_species, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* Set up absorption rate calculation at end of step */
   gr_float rt_species_new[6];
@@ -952,7 +955,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates_new, rt_species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* Absorption of the FUV light by all of the dust */
   const double tau_dust =

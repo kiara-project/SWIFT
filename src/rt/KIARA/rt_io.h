@@ -186,6 +186,16 @@ INLINE static void rt_convert_reduced_speed_of_light(
 }
 
 /**
+ * @brief Extract the speed at which the radiation leaves a particle, used to
+ * convert its radiation energy density to a physical flux.
+ */
+INLINE static void rt_convert_effective_speed_of_light(
+    const struct engine *engine, const struct part *part,
+    const struct xpart *xpart, float *ret) {
+  ret[0] = rt_part_get_effective_speed_of_light(part);
+}
+
+/**
  * @brief Creates additional output fields for the radiative
  * transfer data of hydro particles.
  *
@@ -222,7 +232,17 @@ INLINE static int rt_write_particles(const struct part *parts,
       /*xparts=*/NULL, /*convertible to comoving=*/0,
       rt_convert_reduced_speed_of_light,
       "Reduced speed of light used for the particle's radiation transport "
-      "and photon interaction rates (physical)");
+      "(physical)");
+  num_elements++;
+
+  list[num_elements] = io_make_physical_output_field_convert_part(
+      "RTEffectiveLightspeed", FLOAT, 1, UNIT_CONV_VELOCITY, 0.f, parts,
+      /*xparts=*/NULL, /*convertible to comoving=*/0,
+      rt_convert_effective_speed_of_light,
+      "Speed at which the radiation leaves the particle, used to convert its "
+      "radiation energy density to G0, absorption and photoionization rates "
+      "(physical): the reduced speed of light times the ratio of its "
+      "interface areas to those of a sphere, if larger than 1");
   num_elements++;
 
 #ifdef SWIFT_KIARA_RT_DEBUG

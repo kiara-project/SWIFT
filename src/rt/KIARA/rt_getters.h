@@ -108,15 +108,66 @@ rt_part_get_base_reduced_speed_of_light(const struct part *restrict p) {
  * particle's c_scale, which is < 1 where the RT time step is floored above
  * the Courant limit and KIARART:local_cfl_reduced_c is set: there the
  * radiation is transported more slowly instead of with an unstable step.
- * Everything that converts between the radiation energy density and a
- * physical flux (G0, absorption over a step) uses this value, so the
- * steady-state physical radiation field is unchanged.
+ * The transport uses this value; the conversions between the radiation
+ * energy density and a physical flux use rt_part_get_effective_speed_of_light().
  *
  * @param p Particle.
  */
 __attribute__((always_inline)) INLINE static float
 rt_part_get_reduced_speed_of_light(const struct part *restrict p) {
   return rt_part_get_base_reduced_speed_of_light(p) * p->rt_data.c_scale;
+}
+
+/**
+ * @brief Get the speed at which the radiation leaves the particle (internal
+ * units), for everything that converts between its radiation energy density
+ * and a physical flux: G0, the absorption over a step, the photoionization
+ * and heating rates.
+ *
+ * The transport exports about c_red E sum|A| / 2 per unit time, so the
+ * radiation leaves the particle at c_red sum|A| R / (3 V), with R the radius
+ * of its volume and the areas capped at rt_params.area_ratio_max V / R (see
+ * rt_part_get_area_scale()): c_red for a sphere (sum|A| R / V = 3), up to
+ * area_ratio_max / 3 times c_red in dense gas at the smoothing-length floor,
+ * which has many more neighbours than usual. There the radiation leaves faster
+ * than c_red (it does not bog down in the ISM) and the energy density the
+ * particle holds is correspondingly lower, so converting it with c_red would
+ * underestimate the physical field. Not less than c_red, and c_red before the
+ * first transport step.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static float
+rt_part_get_effective_speed_of_light(const struct part *restrict p) {
+  const float c = rt_part_get_reduced_speed_of_light(p);
+  const float V = p->geometry.volume;
+  const float A = p->rt_data.area_sum_last;
+  if (V <= 0.f || A <= 0.f) return c;
+  const float R = cbrtf(3.f * V / (4.f * M_PI));
+  const float ratio = fminf(A * R / V, rt_params.area_ratio_max);
+  return c * fmaxf(1.f, ratio / 3.f);
+}
+
+/**
+ * @brief Factor by which the transport scales the particle's interface areas,
+ * so that their sum is at most rt_params.area_ratio_max V / R.
+ *
+ * In dense gas at the smoothing-length floor a particle has many more
+ * neighbours than usual and interface areas up to ~1000 times those of a
+ * sphere: radiation would then leave it ~1000 times faster than c_red, faster
+ * than any time step that c_scale (clamped at rt_c_scale_min) can make
+ * stable, and its energy density would no longer represent the radiation
+ * field. 1 before the first transport step.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static float rt_part_get_area_scale(
+    const struct part *restrict p) {
+  const float V = p->geometry.volume;
+  const float A = p->rt_data.area_sum_last;
+  if (V <= 0.f || A <= 0.f) return 1.f;
+  const float R = cbrtf(3.f * V / (4.f * M_PI));
+  return fminf(1.f, rt_params.area_ratio_max * V / (R * A));
 }
 
 /**

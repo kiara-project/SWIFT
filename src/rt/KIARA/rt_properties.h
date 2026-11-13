@@ -533,6 +533,12 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   if (rt_params.varc_alpha <= 0.f)
     error("Invalid KIARART:varc_alpha: %.3e <= 0.", rt_params.varc_alpha);
 
+  rt_params.area_ratio_max = parser_get_opt_param_float(
+      params, "KIARART:transport_area_ratio_max", 10.f);
+  if (rt_params.area_ratio_max < 3.f)
+    error("Invalid KIARART:transport_area_ratio_max: %.3e < 3 (a sphere).",
+          rt_params.area_ratio_max);
+
   /* get CFL condition */
   /* ----------------- */
   const float CFL = parser_get_param_float(params, "KIARART:CFL_condition");

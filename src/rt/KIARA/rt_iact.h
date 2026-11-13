@@ -373,6 +373,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     if (mode == 1 && rtj->flux_dt > 0.f) rtj->area_sum += Anorm;
   }
 
+  /* The interface area used for the exchange, scaled so that neither
+   * particle's areas sum to more than rt_params.area_ratio_max times its
+   * V / R (the same factor on both sides keeps the exchange conservative) */
+  const float Anorm_flux =
+      Anorm * fminf(rt_part_get_area_scale(pi), rt_part_get_area_scale(pj));
+
   /* The Riemann solver returns the F-equation flux divided by c (see
    * rt_part_get_transport_state_vector): each particle applies its own c. */
   const float ci = rt_part_get_reduced_speed_of_light(pi);
@@ -394,7 +400,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
 
     float totflux[4];
 
-    rt_compute_flux(Ui, Uj, n_unit, Anorm, totflux);
+    rt_compute_flux(Ui, Uj, n_unit, Anorm_flux, totflux);
 
     /* When solving the Riemann problem, we assume pi is left state, and
      * pj is right state. The sign convention is that a positive total
