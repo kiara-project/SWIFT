@@ -89,6 +89,19 @@ struct rt_part_data {
    * gives its radiation to them (see rt_shed_collect()) */
   float shed_wsum;
 
+  /*! Fraction of its radiation a particle ineligible for transport has handed
+   * over in its current RT step (rt_shed_radiation_exchange()), at most 1 */
+  float shed_frac_used;
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /*! DEBUG: fraction of its radiation the shedding particle would have handed
+   * over in this RT step without the limit at 1, and the numbers of receivers
+   * counted in the gradient loop and given radiation in the transport */
+  float shed_frac_req;
+  int shed_n_collect;
+  int shed_n_exchange;
+#endif
+
   /*! Factor (<= 1) applied to the particle's reduced speed of light so that
    * its RT time step satisfies the Courant condition (1 unless
    * KIARART:local_cfl_reduced_c is set and the time step was floored) */

@@ -256,7 +256,22 @@ __attribute__((always_inline)) INLINE static void rt_shed_radiation_exchange(
 
   float w;
   kernel_eval(sqrtf(r2) / h_exp, &w);
-  const float frac = w / p_exp->rt_data.shed_wsum;
+  const float frac_req = w / p_exp->rt_data.shed_wsum;
+
+  /* The fractions handed over in this RT step add up to 1 if the transport
+   * loop finds the receivers the gradient loop counted. Never hand over more
+   * than the particle holds: anything above that would be created, as the
+   * negative energy the shedding particle is left with is clamped to 0. */
+  const float frac =
+      fminf(frac_req, fmaxf(1.f - p_exp->rt_data.shed_frac_used, 0.f));
+  if (update_exp) {
+    p_exp->rt_data.shed_frac_used += frac;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    p_exp->rt_data.shed_frac_req += frac_req;
+    p_exp->rt_data.shed_n_exchange += 1;
+#endif
+  }
+  if (frac <= 0.f) return;
 
   for (int g = 0; g < RT_NGROUPS; g++) {
     /* The accumulators hold energy (rt_finalise_transport adds

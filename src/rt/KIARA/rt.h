@@ -19,6 +19,7 @@
 #ifndef SWIFT_RT_KIARA_H
 #define SWIFT_RT_KIARA_H
 
+#include "atomic.h"
 #include "rt_debugging.h"
 #include "rt_flux.h"
 #include "rt_gradients.h"
@@ -808,6 +809,22 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
         (rtd->radiation[g].energy_density - e_before_check) * p->geometry.volume;
 #endif
   }
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  if (rtd->shed_frac_req > 1.001f) {
+    /* The first 1000 events, then every 10^5th (per rank) */
+    static int n_shed_over_export = 0;
+    const int n = atomic_inc(&n_shed_over_export);
+    if (n < 1000 || n % 100000 == 0)
+      message(
+          "RT shed over-export #%d: id=%lld wanted %.4g of its radiation "
+          "(handed over %.4g), receivers counted %d, exchanged %d, wsum=%.4g, "
+          "h=%.4g, decoupled=%d, flux_dt=%.4g",
+          n + 1, p->id, rtd->shed_frac_req, rtd->shed_frac_used,
+          rtd->shed_n_collect, rtd->shed_n_exchange, rtd->shed_wsum, p->h,
+          p->decoupled, dt);
+  }
+#endif
 
   /* Reset the fluxes now that they have been applied. */
   rt_part_reset_fluxes(p);

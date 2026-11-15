@@ -53,6 +53,12 @@ __attribute__((always_inline)) INLINE static void rt_gradients_init(
 
   rtd->area_sum_grad = 0.f;
   rtd->shed_wsum = 0.f;
+  rtd->shed_frac_used = 0.f;
+#ifdef SWIFT_KIARA_RT_DEBUG
+  rtd->shed_frac_req = 0.f;
+  rtd->shed_n_collect = 0;
+  rtd->shed_n_exchange = 0;
+#endif
 }
 
 /**
@@ -125,6 +131,9 @@ __attribute__((always_inline)) INLINE static void rt_shed_collect(
   float w;
   kernel_eval(sqrtf(r2) / h_exp, &w);
   p_exp->rt_data.shed_wsum += w;
+#ifdef SWIFT_KIARA_RT_DEBUG
+  p_exp->rt_data.shed_n_collect += 1;
+#endif
 }
 
 /**
