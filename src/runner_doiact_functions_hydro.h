@@ -1287,8 +1287,8 @@ void DOPAIR1(struct runner *r, const struct cell *restrict ci,
 
   /* Get some other useful values. */
   const double hi_max =
-      min(h_max, ci->hydro.h_max_active) * kernel_gamma - rshift;
-  const double hj_max = min(h_max, cj->hydro.h_max_active) * kernel_gamma;
+      min(h_max, CELL_H_MAX_ACTIVE(ci)) * kernel_gamma - rshift;
+  const double hj_max = min(h_max, CELL_H_MAX_ACTIVE(cj)) * kernel_gamma;
   const int count_i = ci->hydro.count;
   const int count_j = cj->hydro.count;
   struct part *restrict parts_i = ci->hydro.parts;
@@ -1318,7 +1318,7 @@ void DOPAIR1(struct runner *r, const struct cell *restrict ci,
       if (!PART_IS_ACTIVE(pi, e)) continue;
 
 #ifdef SWIFT_DEBUG_CHECKS
-      if (hi > ci->hydro.h_max_active)
+      if (hi > CELL_H_MAX_ACTIVE(ci))
         error("Particle has h larger than h_max_active");
 #endif
 
@@ -1437,7 +1437,7 @@ void DOPAIR1(struct runner *r, const struct cell *restrict ci,
       if (!PART_IS_ACTIVE(pj, e)) continue;
 
 #ifdef SWIFT_DEBUG_CHECKS
-      if (hj > cj->hydro.h_max_active)
+      if (hj > CELL_H_MAX_ACTIVE(cj))
         error("Particle has h larger than h_max_active");
 #endif
 
@@ -2991,8 +2991,13 @@ void DOSUB_PAIR1(struct runner *r, struct cell *ci, struct cell *cj,
 
     /* Should we change the recursion regime because we encountered a large
        particle? */
-    if (!recurse_below_h_max && (!cell_can_recurse_in_subpair_hydro_task(ci) ||
-                                 !cell_can_recurse_in_subpair_hydro_task(cj))) {
+    /* (cell_can_recurse_in_subpair_hydro_task(), with the h_max of the
+     * particles active in this loop) */
+    if (!recurse_below_h_max &&
+        (!(kernel_gamma * CELL_H_MAX_ACTIVE(ci) + ci->hydro.dx_max_part_old <
+           0.5f * ci->dmin) ||
+         !(kernel_gamma * CELL_H_MAX_ACTIVE(cj) + cj->hydro.dx_max_part_old <
+           0.5f * cj->dmin))) {
       recurse_below_h_max = 1;
     }
 
@@ -3064,7 +3069,10 @@ void DOSUB_SELF1(struct runner *r, struct cell *c, int recurse_below_h_max,
 
     /* Should we change the recursion regime because we encountered a large
        particle at this level? */
-    if (!recurse_below_h_max && !cell_can_recurse_in_subself_hydro_task(c)) {
+    /* (cell_can_recurse_in_subself_hydro_task(), with the h_max of the
+     * particles active in this loop) */
+    if (!recurse_below_h_max &&
+        !(kernel_gamma * CELL_H_MAX_ACTIVE(c) < 0.5f * c->dmin)) {
       recurse_below_h_max = 1;
     }
 
