@@ -30,6 +30,10 @@
 #include "../../cooling/KIARA/crackle/grackle.h"
 extern chemistry_data *grackle_data;
 
+/*! Case B hydrogen recombination coefficient at 10^4 K [cm^3 s^-1], for the
+ * recombination limit of the ionizing absorption by the subgrid ISM clouds */
+#define rt_ism_cloud_alpha_B 2.59e-13
+
 /**
  * @file src/rt/KIARA/rt_thermochemistry.c
  * @brief Main header file for the KIARA M1 closure radiative transfer scheme
@@ -173,6 +177,137 @@ static gr_float rt_tchem_crackle_direct(
 }
 
 /**
+ * @brief Dust optical depth of the FUV photon group over the path the
+ * radiation travels in a step, L = c_red dt.
+ *
+ * In the subgrid ISM this is the warm-phase part; the cloud dust is added
+ * in rt_tchem_fuv_ism_absorbed_fraction(). The dust is split between the
+ * phases like the gas mass, so the warm phase holds a fraction
+ * f_warm = 1 - f_cold of it. With phi the cold volume filling fraction, the
+ * warm dust density (1 - f_cold) rho_d / (1 - phi) times the path through
+ * the warm phase (1 - phi) L gives tau = kappa (1 - f_cold) rho_d L.
+ *
+ * @param p The #part.
+ * @param rt_props The #rt_props.
+ * @param cosmo The #cosmology.
+ * @param f_warm Fraction of the dust that absorbs (1 - f_cold in the subgrid
+ * ISM, 1 outside it).
+ * @param dt The (physical) time step.
+ * @return the optical depth (0 if there is no FUV group).
+ */
+static double rt_tchem_fuv_dust_optical_depth(
+    const struct part *restrict p, const struct rt_props *rt_props,
+    const struct cosmology *restrict cosmo, const double f_warm,
+    const double dt) {
+
+  if (rt_props->fuv_group < 0 || rt_props->dust_opacity_FUV <= 0.) return 0.;
+  const float mass = hydro_get_mass(p);
+  if (mass <= 0.f || p->cooling_data.dust_mass <= 0.f) return 0.;
+
+  const double rho_dust = p->cooling_data.dust_mass / mass *
+                          hydro_get_physical_density(p, cosmo);
+  const double L = rt_part_get_effective_speed_of_light(p) * dt;
+  return rt_props->dust_opacity_FUV * fmax(f_warm, 0.) * rho_dust * L;
+}
+
+/**
+ * @brief Fraction of the FUV group absorbed this step in the subgrid ISM.
+ *
+ * Below the Lyman limit the gas absorbs only in resonance lines, most of
+ * which is re-emitted, so only dust absorbs, in both phases, at any subgrid
+ * temperature. The dust is split like the gas mass: f_c of it is in the
+ * clouds, at density f_c rho_d / phi, and the rest in the warm phase.
+ *
+ * Warm phase: tau_w = kappa (1 - f_c) rho_d L (see
+ * rt_tchem_fuv_dust_optical_depth()).
+ *
+ * Clouds: the light crosses N_x = L / (4 R_p / 3) particle chords this
+ * step (4 R / 3 is the mean chord of a sphere) and passes through a cloud
+ * on a fraction C of them. A cloud of radius R_cl = R_p (phi / N)^(1/3) has
+ * dust optical depth tau_cl = kappa (f_c rho_d / phi) (4 R_cl / 3) along a
+ * mean chord, so the transmission through the clouds is
+ * [1 - C (1 - exp(-tau_cl))]^N_x.
+ *
+ * In the optically thin limit C tau_cl N_x = kappa f_c rho_d L, so the
+ * total is kappa rho_d L whatever the phase split, as for a uniform medium;
+ * thick clouds absorb only through their covering fraction.
+ *
+ * @param p The #part.
+ * @param rt_props The #rt_props.
+ * @param cosmo The #cosmology.
+ * @param phi Volume filling fraction of the cold clouds.
+ * @param C Covering fraction of the cold clouds.
+ * @param R_p Physical particle radius.
+ * @param dt The (physical) time step.
+ * @return the absorbed fraction of the FUV energy (0 if no FUV group).
+ */
+static double rt_tchem_fuv_ism_absorbed_fraction(
+    const struct part *restrict p, const struct rt_props *rt_props,
+    const struct cosmology *restrict cosmo, const double phi, const double C,
+    const double R_p, const double dt) {
+
+  if (rt_props->fuv_group < 0 || rt_props->dust_opacity_FUV <= 0.) return 0.;
+  const float mass = hydro_get_mass(p);
+  if (mass <= 0.f || p->cooling_data.dust_mass <= 0.f) return 0.;
+
+  const double f_c = fmin(fmax(p->cooling_data.subgrid_fcold, 0.), 1.);
+  const double tau_w =
+      rt_tchem_fuv_dust_optical_depth(p, rt_props, cosmo, 1. - f_c, dt);
+  double log_T = -tau_w;
+
+  if (phi > 0. && C > 0. && R_p > 0.) {
+    const double rho_dust = p->cooling_data.dust_mass / mass *
+                            hydro_get_physical_density(p, cosmo);
+    const double R_cl = R_p * cbrt(phi / rt_props->ism_clouds_per_particle);
+    const double tau_cl = rt_props->dust_opacity_FUV * f_c * rho_dust / phi *
+                          (4. / 3.) * R_cl;
+    const double N_x =
+        rt_part_get_effective_speed_of_light(p) * dt / ((4. / 3.) * R_p);
+    /* log of the transmission per chord, log(1 - C (1 - e^-tau_cl)) */
+    log_T += N_x * log1p(-C * (-expm1(-tau_cl)));
+  }
+  return -expm1(log_T);
+}
+
+/**
+ * @brief Set the particle's G0 (Habing units) from the FUV photon group.
+ *
+ * With a reduced speed of light c_red, the photon energy density is c /
+ * c_red times too large for the (correct) photon flux, as the radiation is
+ * emitted at the true rate but moves at c_red. G0 is a physical energy
+ * density, so G0 = E_FUV (c_eff / c) / u_Habing, with c_eff the speed at
+ * which the radiation leaves the particle
+ * (rt_part_get_effective_speed_of_light(); c_red except in dense gas whose
+ * interface areas exceed those of a sphere). Below the density
+ * threshold (the IGM) G0 = 0.
+ *
+ * @param p The #part.
+ * @param E Physical radiation energy densities of the groups.
+ * @param rt_props The #rt_props.
+ * @param phys_const The physical constants.
+ * @param cosmo The #cosmology.
+ */
+static void rt_tchem_set_G0(struct part *restrict p,
+                            const float E[RT_NGROUPS],
+                            const struct rt_props *rt_props,
+                            const struct phys_const *restrict phys_const,
+                            const struct cosmology *restrict cosmo) {
+
+  if (rt_props->fuv_group < 0) {
+    p->rt_data.G0 = -1.f;
+    return;
+  }
+  if (hydro_get_physical_density(p, cosmo) < rt_props->G0_min_density) {
+    p->rt_data.G0 = 0.f;
+    return;
+  }
+  const double c_ratio =
+      rt_part_get_effective_speed_of_light(p) / phys_const->const_speed_light_c;
+  p->rt_data.G0 = fmax(E[rt_props->fuv_group], 0.f) * c_ratio /
+                  rt_props->habing_energy_density;
+}
+
+/**
  * @brief Run the RT chemistry instance of crackle on a particle.
  *
  * Directly on the particle, except with CRACKLE_VALIDATE (comparison with
@@ -255,6 +390,9 @@ void rt_tchem_first_init_part(struct part *restrict p,
                               const struct unit_system *restrict us,
                               const struct cooling_function_data *cooling,
                               const struct cosmology *restrict cosmo) {
+
+  /* No radiation yet */
+  p->rt_data.G0 = (rt_props->fuv_group >= 0) ? 0.f : -1.f;
 
   if (rt_props->set_equilibrium_initial_ionization_mass_fractions) {
     float XHI, XHII, XHeI, XHeII, XHeIII;
@@ -362,11 +500,14 @@ INLINE void rt_do_thermochemistry(
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
 
+  /* G0 for the cooling (G0_computation_method 8) */
+  rt_tchem_set_G0(p, radiation_energy_density, rt_props, phys_const, cosmo);
+
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_zero,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* solve chemistry; species_new gets the HI, HII, HeI, HeII, HeIII and e-
    * densities after the step */
@@ -431,12 +572,16 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(absorption_rates_new, species_new,
                           rt_props->average_photon_energy,
-                          rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+                          rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
+
+  /* Absorption of the FUV light by the dust */
+  const double tau_dust =
+      rt_tchem_fuv_dust_optical_depth(p, rt_props, cosmo, /*f_warm=*/1., dt);
 
   /* Now remove absorbed radiation */
   for (int g = 0; g < RT_NGROUPS; g++) {
@@ -444,6 +589,7 @@ INLINE void rt_do_thermochemistry(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+    if (g == rt_props->fuv_group) f = 1. - (1. - f) * exp(-tau_dust);
 #ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
@@ -497,7 +643,7 @@ float rt_tchem_get_tchem_time(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, species_zero,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* Compute 'cooling' time (mode 1 leaves the particle unchanged) */
   gr_float species[6];
@@ -560,6 +706,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
                                                 cosmo);
 
+  /* G0 for the cooling (G0_computation_method 8) */
+  rt_tchem_set_G0(p, radiation_energy_density, rt_props, phys_const, cosmo);
+
   /* Compute the iact_rates for the cooling grackle data. */
   gr_float *iact_rates = (gr_float *)malloc(5 * sizeof(gr_float));
   if (iact_rates == NULL) {
@@ -580,7 +729,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   rt_get_interaction_rates_for_grackle(
       iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   // printf("=== RT computed interaction rates ===\n");
   // printf("RT RT_heating_rate         = %e\n", iact_rates[0]);
@@ -689,40 +838,88 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
   /* Update radiation fields */
 
-  /* In the subgrid ISM, only the cold clouds absorb, and they absorb all
-   * the radiation they cover; the warm medium between them is taken to be
-   * transparent. The clouds (cold mass fraction f_c at density rho_c) fill
-   * a fraction phi = f_c rho / rho_c of the particle volume. N clouds of
-   * equal size cover a fraction C = N^(1/3) phi^(2/3) of the particle cross
-   * section, so over the path L = c dt travelled this step the absorbed
-   * fraction is 1 - (1 - C)^(L / 2 R_p), with R_p the particle radius. */
+  /* In the subgrid ISM, the cold clouds (cold mass fraction f_c at density
+   * rho_c) fill a fraction phi = f_c rho / rho_c of the particle volume. N
+   * clouds of equal size cover a fraction C = N^(1/3) phi^(2/3) of the
+   * particle cross section.
+   * Ionizing groups: the warm medium between the clouds is transparent and
+   * the clouds absorb all the ionizing radiation they cover, at any subgrid
+   * temperature (a neutral cloud is very optically thick above the Lyman
+   * limit). Over the path L = c dt travelled this step the light crosses
+   * L / (4 R_p / 3) mean particle chords, so the absorbed fraction is
+   * 1 - (1 - C)^(3 L / 4 R_p), with R_p the particle radius. The clouds
+   * can however only absorb as many photons as they recombine: if the
+   * radiation would ionize them faster, the excess passes through (the
+   * clouds are ionized, as in a Stroemgren sphere). The number of ionizing
+   * photons absorbed this step is therefore capped at
+   * alpha_B n_H,cl^2 phi V dt, with n_H,cl the hydrogen density of the
+   * clouds and alpha_B the case B recombination coefficient at 10^4 K.
+   * FUV group: only dust absorbs, in both phases; see
+   * rt_tchem_fuv_ism_absorbed_fraction(). */
   if (p->cooling_data.subgrid_temp > 0. &&
       p->cooling_data.subgrid_fcold > 1.e-6) {
 
+    const double rho_phys = hydro_get_physical_density(p, cosmo);
+    const double rho_cold = cooling_get_subgrid_density(p, xp);
+    const double phi =
+        (rho_cold > 0.)
+            ? fmin(p->cooling_data.subgrid_fcold * rho_phys / rho_cold, 1.)
+            : 0.;
+    const double C =
+        fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
+    const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
+    const double L = rt_part_get_effective_speed_of_light(p) * dt;
+
     double f = 0.;
-    if (p->cooling_data.subgrid_temp < rt_props->ism_cold_cloud_temperature) {
-      const double rho_phys = hydro_get_physical_density(p, cosmo);
-      const double rho_cold = cooling_get_subgrid_density(p, xp);
-      const double phi =
-          (rho_cold > 0.)
-              ? fmin(p->cooling_data.subgrid_fcold * rho_phys / rho_cold, 1.)
-              : 0.;
-      const double C =
-          fmin(cbrt(rt_props->ism_clouds_per_particle) * pow(phi, 2. / 3.), 1.);
-      const double R_p = cosmo->a * cbrt(3. * p->geometry.volume / (4. * M_PI));
-      const double L = rt_part_get_reduced_speed_of_light(p) * dt;
-      f = (C < 1.) ? 1. - pow(1. - C, L / (2. * R_p)) : 1.;
+    if (C > 0. && R_p > 0.)
+      f = (C < 1.) ? -expm1(L / ((4. / 3.) * R_p) * log1p(-C)) : 1.;
+
+    /* Recombination limit of the clouds */
+    if (f > 0. && rho_cold > 0.) {
+      const double X_H_in =
+          p->chemistry_data.metal_mass_fraction[chemistry_element_H];
+      const double X_H = (X_H_in > 0.) ? X_H_in : 0.76;
+      const double n_H_cl =
+          X_H * rho_cold *
+          units_cgs_conversion_factor(us, UNIT_CONV_DENSITY) /
+          (phys_const->const_proton_mass *
+           units_cgs_conversion_factor(us, UNIT_CONV_MASS));
+      const double length_cgs =
+          units_cgs_conversion_factor(us, UNIT_CONV_LENGTH);
+      const double V_phys_cgs = p->geometry.volume * cosmo->a * cosmo->a *
+                                cosmo->a * length_cgs * length_cgs *
+                                length_cgs;
+      const double dt_cgs =
+          dt * units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+      const double N_rec = rt_ism_cloud_alpha_B * n_H_cl * n_H_cl * phi *
+                           V_phys_cgs * dt_cgs;
+
+      /* Ionizing photons that would be absorbed without the limit */
+      const double E_to_erg =
+          units_cgs_conversion_factor(us, UNIT_CONV_ENERGY);
+      double N_abs = 0.;
+      for (int g = 0; g < RT_NGROUPS; g++) {
+        if (g == rt_props->fuv_group) continue;
+        const double E_g = fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+                           p->geometry.volume * E_to_erg;
+        N_abs += f * E_g / rt_props->average_photon_energy[g];
+      }
+      if (N_abs > N_rec) f *= N_rec / N_abs;
     }
 
+    const double f_fuv =
+        rt_tchem_fuv_ism_absorbed_fraction(p, rt_props, cosmo, phi, C, R_p, dt);
+
     for (int g = 0; g < RT_NGROUPS; g++) {
+      const double f_g = (g == rt_props->fuv_group) ? f_fuv : f;
       const float E_old = p->rt_data.radiation[g].energy_density;
 #ifdef SWIFT_KIARA_RT_DEBUG
       p->rt_data.debug_dE[1] -=
-          p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+          p->rt_data.radiation[g].energy_density * f_g * p->geometry.volume;
 #endif
-      p->rt_data.radiation[g].energy_density *= (1. - f);
+      p->rt_data.radiation[g].energy_density *= (1. - f_g);
       for (int i = 0; i < 3; i++) {
-        p->rt_data.radiation[g].flux[i] *= (1. - f);
+        p->rt_data.radiation[g].flux[i] *= (1. - f_g);
       }
       rt_check_unphysical_state(&p->rt_data.radiation[g].energy_density,
                                 p->rt_data.radiation[g].flux, E_old,
@@ -739,7 +936,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, rt_species, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
   /* Set up absorption rate calculation at end of step */
   gr_float rt_species_new[6];
@@ -758,7 +955,11 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates_new, rt_species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_reduced_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
+
+  /* Absorption of the FUV light by all of the dust */
+  const double tau_dust =
+      rt_tchem_fuv_dust_optical_depth(p, rt_props, cosmo, /*f_warm=*/1., dt);
 
   /* Now remove absorbed radiation, using average absorption */
   for (int g = 0; g < RT_NGROUPS; g++) {
@@ -766,6 +967,7 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
     f = min(1., f);
     f = max(0., f);
+    if (g == rt_props->fuv_group) f = 1. - (1. - f) * exp(-tau_dust);
 #ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
@@ -783,4 +985,59 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 
   /* Clean up after yourself. */
   free(iact_rates);
+}
+
+/**
+ * @brief Give the RT crackle instance the dust, H2 and ISRF parameters of
+ * the cooling (KIARACooling), and re-initialise it.
+ *
+ * The cooling is set up after the RT, so this is called once both are
+ * (and again on restart). With G0 from the RT (G0_computation_method 8),
+ * the H2 ISRF photodissociation rate per G0 is scaled by
+ * #rt_props.H2_LW_spectral_factor.
+ *
+ * @param rtp The #rt_props.
+ * @param cooling The #cooling_function_data.
+ */
+void rt_props_sync_crackle_with_cooling(
+    struct rt_props *rtp, const struct cooling_function_data *cooling) {
+
+  chemistry_data *chemistry = &rtp->grackle_chemistry_data;
+
+  /* The rate tables depend on these parameters: rebuild them */
+  local_free_chemistry_data(chemistry, &rtp->grackle_chemistry_rates);
+
+  cooling_set_crackle_dust_parameters(cooling, chemistry);
+  /* The LW factor converts a G0 of the FUV group's spectrum, so it applies
+   * only when G0 comes from the RT */
+  if (cooling->G0_computation_method == 8)
+    chemistry->H2_isrf_dissociation_rate *= rtp->H2_LW_spectral_factor;
+
+  if (engine_rank == 0) {
+    message(
+        "RT crackle instance: dust, H2 and ISRF parameters from the cooling; "
+        "H2 ISRF photodissociation %s, rate %.3g s^-1 per G0, Sternberg "
+        "limit %s",
+        chemistry->H2_isrf_dissociation ? "on" : "off",
+        chemistry->H2_isrf_dissociation_rate,
+        chemistry->H2_sternberg_limit ? "on" : "off");
+    if (cooling->G0_computation_method == 8 &&
+        !chemistry->H2_isrf_dissociation)
+      message(
+          "WARNING: G0 comes from the RT, but KIARACooling:"
+          "H2_isrf_dissociation is off, so the RT does not dissociate H2");
+  }
+
+#ifdef CRACKLE_VALIDATE
+  crackle_validate_init(crackle_validate_local, chemistry, &rtp->grackle_units,
+                        sizeof(chemistry_data), sizeof(code_units),
+                        sizeof(grackle_field_data));
+#endif
+
+  if (local_initialize_chemistry_data(chemistry, &rtp->grackle_chemistry_rates,
+                                      &rtp->grackle_units) == 0)
+    error("Error in initialize_chemistry_data");
+
+  /* The UV background rates and crackle units for the current step */
+  rt_tchem_prepare_step(rtp);
 }

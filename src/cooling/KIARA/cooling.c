@@ -523,12 +523,8 @@ void cooling_copy_to_grackle2(
     // p->chemistry_data.metal_mass_fraction_total, species_densities[19],
     // species_densities[20]);
 
-    /* Determine ISRF in Habing units based on chosen method, -1 == non-ISM */
-    if (p->cooling_data.subgrid_temp == 0.f) {
-      species_densities[22] = -1.f;
-    } else {
-      species_densities[22] = p->cooling_data.G0;
-    }
+    /* ISRF in Habing units; -1 - G0 == non-ISM (see cooling_crackle_isrf) */
+    species_densities[22] = cooling_crackle_isrf(p, cooling);
 
     data->isrf_habing = &species_densities[22];
 
@@ -1378,11 +1374,7 @@ void cooling_copy_to_crackle(
   if (cooling->use_grackle_dust_evol == 1) {
     dust_density = p->cooling_data.dust_mass / p->mass * rho;
     SNe_density = SNe_count / p->mass * rho;
-    if (p->cooling_data.subgrid_temp == 0.f) {
-      isrf = -1.f;
-    } else {
-      isrf = p->cooling_data.G0;
-    }
+    isrf = cooling_crackle_isrf(p, cooling);
     L_shield = cooling_H2_shielding_length(p, cooling);
     for (int i = 0; i < chemistry_element_count; i++) {
       const int slot = cooling_crackle_slot(i);
@@ -3268,6 +3260,42 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   /* run on a single thread since Swift sends each particle to a single thread
    *chemistry->omp_nthreads = 1; */
 
+  /* Dust, H2 and ISRF parameters (shared with the KIARA-RT instance) */
+  cooling_set_crackle_dust_parameters(cooling, chemistry);
+
+  cooling->use_grackle_h2_form =
+      cooling->use_grackle_dust_evol && COOLING_GRACKLE_MODE >= 2;
+
+#ifdef CRACKLE_VALIDATE
+  /* Initialise the external library with the same parameters */
+  crackle_validate_init(crackle_validate_global, chemistry, &cooling->units,
+                        sizeof(chemistry_data), sizeof(code_units),
+                        sizeof(grackle_field_data));
+#endif
+
+  /* Initialize the chemistry object. */
+  if (initialize_chemistry_data(&cooling->units) == 0) {
+    error("Error in initialize_chemistry_data.");
+  }
+
+  /* What crackle needs at the current redshift (updated every step) */
+  cooling_prepare_crackle_step(cooling);
+}
+
+/**
+ * @brief Set the dust, H2 and ISRF parameters of a crackle chemistry
+ * instance from the cooling properties.
+ *
+ * Used for the cooling instance and for the KIARA-RT one, so that both
+ * follow the same KIARACooling parameters. Call before initialising the
+ * chemistry data.
+ *
+ * @param cooling The cooling properties.
+ * @param chemistry The crackle chemistry parameters to set.
+ */
+void cooling_set_crackle_dust_parameters(
+    const struct cooling_function_data *cooling, chemistry_data *chemistry) {
+
   /* Turn on Li+ 2019 dust evolution model */
   chemistry->use_dust_evol = cooling->use_grackle_dust_evol;
   chemistry->use_dust_density_field = cooling->use_grackle_dust_evol;
@@ -3322,24 +3350,6 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   } else {
     chemistry->use_dust_evol = 0;
   }
-
-  cooling->use_grackle_h2_form =
-      cooling->use_grackle_dust_evol && COOLING_GRACKLE_MODE >= 2;
-
-#ifdef CRACKLE_VALIDATE
-  /* Initialise the external library with the same parameters */
-  crackle_validate_init(crackle_validate_global, chemistry, &cooling->units,
-                        sizeof(chemistry_data), sizeof(code_units),
-                        sizeof(grackle_field_data));
-#endif
-
-  /* Initialize the chemistry object. */
-  if (initialize_chemistry_data(&cooling->units) == 0) {
-    error("Error in initialize_chemistry_data.");
-  }
-
-  /* What crackle needs at the current redshift (updated every step) */
-  cooling_prepare_crackle_step(cooling);
 }
 
 /**

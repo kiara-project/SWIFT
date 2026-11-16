@@ -587,6 +587,12 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
 
   cooling->G0_computation_method = parser_get_opt_param_int(
       parameter_file, "KIARACooling:G0_computation_method", 3);
+#ifndef RT_KIARA
+  if (cooling->G0_computation_method == 8)
+    error(
+        "KIARACooling:G0_computation_method 8 takes G0 from the FUV photon "
+        "group of KIARA-RT; this run has no KIARA-RT");
+#endif
 
   cooling->G0_multiplier = parser_get_opt_param_double(
       parameter_file, "KIARACooling:G0_multiplier", 1.0);

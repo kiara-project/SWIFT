@@ -19,6 +19,7 @@
 #ifndef SWIFT_RT_KIARA_H
 #define SWIFT_RT_KIARA_H
 
+#include "atomic.h"
 #include "rt_debugging.h"
 #include "rt_flux.h"
 #include "rt_gradients.h"
@@ -31,7 +32,9 @@
 
 /*! Maximal interface-area ratio sum|A_ij| R / V used in the RT time-step
  * (3 for a sphere) */
-#define rt_area_ratio_max 10.f
+/*! Smallest factor applied to the speed of light by the local Courant
+ * reduction (keeps c > 0 in degenerate particles) */
+#define rt_c_scale_min 1.e-3f
 
 /**
  * @file src/rt/KIARA/rt.h
@@ -94,11 +97,15 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
         rt_props->average_photon_energy, phys_const, internal_units);
   } else if (rt_props->stellar_emission_model ==
              rt_stellar_emission_model_BPASS) {
+    double f_esc[RT_NGROUPS];
+    for (int g = 0; g < RT_NGROUPS; g++)
+      f_esc[g] = (g == rt_props->fuv_group) ? rt_props->f_esc_FUV
+                                            : rt_props->f_esc;
     rt_get_emission_this_step_BPASS(
         emission_this_step, sp->mass,
         sp->chemistry_data.metal_mass_fraction_total, star_age_begin_of_step,
         star_age, rt_props->ionizing_tables, rt_props->average_photon_energy,
-        phys_const, internal_units, rt_props->f_esc);
+        phys_const, internal_units, f_esc);
     /* Convert some quantities. */
     const double time_to_Myr =
         units_cgs_conversion_factor(internal_units, UNIT_CONV_TIME) /
@@ -117,8 +124,15 @@ rt_compute_stellar_emission_rate(struct spart *restrict sp, double time,
           rt_props->stellar_emission_model);
   }
 
-  for (int g = 0; g < RT_NGROUPS; g++)
-    sp->rt_data.emission_this_step[g] = emission_this_step[g];
+  /* The neighbours add it to their radiation over the star's time step */
+  sp->rt_data.emission_dt = dt;
+
+  /* Add the emission not injected in earlier steps */
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    sp->rt_data.emission_this_step[g] =
+        emission_this_step[g] + sp->rt_data.emission_carry[g];
+    sp->rt_data.emission_carry[g] = 0.f;
+  }
 }
 
 /**
@@ -223,6 +237,8 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   rt_reset_part_each_subcycle(p, cosmo, 0.);
 #ifdef SWIFT_KIARA_RT_DEBUG
   for (int k = 0; k < 6; k++) p->rt_data.debug_dE[k] = 0.f;
+  p->rt_data.debug_dE_onesided = 0.f;
+  p->rt_data.debug_dE_acc = 0.f;
   for (int k = 0; k < 2; k++) p->rt_data.debug_heat[k] = 0.f;
 #endif
   rt_part_reset_fluxes(p);
@@ -234,6 +250,11 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.volume_previous = 0.f;
   p->rt_data.area_sum = 0.f;
   p->rt_data.area_sum_last = 0.f;
+  p->rt_data.c_scale = 1.f;
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    p->rt_data.emission_pending[g] = 0.f;
+    p->rt_data.emission_rate[g] = 0.f;
+  }
 }
 
 /**
@@ -290,6 +311,15 @@ __attribute__((always_inline)) INLINE static void rt_reset_spart(
 __attribute__((always_inline)) INLINE static void rt_first_init_spart(
     struct spart *restrict sp) {
 
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    sp->rt_data.emission_this_step[g] = 0.f;
+    sp->rt_data.emission_carry[g] = 0.f;
+  }
+#ifdef SWIFT_KIARA_RT_DEBUG
+  for (int i = 0; i < 6; i++) sp->rt_data.debug_dE[i] = 0.f;
+  sp->rt_data.debug_dE_onesided = 0.f;
+  sp->rt_data.debug_dE_acc = 0.f;
+#endif
   rt_init_spart(sp);
   rt_reset_spart(sp);
 #ifdef SWIFT_RT_DEBUG_CHECKS
@@ -330,11 +360,58 @@ __attribute__((always_inline)) INLINE static void rt_spart_has_no_neighbours(
     struct spart *sp) {
 
   /* Reset energy to be injected so that global statistics
-   * checks still work */
+   * checks still work; it is carried over to the next emission */
   for (int g = 0; g < RT_NGROUPS; g++) {
+    sp->rt_data.emission_carry[g] += sp->rt_data.emission_this_step[g];
     sp->rt_data.emission_this_step[g] = 0.f;
   }
   message("WARNING: found star without neighbours");
+}
+
+/**
+ * @brief Give the radiation of a gas particle that turns into a star to the
+ * new star, which injects it into its neighbours with its next emission.
+ *
+ * This includes the energy the particle has received from its neighbours
+ * since its last transport step and not yet applied (rt_finalise_transport()).
+ * The new star is zeroed when it is created (cell_add_spart()), so its
+ * carry starts empty.
+ *
+ * @param p The gas particle being converted.
+ * @param sp The new star particle.
+ */
+__attribute__((always_inline)) INLINE static void rt_convert_part_to_spart(
+    const struct part *restrict p, struct spart *restrict sp) {
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /* Keep the gas particle's budget entries, which would otherwise leave the
+   * gas budget with it, so that each column can be summed over all the
+   * particles (gas and stars) */
+  for (int i = 0; i < 6; i++) sp->rt_data.debug_dE[i] = p->rt_data.debug_dE[i];
+  sp->rt_data.debug_dE_onesided = p->rt_data.debug_dE_onesided;
+  sp->rt_data.debug_dE_acc = p->rt_data.debug_dE_acc;
+#endif
+
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    /* As applied in rt_finalise_transport() */
+    const float E_pending = p->rt_data.flux[g].energy;
+    const float E =
+        p->rt_data.radiation[g].energy_density * p->geometry.volume +
+        E_pending;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    sp->rt_data.debug_dE[2] += E_pending;
+#endif
+    if (E > 0.f) {
+      sp->rt_data.emission_carry[g] += E;
+#ifdef SWIFT_KIARA_RT_DEBUG
+      sp->rt_data.debug_dE[0] -= E;
+#endif
+    }
+    /* Stellar emission not yet added to the radiation: not yet injected,
+     * so it goes to the new star's carry without a budget entry */
+    if (p->rt_data.emission_pending[g] > 0.f)
+      sp->rt_data.emission_carry[g] += p->rt_data.emission_pending[g];
+  }
 }
 
 /**
@@ -436,29 +513,44 @@ __attribute__((always_inline)) INLINE static float rt_compute_timestep(
    * of its volume. */
   /* Transport length: V / sum|A| from the interface areas of the last
    * transport step (capped, see below), or 1/10 of the volume radius before
-   * the first one. It is floored at the gravitational softening: transport
-   * is not resolved below it (in the dense ISM the absorption is done by the
-   * cold-cloud covering fraction), and the flux limiter in
-   * runner_iact_rt_flux_common keeps particles smaller than that positive.
-   */
+   * the first one. With KIARART:transport_length_floor_softening (default)
+   * it is floored at the gravitational softening: transport is not resolved
+   * below it (in the dense ISM the absorption is done by the cold-cloud
+   * covering fraction). Particles smaller than that then have steps longer
+   * than their Courant limit; the flux limiter in runner_iact_rt_flux_common
+   * keeps them positive, and with KIARART:local_cfl_reduced_c their speed of
+   * light is reduced by the same factor, so that the step satisfies the
+   * Courant condition (see rt_part_get_reduced_speed_of_light()). */
   const float R = powf(p->geometry.volume / hydro_dimension_unit_sphere,
                        hydro_dimension_inv);
-  float length;
+  float length, length_courant;
   if (p->rt_data.area_sum_last > 0.f) {
     /* Particles in very dense gas at the smoothing-length floor have many
-     * more neighbours than usual, and so interface areas up to ~100x those
-     * of a sphere (sum|A| R / V = 3): cap the area at
-     * rt_area_ratio_max V / R. */
+     * more neighbours than usual, and so interface areas up to ~1000x those
+     * of a sphere (sum|A| R / V = 3). The transport only uses them up to
+     * rt_params.area_ratio_max V / R (see rt_part_get_area_scale()), so the
+     * time step and c_scale do too. */
     const float area = fminf(p->rt_data.area_sum_last,
-                             rt_area_ratio_max * p->geometry.volume / R);
+                             rt_params.area_ratio_max * p->geometry.volume / R);
     length = p->geometry.volume / area;
+    length_courant = length;
   } else {
     length = 0.1f * R;
+    length_courant = length;
   }
-  length = fmaxf(length, grav_props->epsilon_baryon_cur);
+  if (rt_props->transport_length_floor_softening)
+    length = fmaxf(length, grav_props->epsilon_baryon_cur);
+
+  /* The time step is set with the base speed of light: c_scale is derived
+   * from it and must not feed back. The particle is only written here, by
+   * the task computing its own time step. */
+  ((struct part *)p)->rt_data.c_scale =
+      rt_props->local_cfl_reduced_c
+          ? fmaxf(fminf(1.f, length_courant / length), rt_c_scale_min)
+          : 1.f;
 
   const float dt = rt_props->CFL_condition * cosmo->a * length /
-                   rt_part_get_reduced_speed_of_light(p);
+                   rt_part_get_base_reduced_speed_of_light(p);
 
   if (rt_props->skip_thermochemistry) return dt;
 
@@ -589,6 +681,46 @@ __attribute__((always_inline)) INLINE static void rt_end_gradient(
 }
 
 /**
+ * @brief Add to the particle's radiation the stellar emission it received
+ * for this RT step.
+ *
+ * A star spreads the emission of its time step over that step: its gas
+ * neighbours receive their share as emission_pending, with the rate
+ * share / (star time step) (runner_iact_rt_inject()), and add rate * dt of
+ * it to their radiation each RT step until it is used up. Injecting it all
+ * at once instead, at the start of a step of up to Myr, leaves the dense gas
+ * around the stars without radiation most of the time, as the radiation
+ * leaves it within ~kyr. The energy added is exactly what the stars gave.
+ *
+ * @param p The particle.
+ * @param dt The particle's RT time step (physical).
+ */
+__attribute__((always_inline)) INLINE static void rt_inject_pending_emission(
+    struct part *restrict p, const double dt) {
+
+  struct rt_part_data *restrict rtd = &p->rt_data;
+  const float Vinv = 1.f / p->geometry.volume;
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    if (rtd->emission_pending[g] <= 0.f) {
+      rtd->emission_pending[g] = 0.f;
+      rtd->emission_rate[g] = 0.f;
+      continue;
+    }
+    float dE = rtd->emission_rate[g] * dt;
+    if (!(dE < rtd->emission_pending[g])) {
+      /* Used up (or no rate: at once) */
+      dE = rtd->emission_pending[g];
+      rtd->emission_rate[g] = 0.f;
+    }
+    rtd->emission_pending[g] -= dE;
+    rtd->radiation[g].energy_density += dE * Vinv;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    rtd->debug_dE[0] += dE;
+#endif
+  }
+}
+
+/**
  * @brief finishes up the transport step
  *
  * @param p particle to work on
@@ -613,9 +745,13 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 #endif
 
   struct rt_part_data *restrict rtd = &p->rt_data;
-  /* The fluxes are in comoving units over a physical time-step: with
-   * dU/dt + (1/a) div(F) = 0, the transport is slowed by 1/a */
-  const float Vinv = cosmo->a_inv / p->geometry.volume;
+  /* The accumulated fluxes are energies (and flux integrals), converted
+   * with the scale factor of each exchange in runner_iact_rt_flux_common()
+   * (with dU/dt + (1/a) div(F) = 0 the transport is slowed by 1/a) */
+  const float Vinv = 1.f / p->geometry.volume;
+
+  /* Stellar emission received from the neighbouring stars this RT step */
+  rt_inject_pending_emission(p, dt);
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
   const float redshift_factor =
@@ -629,7 +765,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
 
     rtd->radiation[g].energy_density += rtd->flux[g].energy * Vinv;
 #ifdef SWIFT_KIARA_RT_DEBUG
-    rtd->debug_dE[2] += rtd->flux[g].energy * cosmo->a_inv;
+    rtd->debug_dE[2] += rtd->flux[g].energy;
     rtd->debug_dE[4] -= rtd->radiation[g].energy_density * redshift_factor *
                         p->geometry.volume;
 #endif
@@ -673,6 +809,22 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
         (rtd->radiation[g].energy_density - e_before_check) * p->geometry.volume;
 #endif
   }
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  if (rtd->shed_frac_req > 1.001f) {
+    /* The first 1000 events, then every 10^5th (per rank) */
+    static int n_shed_over_export = 0;
+    const int n = atomic_inc(&n_shed_over_export);
+    if (n < 1000 || n % 100000 == 0)
+      message(
+          "RT shed over-export #%d: id=%lld wanted %.4g of its radiation "
+          "(handed over %.4g), receivers counted %d, exchanged %d, wsum=%.4g, "
+          "h=%.4g, decoupled=%d, flux_dt=%.4g",
+          n + 1, p->id, rtd->shed_frac_req, rtd->shed_frac_used,
+          rtd->shed_n_collect, rtd->shed_n_exchange, rtd->shed_wsum, p->h,
+          p->decoupled, dt);
+  }
+#endif
 
   /* Reset the fluxes now that they have been applied. */
   rt_part_reset_fluxes(p);
