@@ -139,11 +139,18 @@
 #define PART_IS_ACTIVE part_is_rt_active
 #define CELL_IS_ACTIVE cell_is_rt_active
 #define CELL_ARE_PART_DRIFTED cell_are_part_drifted_rt_sub_cycle
+/* Largest h of the particles active in this loop. hydro.h_max_active only
+ * counts the hydro-active particles (cell_drift_part()), so on an RT
+ * sub-cycle it misses RT-active particles with larger h, and the density-type
+ * (loop 1) pair cut-offs and recursion would drop some of their neighbours.
+ * Use the h_max of all particles instead. */
+#define CELL_H_MAX_ACTIVE(c) ((c)->hydro.h_max)
 #else
 /* default hydro behaviour. */
 #define PART_IS_ACTIVE part_is_active
 #define CELL_IS_ACTIVE cell_is_active_hydro
 #define CELL_ARE_PART_DRIFTED cell_are_part_drifted
+#define CELL_H_MAX_ACTIVE(c) ((c)->hydro.h_max_active)
 /* when running with RT subcycling, we can have RT active
  * particles in a normal swift step that aren't drifted to
  * the current time, so we don't do those checks there. */

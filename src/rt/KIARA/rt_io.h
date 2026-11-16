@@ -161,6 +161,28 @@ INLINE static void rt_convert_area_ratio(const struct engine *engine,
   const float R = cbrtf(3.f * V / (4.f * M_PI));
   ret[0] = (V > 0.f) ? part->rt_data.area_sum_last * R / V : 0.f;
 }
+
+/**
+ * @brief DEBUG: photon energy received through transport and not yet applied
+ * (all groups), as rt_finalise_transport() will apply it.
+ */
+INLINE static void rt_convert_emission_pending(const struct engine *engine,
+                                               const struct part *part,
+                                               const struct xpart *xpart,
+                                               float *ret) {
+  float E = 0.f;
+  for (int g = 0; g < RT_NGROUPS; g++) E += part->rt_data.emission_pending[g];
+  ret[0] = E;
+}
+
+INLINE static void rt_convert_pending_transport(const struct engine *engine,
+                                                const struct part *part,
+                                                const struct xpart *xpart,
+                                                float *ret) {
+  float E = 0.f;
+  for (int g = 0; g < RT_NGROUPS; g++) E += part->rt_data.flux[g].energy;
+  ret[0] = E;
+}
 #endif
 
 /**
@@ -170,6 +192,16 @@ INLINE static void rt_convert_reduced_speed_of_light(
     const struct engine *engine, const struct part *part,
     const struct xpart *xpart, float *ret) {
   ret[0] = rt_part_get_reduced_speed_of_light(part);
+}
+
+/**
+ * @brief Extract the speed at which the radiation leaves a particle, used to
+ * convert its radiation energy density to a physical flux.
+ */
+INLINE static void rt_convert_effective_speed_of_light(
+    const struct engine *engine, const struct part *part,
+    const struct xpart *xpart, float *ret) {
+  ret[0] = rt_part_get_effective_speed_of_light(part);
 }
 
 /**
@@ -209,7 +241,17 @@ INLINE static int rt_write_particles(const struct part *parts,
       /*xparts=*/NULL, /*convertible to comoving=*/0,
       rt_convert_reduced_speed_of_light,
       "Reduced speed of light used for the particle's radiation transport "
-      "and photon interaction rates (physical)");
+      "(physical)");
+  num_elements++;
+
+  list[num_elements] = io_make_physical_output_field_convert_part(
+      "RTEffectiveLightspeed", FLOAT, 1, UNIT_CONV_VELOCITY, 0.f, parts,
+      /*xparts=*/NULL, /*convertible to comoving=*/0,
+      rt_convert_effective_speed_of_light,
+      "Speed at which the radiation leaves the particle, used to convert its "
+      "radiation energy density to G0, absorption and photoionization rates "
+      "(physical): the reduced speed of light times the ratio of its "
+      "interface areas to those of a sphere, if larger than 1");
   num_elements++;
 
 #ifdef SWIFT_KIARA_RT_DEBUG
@@ -233,6 +275,33 @@ INLINE static int rt_write_particles(const struct part *parts,
       /*xparts=*/NULL, rt_convert_area_ratio,
       "Sum of interface areas times volume radius over volume (3 for a "
       "sphere)");
+  num_elements++;
+  list[num_elements] = io_make_output_field_convert_part(
+      "RTDebugEmissionPending", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      /*xparts=*/NULL, rt_convert_emission_pending,
+      "Stellar emission (all groups) received from the stars and not yet "
+      "added to the radiation, which is not yet in the injected column of "
+      "the budget");
+  num_elements++;
+  list[num_elements] = io_make_output_field_convert_part(
+      "RTDebugPendingTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      /*xparts=*/NULL, rt_convert_pending_transport,
+      "Photon energy (all groups) received through transport and not yet "
+      "applied, which is not yet in the transport column of the budget");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugOneSidedTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      rt_data.debug_dE_onesided,
+      "Part of the transport column from non-symmetric exchanges in which "
+      "the active partner is updated in its own call (sums to zero over all "
+      "the particles if each has its counterpart)");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugTransportAccumulated", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, parts,
+      rt_data.debug_dE_acc,
+      "Transport increments of the flux accumulators, added atomically when "
+      "made; equals the transport column plus the pending energy unless "
+      "increments were lost");
   num_elements++;
 #endif
 
@@ -290,7 +359,34 @@ INLINE static int rt_write_stars(const struct spart *sparts,
                                  struct io_props *list) {
   int num_elements = 0;
 
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /* DEBUG: photon energy budget of the gas the stars formed from */
+  list[num_elements] = io_make_output_field(
+      "RTDebugEnergyBudget", FLOAT, 6, UNIT_CONV_ENERGY, 0.f, sparts,
+      rt_data.debug_dE,
+      "Photon energy budget (as for the gas) of the gas particle the star "
+      "formed from, at its conversion; the radiation it handed to the star "
+      "is taken out of the injected column");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugEmissionCarry", FLOAT, RT_NGROUPS, UNIT_CONV_ENERGY, 0.f,
+      sparts, rt_data.emission_carry,
+      "Photon energy held by the star to add to its next emission");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugOneSidedTransport", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, sparts,
+      rt_data.debug_dE_onesided,
+      "RTDebugOneSidedTransport of the gas particle the star formed from");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugTransportAccumulated", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, sparts,
+      rt_data.debug_dE_acc,
+      "RTDebugTransportAccumulated of the gas particle the star formed from");
+  num_elements++;
+#endif
+
 #ifdef SWIFT_RT_DEBUG_CHECKS
+  list += num_elements;
   num_elements += 4;
   list[0] = io_make_output_field("RTDebugHydroIact", INT, 1, UNIT_CONV_NO_UNITS,
                                  0, sparts, rt_data.debug_iact_hydro_inject,
