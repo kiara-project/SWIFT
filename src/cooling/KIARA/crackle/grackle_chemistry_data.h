@@ -50,6 +50,10 @@ typedef struct
      0) off, 1) on */
   int metal_cooling;
 
+  /* multiplier on the Cloudy metal cooling/heating term (1 = standard; 0 removes
+     metal-line cooling while keeping the tables loaded, e.g. for the dust model) */
+  double metal_cooling_factor;
+
   /* add heating from UV background model
      0) off, 1) on */
   int UVbackground;

@@ -171,7 +171,11 @@
 /* ---------- Structures for below ---------- */
 
 /*! Artificial viscosity parameters */
-struct viscosity_global_data {};
+struct viscosity_global_data {
+  /*! Fall back to the SPH kernel gradient for a pair whose corrected gradient
+   * |G_ij| exceeds this many times the SPH one (0 = no limit) */
+  float max_gradient_ratio;
+};
 
 /*! Thermal diffusion parameters */
 struct diffusion_global_data {
@@ -208,6 +212,10 @@ extern float magma2_fallback_min_neighbours;
  */
 extern float magma2_conductivity_alpha;
 
+/*! Maximal |G_ij| / |grad W_ij(SPH)| before a pair falls back to SPH
+ * gradients, from SPH:max_gradient_ratio (viscosity_init); 0 = no limit */
+extern float magma2_max_gradient_ratio;
+
 /* Viscosity */
 
 /**
@@ -222,7 +230,18 @@ extern float magma2_conductivity_alpha;
 static INLINE void viscosity_init(struct swift_params *params,
                                   const struct unit_system *us,
                                   const struct phys_const *phys_const,
-                                  struct viscosity_global_data *viscosity) {}
+                                  struct viscosity_global_data *viscosity) {
+  /* The matrix-inversion (MAGMA2) kernel gradient is only checked for its
+   * condition number and its angle to the separation, not its magnitude: a
+   * uniformly small correction matrix (e.g. a hot, low-density particle
+   * among dense neighbours) passes and gives |G_ij| up to ~1e6 times the
+   * SPH gradient, i.e. huge pressure and viscous forces. */
+  viscosity->max_gradient_ratio =
+      parser_get_opt_param_float(params, "SPH:max_gradient_ratio", 0.f);
+  if (viscosity->max_gradient_ratio < 0.f)
+    error("SPH:max_gradient_ratio must be >= 0 (0 = no limit)");
+  magma2_max_gradient_ratio = viscosity->max_gradient_ratio;
+}
 
 /**
  * @brief Initialises a viscosity struct to sensible numbers for mocking
@@ -231,7 +250,10 @@ static INLINE void viscosity_init(struct swift_params *params,
  * @param viscosity: pointer to the viscosity_global_data struct to be filled.
  **/
 static INLINE void viscosity_init_no_hydro(
-    struct viscosity_global_data *viscosity) {}
+    struct viscosity_global_data *viscosity) {
+  viscosity->max_gradient_ratio = 0.f;
+  magma2_max_gradient_ratio = 0.f;
+}
 
 /**
  * @brief Prints out the viscosity parameters at the start of a run.
@@ -243,6 +265,9 @@ static INLINE void viscosity_print(
     const struct viscosity_global_data *viscosity) {
   message("Artificial viscosity alpha set to %.3f", const_viscosity_alpha);
   message("Artificial viscosity beta set to %.3f", const_viscosity_beta);
+  if (viscosity->max_gradient_ratio > 0.f)
+    message("MAGMA2 gradients limited to %.3g times the SPH gradient",
+            viscosity->max_gradient_ratio);
 }
 
 #if defined(HAVE_HDF5)
@@ -257,6 +282,8 @@ static INLINE void viscosity_print_snapshot(
 
   io_write_attribute_f(h_grpsph, "Alpha viscosity", const_viscosity_alpha);
   io_write_attribute_f(h_grpsph, "Beta viscosity", const_viscosity_beta);
+  io_write_attribute_f(h_grpsph, "Max gradient ratio",
+                       viscosity->max_gradient_ratio);
 }
 #endif
 

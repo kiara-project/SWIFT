@@ -177,8 +177,7 @@ KIARACooling:
   H2_isrf_dissociation:         1                      # 1: G0-driven LW H2 photodissociation, self- and dust-shielded
   H2_shield_mean_density:       1                      # 1: H2 shielding column at the mean (not cold-cloud) density
   H2_sternberg_limit:           1                      # 1: limit the ISM molecular fraction to the Sternberg+14 shielded interior
-  dust_growth_densref:          5.0e-24               # g cm^-3 physical
-  dust_growth_tauref:           1.0                     # Gyr, growth timescale at densref
+  dust_growth_densref:          2.0e-24               # g cm^-3 physical, dust growth time-scale 1 Gyr at this density
   cold_ISM_frac:                0.5                     # Fraction of particle mass in cold phase eligible for SF
   G0_computation_method:        7                       # For Grackle subgrid SF compate G0 via: 1=Local SFR density; 2=Global sSFR; 3=sSFR when nonzero, otherwise local (-3=opposite); 4=scaled to SNe rate; 5=mix of 2+4; 6=FIRE-based
   G0_local_fraction:            0.5                    # method 7: fraction of G0 from the local SFR density, the rest galaxy-scale

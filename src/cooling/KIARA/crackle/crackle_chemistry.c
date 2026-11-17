@@ -409,7 +409,7 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 
 	/* Cloudy-based metal cooling/heating */
 	if (chemistry->metal_cooling && gp->metallicity > tiny) {
-	    edot_metal += gp->rhoH * gp->rhoH * gp->metallicity * cloudy_metal_cooling(gp->logtem, chemistry, interpolation, grackle_rates, cunits);  // cool1d_cloudy_g()
+	    edot_metal += chemistry->metal_cooling_factor * gp->rhoH * gp->rhoH * gp->metallicity * cloudy_metal_cooling(gp->logtem, chemistry, interpolation, grackle_rates, cunits);  // cool1d_cloudy_g()
 	    gp->edot += edot_metal;
 	}
 

@@ -690,9 +690,22 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   /* Read in the basic neighbour search properties or default to the hydro
      ones if the user did not provide any different values */
 
-  /* Kernel properties */
-  bp->eta_neighbours = parser_get_opt_param_float(
-      params, "BlackHoles:resolution_eta", hydro_props->eta_neighbours);
+  /* Kernel properties: BlackHoles:resolution_eta or
+   * BlackHoles:target_neighbours (at most one), else the hydro value */
+  const float bh_eta =
+      parser_get_opt_param_float(params, "BlackHoles:resolution_eta", 0.f);
+  const float bh_ngb =
+      parser_get_opt_param_float(params, "BlackHoles:target_neighbours", 0.f);
+  if (bh_eta > 0.f && bh_ngb > 0.f)
+    error(
+        "Set at most one of BlackHoles:resolution_eta and "
+        "BlackHoles:target_neighbours");
+  if (bh_ngb > 0.f)
+    bp->eta_neighbours = powf(bh_ngb / kernel_norm, hydro_dimension_inv);
+  else if (bh_eta > 0.f)
+    bp->eta_neighbours = bh_eta;
+  else
+    bp->eta_neighbours = hydro_props->eta_neighbours;
 
   /* Tolerance for the smoothing length Newton-Raphson scheme */
   bp->h_tolerance = parser_get_opt_param_float(params, "BlackHoles:h_tolerance",
@@ -812,8 +825,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->minimum_galaxy_stellar_mass /= bp->mass_to_solar_mass;
 
   if (bp->suppress_growth == 4 || bp->suppress_growth == 5) {
-    bp->FIRE_eta_normalization =
-        parser_get_param_float(params, "KIARAFeedback:FIRE_eta_normalization");
+    /* Mass loading used for the suppression; defaults to the stellar wind
+     * normalisation, but can be set separately so the winds can be varied
+     * at fixed BH suppression */
+    bp->FIRE_eta_normalization = parser_get_opt_param_float(
+        params, "ObsidianAGN:suppression_eta_normalization",
+        parser_get_param_float(params,
+                               "KIARAFeedback:FIRE_eta_normalization"));
     bp->FIRE_eta_break =
         parser_get_param_float(params, "KIARAFeedback:FIRE_eta_break_Msun");
     bp->FIRE_eta_break /= bp->mass_to_solar_mass;

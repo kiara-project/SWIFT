@@ -321,6 +321,7 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
   message("Redshift = %g", cooling->redshift);
   message("UV background flag = %d", cooling->with_uv_background);
   message("Metal cooling flag = %i", cooling->chemistry.metal_cooling);
+  message("Metal-line cooling factor = %g", cooling->chemistry.metal_cooling_factor);
   message("Self Shielding flag = %i", cooling->self_shielding_method);
   message("Max subgrid density (internal units) = %g",
           cooling->max_subgrid_density);
@@ -3169,6 +3170,7 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
    * cooling table to be used must be specified with the grackle_data_file
    * parameter. Default: 0. */
   chemistry->metal_cooling = cooling->with_metal_cooling;
+  chemistry->metal_cooling_factor = cooling->metal_line_cooling_factor;
 
   /* Flag to enable an effective CMB temperature floor. This is implemented by
    * subtracting the value of the cooling rate at TCMB from the total cooling

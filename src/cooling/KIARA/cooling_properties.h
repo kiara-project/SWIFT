@@ -86,6 +86,9 @@ struct cooling_function_data {
   /*! Enable/Disable metal cooling */
   int with_metal_cooling;
 
+  /*! Multiplier on the Cloudy metal-line cooling/heating term (default 1) */
+  float metal_line_cooling_factor;
+
   /*! User provide volumetric heating rates */
   int provide_volumetric_heating_rates;
 
