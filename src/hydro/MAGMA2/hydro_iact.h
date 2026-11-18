@@ -715,8 +715,18 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
         (cosine_G_ij_dx_ij_hat < const_viscosity_cosine_limit);
     const unsigned char G_in_wrong_direction = (G_ij_dot_dx_ij_hat > 0.);
 
+    /* Is |G_ij| much larger than the SPH kernel gradient of the pair? */
+    const unsigned char G_too_large =
+        (magma2_max_gradient_ratio > 0.f &&
+         G_ij_norm > magma2_max_gradient_ratio * 0.5 * fabs(wi_dr + wj_dr));
+
     /* Good angle between separation and correct direction, good to go! */
-    if (!G_has_large_angle && !G_in_wrong_direction) {
+    if (G_too_large && !pi->decoupled && !pj->decoupled) {
+      pi->gradient_limited_count++;
+      pj->gradient_limited_count++;
+    }
+
+    if (!G_has_large_angle && !G_in_wrong_direction && !G_too_large) {
 
       /* Make sure we use the correct interaction */
       high_order_gradients_flag = 1;
@@ -1065,6 +1075,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 
   pi->u_dt_cond += cond_du_term * mj;
   pj->u_dt_cond -= cond_du_term * mi;
+
+  pi->force_interaction_count++;
+  pj->force_interaction_count++;
 }
 
 /**
@@ -1232,8 +1245,16 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
         (cosine_G_ij_dx_ij_hat < const_viscosity_cosine_limit);
     const unsigned char G_in_wrong_direction = (G_ij_dot_dx_ij_hat > 0.);
 
+    /* Is |G_ij| much larger than the SPH kernel gradient of the pair? */
+    const unsigned char G_too_large =
+        (magma2_max_gradient_ratio > 0.f &&
+         G_ij_norm > magma2_max_gradient_ratio * 0.5 * fabs(wi_dr + wj_dr));
+
     /* Good angle between separation and correct direction, good to go! */
-    if (!G_has_large_angle && !G_in_wrong_direction) {
+    if (G_too_large && !pi->decoupled && !pj->decoupled)
+      pi->gradient_limited_count++;
+
+    if (!G_has_large_angle && !G_in_wrong_direction && !G_too_large) {
 
       /* Make sure we use the correct gradients below */
       high_order_gradients_flag = 1;
@@ -1549,6 +1570,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   pi->u_dt += du_dt_i * mj;
 
   pi->u_dt_cond += cond_du_term * mj;
+
+  pi->force_interaction_count++;
 }
 
 #endif /* SWIFT_MAGMA2_HYDRO_IACT_H */

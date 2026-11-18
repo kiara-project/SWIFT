@@ -254,6 +254,19 @@ INLINE static void hydro_write_particles(const struct part *parts,
       "Co-moving gravitational Plummer-equivalent softenings of the particles");
   num++;
 
+  list[num] = io_make_output_field(
+      "ForceInteractionCounts", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      force_interaction_count,
+      "Cumulative number of (coupled) hydro force interactions");
+  num++;
+
+  list[num] = io_make_output_field(
+      "GradientLimitedCounts", INT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      gradient_limited_count,
+      "Cumulative number of force interactions that fell back to the SPH "
+      "kernel gradient because |G_ij| exceeded SPH:max_gradient_ratio times it");
+  num++;
+
 #ifdef MAGMA2_DEBUG_CHECKS
   list[num] =
       io_make_output_field("NumberOfNeighbours", INT, 1, UNIT_CONV_NO_UNITS,

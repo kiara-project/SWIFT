@@ -45,6 +45,7 @@ ENTRY(dust_chemistry, INT, 0)
 /* metal cooling on/off
    0) off, 1) on */
 ENTRY(metal_cooling, INT, FALSE)
+ENTRY(metal_cooling_factor, DOUBLE, 1.)
 
 /* add heating from UV background model
    0) off, 1) on */
