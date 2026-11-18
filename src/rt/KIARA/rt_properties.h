@@ -59,6 +59,13 @@ struct rt_props {
   /* CFL condition */
   float CFL_condition;
 
+  /*! Floor the RT transport length at the gravitational softening */
+  int transport_length_floor_softening;
+
+  /*! Reduce the speed of light of particles whose RT time step is floored
+   * above the Courant limit, by the same factor */
+  int local_cfl_reduced_c;
+
   /* Factor to limit cooling time by */
   float f_limit_cooling_time;
 
@@ -106,10 +113,6 @@ struct rt_props {
   int debug_grackle_heat;
 #endif
 
-  /*! Subgrid ISM: cold clouds (subgrid temperature below this, in K) absorb
-   * all radiation they cover; the warm medium between them is transparent */
-  float ism_cold_cloud_temperature;
-
   /*! Subgrid ISM: number of cold clouds per gas particle (sets the covering
    * fraction for a given cold volume filling fraction) */
   float ism_clouds_per_particle;
@@ -143,15 +146,43 @@ struct rt_props {
   /* Location of Stellar spectrum tables. */
   char stellar_table_path[200];
 
-  /* Storeage for the BPASS photon number table in a 3d array with three photon
-   * group 2d tables.
-   * ionizing_tables[0] = ionizing_HI_table
-   * ionizing_tables[1] = ionizing_HeI_table
-   * ionizing_tables[2] = ionizing_HeII_table*/
+  /* Storage for the BPASS photon number tables: one 2d table (metallicity,
+   * age) per photon group, read from the dataset of the group's band (see
+   * rt_props_bpass_table_name()): an optional FUV group, then HI, HeI and
+   * HeII. */
   double ***ionizing_tables;
 
-  /* Photon escape fraction from stellar emission model. */
+  /* Photon escape fraction from stellar emission model (ionizing groups). */
   double f_esc;
+
+  /*! Index of the FUV (non-ionizing, Habing band) photon group, or -1 if
+   * there is none. The FUV group is group 0, if it lies entirely below the
+   * HI ionization edge. */
+  int fuv_group;
+
+  /*! Photon escape fraction of the FUV group (BPASS model) */
+  double f_esc_FUV;
+
+  /*! Dust absorption opacity of the FUV group, per unit dust mass (internal
+   * units). In the subgrid ISM only the dust of the warm phase absorbs. */
+  double dust_opacity_FUV;
+
+  /*! Habing energy density, 6-13.6 eV (5.29e-14 erg cm^-3), in internal
+   * units: G0 = 1 */
+  double habing_energy_density;
+
+  /*! Physical gas density below which G0 from RT is set to 0 (internal
+   * units), so that the IGM gets none */
+  double G0_min_density;
+
+  /*! Fraction of the FUV group's photons in the Lyman-Werner band
+   * (11.2-13.6 eV) */
+  double FUV_LW_photon_fraction;
+
+  /*! Ratio of the LW photon density per unit G0 of the FUV group's spectrum
+   * to that of the Draine (1978) field, on which crackle's H2 ISRF
+   * photodissociation rate per G0 is based */
+  double H2_LW_spectral_factor;
 
   /* Grackle Stuff */
   /* ------------- */
@@ -215,6 +246,67 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
 /* Function to read the table. */
 double **read_Bpass_from_hdf5(char *file_name, char *dataset_name);
 
+/*! Frequency of the HI ionization edge (13.6 eV), in Hz */
+#define RT_KIARA_NU_HI_HZ 3.288e15
+
+/**
+ * @brief Find the FUV photon group: group 0, if it lies entirely below the
+ * HI ionization edge (i.e. the next group starts at or above it).
+ *
+ * @param rtp The #rt_props, with the photon group edges set.
+ * @return the index of the FUV group, or -1 if there is none.
+ */
+__attribute__((always_inline)) INLINE static int rt_props_find_fuv_group(
+    const struct rt_props *rtp) {
+
+  if (RT_NGROUPS < 2) return -1;
+  /* Allow for rounding in the parameter file */
+  const float nu_HI = 0.99 * RT_KIARA_NU_HI_HZ;
+  if (rtp->photon_groups[0] < nu_HI && rtp->photon_groups[1] >= nu_HI)
+    return 0;
+  return -1;
+}
+
+/**
+ * @brief Name of the BPASS table (band) of a photon group: "FUV" for the
+ * FUV group, then "HI", "HeI" and "HeII" for the ionizing groups.
+ *
+ * @param rtp The #rt_props.
+ * @param g The photon group.
+ */
+__attribute__((always_inline)) INLINE static const char *
+rt_props_bpass_table_name(const struct rt_props *rtp, const int g) {
+
+  static const char *ionizing_names[3] = {"HI", "HeI", "HeII"};
+  const int n_fuv = (rtp->fuv_group >= 0) ? 1 : 0;
+  if (RT_NGROUPS - n_fuv != 3)
+    error(
+        "The BPASS model needs exactly 3 ionizing photon groups (HI, HeI, "
+        "HeII), plus optionally one FUV group below 13.6 eV; you have %d "
+        "groups, %d of them FUV",
+        RT_NGROUPS, n_fuv);
+  if (g == rtp->fuv_group) return "FUV";
+  return ionizing_names[g - n_fuv];
+}
+
+/**
+ * @brief Read the BPASS photon number tables of all photon groups.
+ *
+ * @param rtp The #rt_props, with the table path and photon groups set.
+ */
+__attribute__((always_inline)) INLINE static void rt_props_read_bpass_tables(
+    struct rt_props *rtp) {
+
+  rtp->ionizing_tables = malloc(RT_NGROUPS * sizeof(double **));
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    char dataset_name[64];
+    sprintf(dataset_name, "/Table_%s/block0_values",
+            rt_props_bpass_table_name(rtp, g));
+    rtp->ionizing_tables[g] =
+        read_Bpass_from_hdf5(rtp->stellar_table_path, dataset_name);
+  }
+}
+
 /* Now for the good stuff                */
 /* ------------------------------------- */
 
@@ -239,6 +331,18 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
   }
   strcat(messagestring, "]");
   message("%s", messagestring);
+  if (rtp->fuv_group >= 0)
+    message(
+        "Photon group %d is the non-ionizing FUV group, dust opacity %g, G0 "
+        "above density %g (internal units)",
+        rtp->fuv_group, rtp->dust_opacity_FUV, rtp->G0_min_density);
+  message(
+      "RT transport length floored at the softening: %s; local Courant "
+      "reduction of the speed of light: %s",
+      rtp->transport_length_floor_softening ? "yes" : "no",
+      rtp->local_cfl_reduced_c ? "yes" : "no");
+  message("RT transport interface areas capped at %.3g x V / R (sphere: 3)",
+          rt_params.area_ratio_max);
 
   if (rtp->stellar_emission_model == rt_stellar_emission_model_const) {
     strcpy(messagestring, "Using constant stellar emission rates: [ ");
@@ -252,7 +356,10 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
              rt_stellar_emission_model_IlievTest) {
     message("Using Iliev+06 Test 4 stellar emission model.");
   } else if (rtp->stellar_emission_model == rt_stellar_emission_model_BPASS) {
-    message("Using BPASS stellar emission model.");
+    message("Using BPASS stellar emission model, escape fraction %g.",
+            rtp->f_esc);
+    if (rtp->fuv_group >= 0)
+      message("FUV photon escape fraction %g.", rtp->f_esc_FUV);
   } else {
     error("Unknown stellar emission model %d", rtp->stellar_emission_model);
   }
@@ -315,6 +422,43 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
           "Photon frequency bin edges need to be in increasing order. "
           "Found index %d %.3g <= %.3g",
           g + 1, rtp->photon_groups[g + 1], rtp->photon_groups[g]);
+  }
+
+  /* Is there a non-ionizing FUV group? */
+  rtp->fuv_group = rt_props_find_fuv_group(rtp);
+
+  /* Dust opacity of the FUV group. The default, 9.1e4 cm^2 per g of dust, is
+   * crackle's H2_dust_shielding_cross_section (1.9e-21 cm^2 per H) at its
+   * local_dust_to_gas_ratio (0.009387) for a hydrogen mass fraction 0.754. */
+  rtp->dust_opacity_FUV = 0.;
+  if (rtp->fuv_group >= 0) {
+    const double kappa_cgs = parser_get_opt_param_double(
+        params, "KIARART:dust_opacity_FUV_cm2_per_g", 9.1e4);
+    if (kappa_cgs < 0.)
+      error("KIARART:dust_opacity_FUV_cm2_per_g must be >= 0, got %g",
+            kappa_cgs);
+    const double length_cgs = units_cgs_conversion_factor(us, UNIT_CONV_LENGTH);
+    rtp->dust_opacity_FUV = kappa_cgs *
+                            units_cgs_conversion_factor(us, UNIT_CONV_MASS) /
+                            (length_cgs * length_cgs);
+  }
+
+  /* G0 from the FUV group: the Habing energy density, and the hydrogen
+   * number density (physical, cgs) below which G0 = 0 */
+  rtp->habing_energy_density =
+      5.29e-14 / units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_DENSITY);
+  rtp->G0_min_density = 0.;
+  if (rtp->fuv_group >= 0) {
+    const double nH_min =
+        parser_get_opt_param_double(params, "KIARART:G0_nH_min_cgs", 1.e-3);
+    const double m_H_cgs =
+        phys_const->const_proton_mass *
+        units_cgs_conversion_factor(us, UNIT_CONV_MASS);
+    /* the hydrogen mass fraction is read below */
+    rtp->G0_min_density =
+        nH_min * m_H_cgs /
+        parser_get_param_float(params, "KIARART:hydrogen_mass_fraction") /
+        units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
   }
 
   /* Get stellar emission rate model related parameters */
@@ -391,11 +535,22 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   if (rt_params.varc_alpha <= 0.f)
     error("Invalid KIARART:varc_alpha: %.3e <= 0.", rt_params.varc_alpha);
 
+  rt_params.area_ratio_max = parser_get_opt_param_float(
+      params, "KIARART:transport_area_ratio_max", 10.f);
+  if (rt_params.area_ratio_max < 3.f)
+    error("Invalid KIARART:transport_area_ratio_max: %.3e < 3 (a sphere).",
+          rt_params.area_ratio_max);
+
   /* get CFL condition */
   /* ----------------- */
   const float CFL = parser_get_param_float(params, "KIARART:CFL_condition");
   if (CFL <= 0.f) error("Invalid CFL number: %.3e <= 0.", CFL);
   rtp->CFL_condition = CFL;
+
+  rtp->transport_length_floor_softening = parser_get_opt_param_int(
+      params, "KIARART:transport_length_floor_softening", 1);
+  rtp->local_cfl_reduced_c =
+      parser_get_opt_param_int(params, "KIARART:local_cfl_reduced_c", 1);
 
   const float f_limit_cooling_time = parser_get_opt_param_float(
       params, "KIARART:f_limit_cooling_time", /*default=*/0.6);
@@ -480,8 +635,6 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
       params, "KIARART:skip_thermochemistry", /* default = */ 0);
 
   /* Cold clouds in the subgrid ISM */
-  rtp->ism_cold_cloud_temperature = parser_get_opt_param_float(
-      params, "KIARART:ism_cold_cloud_temperature_K", 300.f);
   rtp->ism_clouds_per_particle = parser_get_opt_param_float(
       params, "KIARART:ism_clouds_per_particle", 1.f);
   if (rtp->ism_clouds_per_particle <= 0.f)
@@ -508,6 +661,7 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   rtp->stellar_spectrum_blackbody_T = -1.;
   rtp->ionizing_tables = NULL;
   rtp->f_esc = -1.;
+  rtp->f_esc_FUV = -1.;
 
   rtp->stellar_spectrum_type =
       parser_get_param_int(params, "KIARART:stellar_spectrum_type");
@@ -547,30 +701,13 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
     rtp->f_esc =
         parser_get_param_float(params, "KIARART:photon_escape_fraction");
 
-    /* Read the table from BPASS. */
-    char *fname = malloc(256);
-    char *dataset_name_HI = "/Table_HI/block0_values";
-    char *dataset_name_HeI = "/Table_HeI/block0_values";
-    char *dataset_name_HeII = "/Table_HeII/block0_values";
-    /* Read stellar table filename. */
-    sprintf(fname, "%s", rtp->stellar_table_path);
+    /* The FUV light escapes its birth cloud differently */
+    if (rtp->fuv_group >= 0)
+      rtp->f_esc_FUV =
+          parser_get_param_float(params, "KIARART:photon_escape_fraction_FUV");
 
-    int num_tables = 3;
-    rtp->ionizing_tables = malloc(num_tables * sizeof(double **));
-
-    rtp->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
-    rtp->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
-    rtp->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
-
-    /* print table check. */
-    // for (hsize_t i = 0; i < 13; i++){
-    //      for (hsize_t j = 0; j < 22; j++) {
-    //           printf("%.2f\n", rtp->ionizing_tables[0][i][j]);
-    //	 }
-    //  }
-
-    /* free the data name. */
-    free(fname);
+    /* Read the tables from BPASS. */
+    rt_props_read_bpass_tables(rtp);
   } else {
     error("Selected unknown stellar spectrum type %d",
           rtp->stellar_spectrum_type);
@@ -617,9 +754,55 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   rtp->number_weighted_cross_sections = NULL;
   rt_cross_sections_init(rtp, phys_const, us);
 
+  /* H2 photodissociation by the FUV group */
+  /* ------------------------------------- */
+
+  /* crackle's H2 ISRF photodissociation rate per G0 assumes the Draine
+   * (1978) spectrum, which has a fraction 0.1058 of its 6-13.6 eV photons in
+   * the LW band and a mean photon energy of 8.603 eV. For the same G0 the
+   * FUV group has f_LW / <E> over that many LW photons. The default f_LW is
+   * the BPASS (Chabrier, 100 Msun) value at Z = 0.014 over 0-100 Myr
+   * (0.19-0.26 over the metallicities; tools/make_kiara_rt_bpass_tables.py).
+   */
+  rtp->FUV_LW_photon_fraction = 0.;
+  rtp->H2_LW_spectral_factor = 1.;
+  if (rtp->fuv_group >= 0) {
+    rtp->FUV_LW_photon_fraction = parser_get_opt_param_double(
+        params, "KIARART:FUV_LW_photon_fraction", 0.208);
+    if (rtp->FUV_LW_photon_fraction < 0. || rtp->FUV_LW_photon_fraction > 1.)
+      error("KIARART:FUV_LW_photon_fraction must be in [0, 1], got %g",
+            rtp->FUV_LW_photon_fraction);
+    const double E_FUV_eV =
+        rtp->average_photon_energy[rtp->fuv_group] / 1.602176634e-12;
+    if (E_FUV_eV <= 0.) error("FUV group has mean photon energy %g", E_FUV_eV);
+    rtp->H2_LW_spectral_factor =
+        (rtp->FUV_LW_photon_fraction / E_FUV_eV) / (0.1058 / 8.603);
+    if (engine_rank == 0)
+      message(
+          "FUV group: LW photon fraction %g, mean photon energy %.3g eV: H2 "
+          "photodissociation per G0 is %.3g times that of the Draine field",
+          rtp->FUV_LW_photon_fraction, E_FUV_eV, rtp->H2_LW_spectral_factor);
+  }
+
   /* Finishers */
   /* --------- */
 }
+
+/**
+ * @brief Give the RT crackle instance the dust, H2 and ISRF parameters of
+ * the cooling (KIARACooling), and re-initialise it.
+ *
+ * The cooling is set up after the RT, so this is called once both are
+ * (and again on restart). With G0 from the RT (G0_computation_method 8),
+ * the H2 ISRF photodissociation rate per G0 is scaled by
+ * #rt_props.H2_LW_spectral_factor.
+ *
+ * @param rtp The #rt_props.
+ * @param cooling The #cooling_function_data.
+ */
+struct cooling_function_data;
+void rt_props_sync_crackle_with_cooling(
+    struct rt_props *rtp, const struct cooling_function_data *cooling);
 
 /**
  * @brief Update the RT properties at the start of a step (the grackle
@@ -682,23 +865,8 @@ __attribute__((always_inline)) INLINE static void rt_struct_restore(
   props->number_weighted_cross_sections = NULL;
   rt_cross_sections_init(props, phys_const, us);
 
-  /* Read the table from BPASS. */
-  char *fname = malloc(256);
-  char *dataset_name_HI = "/Table_HI/block0_values";
-  char *dataset_name_HeI = "/Table_HeI/block0_values";
-  char *dataset_name_HeII = "/Table_HeII/block0_values";
-  /* Read stellar table filename. */
-  sprintf(fname, "%s", props->stellar_table_path);
-
-  int num_tables = 3;
-  props->ionizing_tables = malloc(num_tables * sizeof(double **));
-
-  props->ionizing_tables[0] = read_Bpass_from_hdf5(fname, dataset_name_HI);
-  props->ionizing_tables[1] = read_Bpass_from_hdf5(fname, dataset_name_HeI);
-  props->ionizing_tables[2] = read_Bpass_from_hdf5(fname, dataset_name_HeII);
-
-  /* free the data name. */
-  free(fname);
+  /* Read the tables from BPASS. */
+  if (props->stellar_spectrum_type == 2) rt_props_read_bpass_tables(props);
 
   /* The RT parameters, in particular the reduced speed of light, are
    * not defined at compile time. So we need to write them down. */

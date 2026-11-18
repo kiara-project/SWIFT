@@ -33,6 +33,17 @@ struct rt_part_data {
    * clamps after transport, 4 redshifting, 5 drift correction */
   float debug_dE[6];
 
+  /*! DEBUG: the part of debug_dE[2] from exchanges in which only this
+   * particle was updated, its active partner being updated in its own call
+   * (non-symmetric interactions); sums to zero over all the particles if
+   * every such exchange has its counterpart */
+  float debug_dE_onesided;
+
+  /*! DEBUG: every transport increment of flux[].energy, added atomically
+   * when it is made (as energy); equals debug_dE[2] plus the pending energy
+   * unless increments to the accumulators were lost */
+  float debug_dE_acc;
+
   /*! DEBUG: cumulative RT photoheating (internal energy units), filled only
    * with KIARART:debug_grackle_heat: 0 delivered by Grackle (m * (u with RT
    * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
@@ -56,8 +67,45 @@ struct rt_part_data {
     float flux[3];
   } flux[RT_NGROUPS];
 
+  /*! Interstellar radiation field from the FUV photon group, in Habing units
+   * (0 below the density threshold, -1 if there is no FUV group). Used by
+   * the cooling as G0 with G0_computation_method 8. */
+  float G0;
+
   /* Particle RT time step. */
   float flux_dt;
+
+  /*! Stellar emission received and not yet added to the radiation (total
+   * energy): stars spread their emission over their time step, see
+   * rt_inject_pending_emission() */
+  float emission_pending[RT_NGROUPS];
+
+  /*! Rate (energy per physical time) at which emission_pending is added to
+   * the radiation, the sum of the rates of the stars it came from */
+  float emission_rate[RT_NGROUPS];
+
+  /*! Sum of the kernel weights of the neighbours eligible for transport,
+   * for a particle that is not (decoupled or with its cooling shut off) and
+   * gives its radiation to them (see rt_shed_collect()) */
+  float shed_wsum;
+
+  /*! Fraction of its radiation a particle ineligible for transport has handed
+   * over in its current RT step (rt_shed_radiation_exchange()), at most 1 */
+  float shed_frac_used;
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /*! DEBUG: fraction of its radiation the shedding particle would have handed
+   * over in this RT step without the limit at 1, and the numbers of receivers
+   * counted in the gradient loop and given radiation in the transport */
+  float shed_frac_req;
+  int shed_n_collect;
+  int shed_n_exchange;
+#endif
+
+  /*! Factor (<= 1) applied to the particle's reduced speed of light so that
+   * its RT time step satisfies the Courant condition (1 unless
+   * KIARART:local_cfl_reduced_c is set and the time step was floored) */
+  float c_scale;
 
   /*! Particle (comoving) volume when the radiation state was last updated
    * for a change of volume (0 until the first volume computation) */
@@ -172,8 +220,32 @@ struct rt_spart_data {
    * Total energy, not density, not rate! */
   float emission_this_step[RT_NGROUPS];
 
+  /*! Physical time over which emission_this_step is emitted (the star's
+   * time step): the gas neighbours add it to their radiation at the rate
+   * emission_this_step / emission_dt (0: at once) */
+  float emission_dt;
+
   /*! Neighbour weigths in each octant surrounding the star */
   float octant_weights[8];
+
+  /*! Energy to add to the next emission (total energy): the emission of
+   * steps without gas neighbours, and the radiation of the gas particle the
+   * star formed from */
+  float emission_carry[RT_NGROUPS];
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /*! DEBUG: photon energy budget (rt_part_data.debug_dE) of the gas particle
+   * the star formed from, frozen at the conversion, with the radiation
+   * handed to the star moved out of the injected column (it is injected
+   * again, and counted there, by the star) */
+  float debug_dE[6];
+
+  /*! DEBUG: rt_part_data.debug_dE_onesided of that gas particle */
+  float debug_dE_onesided;
+
+  /*! DEBUG: rt_part_data.debug_dE_acc of that gas particle */
+  float debug_dE_acc;
+#endif
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   /* data to store during entire run */

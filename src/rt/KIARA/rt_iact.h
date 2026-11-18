@@ -21,6 +21,7 @@
 
 #include "fvpm_geometry.h"
 #include "rt_debugging.h"
+#include "atomic.h"
 #include "rt_flux.h"
 #include "rt_gradients.h"
 
@@ -58,10 +59,12 @@ runner_iact_nonsym_rt_injection_prep(const float r2, const float dx[3],
   /* Gas particle must be within stars' smoothing length to receive energy */
   if (hi * hi < r2) return;
 
-  /* Don't give photon energy to wind/non-cooling particles */
-  if (pj->decoupled || pj->feedback_data.decoupling_delay_time > 0.f ||
-      pj->feedback_data.cooling_shutoff_delay_time)
-    return;
+  /* All the neighbours receive photons, including winds and particles with
+   * their cooling shut off: these are ineligible for transport and hand
+   * their radiation over to their eligible neighbours in the next transport
+   * step (rt_shed_radiation_exchange()). Skipping them here would lose the
+   * share of the particles kicked between this loop and the injection, and
+   * the prep and injection loops must use the same set of neighbours. */
 
 #ifdef SWIFT_RT_DEBUG_CHECKS
   si->rt_data.debug_iact_hydro_inject_prep += 1;
@@ -135,10 +138,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
   /* Gas particle must be within stars' smoothing length to receive energy */
   if (hi * hi < r2) return;
 
-  /* Don't give photon energy to wind/non-cooling particles */
-  if (pj->decoupled || pj->feedback_data.decoupling_delay_time > 0.f ||
-      pj->feedback_data.cooling_shutoff_delay_time)
-    return;
+  /* All the neighbours receive photons (see
+   * runner_iact_nonsym_rt_injection_prep()) */
 
   /* Compute the weight of the neighbouring particle */
   const float hi_inv = 1.f / hi;
@@ -179,14 +180,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
   const float Vinv = 1.f / pj->geometry.volume;
 
   /* Nurse, the patient is ready now */
+  const float emission_dt = si->rt_data.emission_dt;
   for (int g = 0; g < RT_NGROUPS; g++) {
-    /* Inject energy. */
+    /* Hand over the energy, which the particle adds to its radiation over
+     * the star's time step (rt_inject_pending_emission()) */
     const float injected_energy_density =
         si->rt_data.emission_this_step[g] * weight * Vinv;
-    pj->rt_data.radiation[g].energy_density += injected_energy_density;
-#ifdef SWIFT_KIARA_RT_DEBUG
-    pj->rt_data.debug_dE[0] += injected_energy_density * pj->geometry.volume;
-#endif
+    const float E_share = injected_energy_density * pj->geometry.volume;
+    pj->rt_data.emission_pending[g] += E_share;
+    /* No time step (e.g. the first one): add it all in the next RT step */
+    pj->rt_data.emission_rate[g] +=
+        (emission_dt > 0.f) ? E_share / emission_dt : FLT_MAX;
     if (g == 0 &&
         injected_energy_density * pj->geometry.volume * 1.98841e+53 > 1.e57)
       message(
@@ -221,6 +225,71 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
 }
 
 /**
+ * @brief Transport loop part of the hand-over of the radiation of a particle
+ * ineligible for transport (rt_part_sheds_radiation()) to its eligible
+ * neighbours: over the shedding particle's RT step, neighbour j receives the
+ * fraction W_ij / sum_k W_ik (sum from the gradient loop, rt_shed_collect())
+ * of its radiation energy, isotropically (no flux). The energy is moved
+ * through the flux accumulators applied in rt_finalise_transport(), and the
+ * shedding particle loses exactly what its neighbours gain.
+ *
+ * As for the fluxes, each particle of the pair is updated in exactly one
+ * call: p_exp if update_exp, p_rec if update_rec.
+ *
+ * @param r2 Comoving squared distance.
+ * @param h_exp Smoothing length of the shedding particle.
+ * @param p_exp The (possibly) shedding particle.
+ * @param p_rec The (possibly) receiving neighbour.
+ * @param a Current scale factor.
+ * @param update_exp Update the shedding particle in this call?
+ * @param update_rec Update the receiving particle in this call?
+ */
+__attribute__((always_inline)) INLINE static void rt_shed_radiation_exchange(
+    const float r2, const float h_exp, struct part *restrict p_exp,
+    struct part *restrict p_rec, const float a, const int update_exp,
+    const int update_rec) {
+
+  /* Only over the shedding particle's own RT step */
+  if (p_exp->rt_data.flux_dt <= 0.f || p_exp->rt_data.shed_wsum <= 0.f) return;
+  if (rt_part_is_ineligible(p_rec) || !rt_part_sheds_radiation(p_exp)) return;
+  if (r2 >= kernel_gamma2 * h_exp * h_exp) return;
+
+  float w;
+  kernel_eval(sqrtf(r2) / h_exp, &w);
+  const float frac_req = w / p_exp->rt_data.shed_wsum;
+
+  /* The fractions handed over in this RT step add up to 1 if the transport
+   * loop finds the receivers the gradient loop counted. Never hand over more
+   * than the particle holds: anything above that would be created, as the
+   * negative energy the shedding particle is left with is clamped to 0. */
+  const float frac =
+      fminf(frac_req, fmaxf(1.f - p_exp->rt_data.shed_frac_used, 0.f));
+  if (update_exp) {
+    p_exp->rt_data.shed_frac_used += frac;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    p_exp->rt_data.shed_frac_req += frac_req;
+    p_exp->rt_data.shed_n_exchange += 1;
+#endif
+  }
+  if (frac <= 0.f) return;
+
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    /* The accumulators hold energy (rt_finalise_transport adds
+     * flux.energy / V) */
+    const float dE = p_exp->rt_data.radiation[g].energy_density *
+                     p_exp->geometry.volume * frac;
+    if (update_exp) p_exp->rt_data.flux[g].energy -= dE;
+    if (update_rec) p_rec->rt_data.flux[g].energy += dE;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    if (update_exp) atomic_add_f(&p_exp->rt_data.debug_dE_acc, -dE);
+    if (update_rec) atomic_add_f(&p_rec->rt_data.debug_dE_acc, dE);
+    if (update_exp && !update_rec) p_exp->rt_data.debug_dE_onesided -= dE;
+    if (update_rec && !update_exp) p_rec->rt_data.debug_dE_onesided += dE;
+#endif
+  }
+}
+
+/**
  * @brief Flux calculation between particle i and particle j
  *
  * This method calls runner_iact_rt_fluxes_common with mode 1.
@@ -251,6 +320,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     pj->rt_data.debug_calls_iact_transport_interaction += 1;
   }
 #endif
+
+  /* Hand-over of the radiation of particles ineligible for transport, with
+   * the same rule for which particles are updated as for the fluxes */
+  const int update_j = (mode == 1 || pj->rt_data.flux_dt < 0.f);
+  rt_shed_radiation_exchange(r2, hi, pi, pj, a, /*update_exp=*/1, update_j);
+  rt_shed_radiation_exchange(r2, hj, pj, pi, a, update_j, /*update_rec=*/1);
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
@@ -305,12 +380,22 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   const float mindt =
       (rtj->flux_dt > 0.f) ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
 
-  /* Accumulate the interface areas for the time-step criterion, for the
-   * particles whose fluxes are updated here */
+  /* Accumulate the interface areas of the particles' own transport steps,
+   * for the time-step criterion and the positivity limiter. Each interface
+   * is counted once per own step: an inactive neighbour (flux_dt < 0) also
+   * exchanges with every one of the active particle's steps in between its
+   * own, and counting those would inflate its area by the ratio of the
+   * steps. It gets the area from its own step's interactions. */
   if (mindt > 0.f) {
     rti->area_sum += Anorm;
-    if (mode == 1 || (rtj->flux_dt < 0.f)) rtj->area_sum += Anorm;
+    if (mode == 1 && rtj->flux_dt > 0.f) rtj->area_sum += Anorm;
   }
+
+  /* The interface area used for the exchange, scaled so that neither
+   * particle's areas sum to more than rt_params.area_ratio_max times its
+   * V / R (the same factor on both sides keeps the exchange conservative) */
+  const float Anorm_flux =
+      Anorm * fminf(rt_part_get_area_scale(pi), rt_part_get_area_scale(pj));
 
   /* The Riemann solver returns the F-equation flux divided by c (see
    * rt_part_get_transport_state_vector): each particle applies its own c. */
@@ -333,7 +418,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
 
     float totflux[4];
 
-    rt_compute_flux(Ui, Uj, n_unit, Anorm, totflux);
+    rt_compute_flux(Ui, Uj, n_unit, Anorm_flux, totflux);
 
     /* When solving the Riemann problem, we assume pi is left state, and
      * pj is right state. The sign convention is that a positive total
@@ -396,15 +481,28 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
     }
 
     if (mindt > 0.f) {
-      rti->flux[g].energy -= totflux[0] * mindt;
-      rti->flux[g].flux[0] -= ci * totflux[1] * mindt;
-      rti->flux[g].flux[1] -= ci * totflux[2] * mindt;
-      rti->flux[g].flux[2] -= ci * totflux[3] * mindt;
+      /* The fluxes are in comoving units over a physical time step, with
+       * dU/dt + (1/a) div(F) = 0: the exchange is converted with the scale
+       * factor of the exchange itself, so that both particles apply the
+       * same energy even if they apply it at different times (an inactive
+       * neighbour only applies it at the end of its own, longer, step). */
+      const float dt_a = mindt / a;
+#ifdef SWIFT_KIARA_RT_DEBUG
+      if (!(mode == 1 || (rtj->flux_dt < 0.f)))
+        rti->debug_dE_onesided -= totflux[0] * dt_a;
+      atomic_add_f(&rti->debug_dE_acc, -totflux[0] * dt_a);
+      if (mode == 1 || (rtj->flux_dt < 0.f))
+        atomic_add_f(&rtj->debug_dE_acc, totflux[0] * dt_a);
+#endif
+      rti->flux[g].energy -= totflux[0] * dt_a;
+      rti->flux[g].flux[0] -= ci * totflux[1] * dt_a;
+      rti->flux[g].flux[1] -= ci * totflux[2] * dt_a;
+      rti->flux[g].flux[2] -= ci * totflux[3] * dt_a;
       if (mode == 1 || (rtj->flux_dt < 0.f)) {
-        rtj->flux[g].energy += totflux[0] * mindt;
-        rtj->flux[g].flux[0] += cj * totflux[1] * mindt;
-        rtj->flux[g].flux[1] += cj * totflux[2] * mindt;
-        rtj->flux[g].flux[2] += cj * totflux[3] * mindt;
+        rtj->flux[g].energy += totflux[0] * dt_a;
+        rtj->flux[g].flux[0] += cj * totflux[1] * dt_a;
+        rtj->flux[g].flux[1] += cj * totflux[2] * dt_a;
+        rtj->flux[g].flux[2] += cj * totflux[3] * dt_a;
       }
     }
     // if (g==0 && totflux[0] != 0. && (Ei > 1.e60 || Ej > 1.e60))

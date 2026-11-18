@@ -266,7 +266,7 @@ static double interpolate_2D_non_uniform(const double *array_x1,
 
 /**
  * @brief Compute the energy emitted from a star during the time step dt.
- * This is using BPASS model with three photon bins.
+ * This is using the BPASS model, with one table per photon group.
  *
  * @param emission_this_step (return) the emitted radiation energy of a star
  * during the time interval dt
@@ -281,7 +281,7 @@ static double interpolate_2D_non_uniform(const double *array_x1,
  * erg
  * @param phys_const struct holding physical constants
  * @param internal_units units struct containing internal units
- * @param f_esc escape fraction applied to the emitted photons
+ * @param f_esc escape fraction applied to the emitted photons of each group
  */
 __attribute__((always_inline)) INLINE static void
 rt_get_emission_this_step_BPASS(double emission_this_step[RT_NGROUPS], float M,
@@ -291,7 +291,7 @@ rt_get_emission_this_step_BPASS(double emission_this_step[RT_NGROUPS], float M,
                                 const double average_photon_energy[RT_NGROUPS],
                                 const struct phys_const *phys_const,
                                 const struct unit_system *internal_units,
-                                const double f_esc) {
+                                const double f_esc[RT_NGROUPS]) {
 
   /* Get the array for the table range.
    * TODO: Hard code in now, need to replace it. */
@@ -379,7 +379,7 @@ rt_get_emission_this_step_BPASS(double emission_this_step[RT_NGROUPS], float M,
       double N_emission_this_step = N_total_now - N_total_before;
 
       /* average photon densities are in cgs! */
-      const double E_g = f_esc * average_photon_energy[g] *
+      const double E_g = f_esc[g] * average_photon_energy[g] *
                          N_emission_this_step * M_star_fraction / energy_units;
       emission_this_step[g] = E_g;
 

@@ -49,6 +49,11 @@ struct rt_parameters {
 
   /*! Power of h / varc_h_ref (1: same RT time step for all particles) */
   float varc_alpha;
+
+  /*! Maximal ratio sum|A| R / V of a particle's interface areas (3 for a
+   * sphere) used in the transport, its time step and c_scale, and the
+   * effective speed of light */
+  float area_ratio_max;
 };
 
 #endif /* SWIFT_KIARA_RT_PARAMETERS_H */
