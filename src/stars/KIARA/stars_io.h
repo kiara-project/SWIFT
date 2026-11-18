@@ -288,9 +288,21 @@ INLINE static void stars_props_init(struct stars_props *sp,
                                     struct swift_params *params,
                                     const struct hydro_props *p,
                                     const struct cosmology *cosmo) {
-  /* Kernel properties */
-  sp->eta_neighbours = parser_get_opt_param_float(
-      params, "Stars:resolution_eta", p->eta_neighbours);
+  /* Kernel properties: Stars:resolution_eta or Stars:target_neighbours
+   * (at most one), else the hydro value */
+  const float stars_eta =
+      parser_get_opt_param_float(params, "Stars:resolution_eta", 0.f);
+  const float stars_ngb =
+      parser_get_opt_param_float(params, "Stars:target_neighbours", 0.f);
+  if (stars_eta > 0.f && stars_ngb > 0.f)
+    error(
+        "Set at most one of Stars:resolution_eta and Stars:target_neighbours");
+  if (stars_ngb > 0.f)
+    sp->eta_neighbours = powf(stars_ngb / kernel_norm, hydro_dimension_inv);
+  else if (stars_eta > 0.f)
+    sp->eta_neighbours = stars_eta;
+  else
+    sp->eta_neighbours = p->eta_neighbours;
 
   /* Tolerance for the smoothing length Newton-Raphson scheme */
   sp->h_tolerance =

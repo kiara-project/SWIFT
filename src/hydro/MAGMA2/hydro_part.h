@@ -169,6 +169,13 @@ struct part {
   struct fof_galaxy_data galaxy_data;
 #endif
 
+  /*! Cumulative number of (coupled) force interactions of this particle */
+  int force_interaction_count;
+
+  /*! Cumulative number of those that fell back to the SPH gradient because
+   * |G_ij| exceeded SPH:max_gradient_ratio times the SPH gradient */
+  int gradient_limited_count;
+
 #ifdef MAGMA2_DEBUG_CHECKS
   struct {
     /*! Correction matrix at the last time it was ill-conditioned */

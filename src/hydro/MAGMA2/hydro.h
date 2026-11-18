@@ -2379,6 +2379,10 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   xp->v_full[2] = p->v[2];
   xp->u_full = p->u;
 
+  /* Diagnostic counters of the gradient limiter */
+  p->force_interaction_count = 0;
+  p->gradient_limited_count = 0;
+
   /* No kick yet, so no step length for the viscosity cap */
   p->dt_kick_therm = 0.;
 
