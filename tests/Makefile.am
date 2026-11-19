@@ -40,7 +40,7 @@ TESTS = testGreetings testMaths testReading.sh testKernel testKernelAccuracy \
         testAtomic testGravitySpeed testMeshGravityRebuildCheck testNeutrinoCosmology.sh \
         testNeutrinoFermiDirac \
         testLog testDistance testTimeline testZoomInit.sh testGetZoomIJKFunc.sh \
-        testZoomRegrid.sh testSpaceSplit testZoomVoidTree.sh testZoomGravityDown testMeshGravityRebuildCheck \
+        testZoomRegrid.sh testSpaceSplit testZoomVoidTree.sh testZoomGravityDown \
         testZoomMeshGravity testZoomMeshResolutionGuard
         # testMatrixInversion
 

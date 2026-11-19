@@ -40,34 +40,52 @@ struct zoom_pm_mesh {
   /*! Is the zoom mesh enabled? */
   int enabled;
 
-  /*! Side-length of the mesh along each axis. */
-  int N[3];
+  /*! The number of threads used by the FFTW library */
+  int nr_threads;
 
-  /*! Lower corner of the mesh in box coordinates. */
+  /*! Use FFTW-MPI slab decomposition, matching the global mesh option */
+  int distributed_mesh;
+
+  /*! Use private cell patches instead of per-particle atomic writes */
+  int use_local_patches;
+
+  /*! Number of background top-level cell shells around the zoom region */
+  int buffer_cells;
+
+  /*! Side-length of the mesh */
+  int N;
+
+  /*! Lower corner of the mesh in box coordinates */
   double loc[3];
 
-  /*! Side-length of the mesh region along each axis. */
+  /*! Side-length of the mesh region along each axis */
   double dim[3];
 
-  /*! Conversion factor between box and mesh coordinates. */
-  double cell_fac[3];
+  /*! Conversion factor between box and mesh size */
+  double cell_fac;
 
-  /*! Scale over which we smooth the forces. */
+  /*! Lower bound of the region in which forces can be interpolated */
+  double active_min[3];
+
+  /*! Upper bound of the region in which forces can be interpolated */
+  double active_max[3];
+
+  /*! Scale over which we smooth the forces */
   double r_s;
 
-  /*! Inverse of the scale over which we smooth the forces. */
+  /*! Inverse of the scale over which we smooth the forces */
   double r_s_inv;
 
-  /*! Distance beyond which tree forces are handled by the zoom mesh. */
+  /*! Distance beyond which tree forces are handled by the zoom mesh */
   double r_cut_max;
 
-  /*! Distance below which tree forces are retained. */
+  /*! Distance below which tree forces are retained */
   double r_cut_min;
 
-  /*! Full zero-padded mesh used as density and potential field. */
+  /*! Full zero-padded mesh used as density and potential field */
   double *potential_global;
 
-  /*! Fourier transform of the static isolated-convolution kernel. */
+  /*! Fourier transform of the static isolated-convolution kernel */
   void *kernel_fft;
 };
 
@@ -81,8 +99,12 @@ int zoom_mesh_can_use_mesh_between_rebuilds(const struct zoom_pm_mesh *mesh,
                                             const struct cell *cj);
 void zoom_mesh_init(struct zoom_pm_mesh *mesh, struct swift_params *params,
                     const struct gravity_props *props, const struct space *s,
-                    const int verbose);
+                    const int nr_threads, const int verbose);
+void zoom_mesh_init_no_mesh(struct zoom_pm_mesh *mesh);
 void zoom_mesh_clean(struct zoom_pm_mesh *mesh);
+void zoom_mesh_allocate(struct zoom_pm_mesh *mesh);
+void zoom_mesh_free(struct zoom_pm_mesh *mesh);
+void zoom_mesh_regrid(struct zoom_pm_mesh *mesh, const struct space *s);
 void zoom_mesh_check_geometry(const struct zoom_pm_mesh *mesh,
                               const struct space *s);
 void zoom_mesh_compute_potential(struct zoom_pm_mesh *mesh,
@@ -93,6 +115,8 @@ int zoom_mesh_cell_is_covered(const struct zoom_pm_mesh *mesh,
 int zoom_mesh_cells_are_covered(const struct zoom_pm_mesh *mesh,
                                 const struct cell *ci, const struct cell *cj,
                                 const int use_max_dx);
+double zoom_mesh_CIC_deconvolution(const int kx, const int ky, const int kz,
+                                   const int N);
 void zoom_mesh_struct_dump(const struct zoom_pm_mesh *mesh, FILE *stream);
 void zoom_mesh_struct_restore(struct zoom_pm_mesh *mesh, FILE *stream);
 

@@ -1964,6 +1964,9 @@ int engine_prepare(struct engine *e) {
     /* Free the PM grid */
     if ((e->policy & engine_policy_self_gravity) && e->s->periodic)
       pm_mesh_free(e->mesh);
+    if (e->zoom_mesh != NULL && e->zoom_mesh->enabled) {
+      zoom_mesh_free(e->zoom_mesh);
+    }
 
     /* And repartition */
     engine_repartition(e);
@@ -1972,6 +1975,9 @@ int engine_prepare(struct engine *e) {
     /* Reallocate the mesh */
     if ((e->policy & engine_policy_self_gravity) && e->s->periodic)
       pm_mesh_allocate(e->mesh);
+    if (e->zoom_mesh != NULL && e->zoom_mesh->enabled) {
+      zoom_mesh_allocate(e->zoom_mesh);
+    }
   }
 
   /* Do we need rebuilding ? */
@@ -4268,12 +4274,14 @@ void engine_recompute_displacement_constraint(struct engine *e) {
     const float vel_norm_b =
         vel_norm[0] + vel_norm[3] + vel_norm[4] + vel_norm[5];
 
-    /* Mesh forces smoothing scale */
+    /* Mesh forces smoothing scale (the smallest one if there is a zoom
+     * mesh) */
     float r_s;
     if ((e->policy & engine_policy_self_gravity) && e->s->periodic) {
       r_s = e->mesh->r_s;
-      if (e->zoom_mesh != NULL && e->zoom_mesh->enabled)
+      if (e->zoom_mesh != NULL && e->zoom_mesh->enabled) {
         r_s = min(r_s, (float)e->zoom_mesh->r_s);
+      }
     } else {
       r_s = FLT_MAX;
     }

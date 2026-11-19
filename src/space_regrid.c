@@ -522,6 +522,9 @@ static void space_partition_cells(struct space *s, int *oldnodeIDs,
                                   s->e->nr_nodes, s);
     }
 
+    /* Void cells must be local on every rank. */
+    if (s->with_zoom_region) zoom_partition_voids(s, s->e->nodeID);
+
     /* Re-distribute the particles to their new nodes. */
     engine_redistribute(s->e);
 
@@ -539,6 +542,9 @@ static void space_partition_cells(struct space *s, int *oldnodeIDs,
      * partition_store_celllist() was called once before, or just before
      * dumping the restart files.*/
     partition_restore_celllist(s, s->e->reparttype);
+
+    /* Void cells must be local on every rank. */
+    if (s->with_zoom_region) zoom_partition_voids(s, s->e->nodeID);
 
     /* Now re-distribute the particles, should just add to cells? */
     engine_redistribute(s->e);
@@ -662,6 +668,16 @@ void space_regrid(struct space *s, int verbose) {
                           old_zoom_cdim, old_zoom_lower, no_regrid);
 #endif
 
+    /* When running a zoom we can regrid and change the zoom region geometry but
+     * leave the number of cells the same. In this case the extras get left in
+     * their old locations and we need to shift them to their new locations. */
+    if (s->with_zoom_region && s->e != NULL) zoom_space_shift_extras(s);
+
+    /* Refresh the isolated mesh after rebuilding the zoom top-level cells. */
+    if (s->with_zoom_region && s->e != NULL) {
+      zoom_mesh_regrid(s->e->zoom_mesh, s);
+    }
+
   } /* re-build upper-level cells? */
   else { /* Otherwise, just clean up the cells. */
 
@@ -699,32 +715,20 @@ void space_regrid(struct space *s, int verbose) {
    * order, or passing around extra information. Although annoying this just
    * means this error could be triggered after everything is set up instead of
    * during set up at the beginning of a run. */
-  if (s->periodic && s->with_zoom_region && s->e != NULL) {
+  if (s->periodic && s->with_zoom_region && s->e != NULL &&
+      s->e->zoom_mesh != NULL && s->e->zoom_mesh->enabled) {
 
-    const struct zoom_pm_mesh *zoom_mesh = s->e->zoom_mesh;
+    /* The zoom mesh, not the background mesh, has to resolve the zoom cells */
+    zoom_mesh_check_geometry(s->e->zoom_mesh, s);
 
-    if (zoom_mesh != NULL && zoom_mesh->enabled) {
-
-      /* The zoom mesh supplies the long-range forces inside the zoom region, so
-       * it is the zoom mesh -- not the background mesh -- that has to resolve
-       * the zoom cells. The background mesh only ever handles the background
-       * cells here, and that it resolves those is already checked against the
-       * background cdim in gravity_props_init. */
-      zoom_mesh_check_geometry(zoom_mesh, s);
-
-    } else if (s->dim[0] / s->e->gravity_properties->mesh_size >
-               s->zoom_props->width[0]) {
-
-      /* Without a zoom mesh the background mesh is responsible for the zoom
-       * cells too, and so must resolve them. */
-      error(
-          "Mesh too small given the size of top-level zoom cells (width= "
-          "%.2f). Should be at least %d cells wide (Currently: %d). "
-          "Alternatively, enable the high-resolution zoom mesh with "
-          "Gravity:zoom_mesh, which handles the zoom cells itself.",
-          s->zoom_props->width[0], (int)(s->dim[0] / s->zoom_props->width[0]),
-          s->e->gravity_properties->mesh_size);
-    }
+  } else if (s->periodic && s->with_zoom_region && s->e != NULL &&
+             s->dim[0] / s->e->gravity_properties->mesh_size >
+                 s->zoom_props->width[0]) {
+    error(
+        "Mesh too small given the size of top-level zoom cells (width= "
+        "%.2f). Should be at least %d cells wide (Currently: %d).",
+        s->zoom_props->width[0], (int)(s->dim[0] / s->zoom_props->width[0]),
+        s->e->gravity_properties->mesh_size);
   }
 
   if (verbose)
