@@ -60,7 +60,9 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
 	    if (chemistry->H2_self_shielding == 3) {
 	    /* H2 self-shielding following Wolcott-Green & Haiman (2019),
  	       range of validity: T=100-8000 K, n<=1e7 cm^-3 */
-	        const double N_H2 = cunits->dom * gp->rhoH2 * l_H2shield;
+	        /* dom * rhoH2 is the number density of H nuclei in H2; the column of H2 molecules is half of that
+	         * (Grackle's solve_rate_cool_g.F omits the 1/2) */
+	        const double N_H2 = 0.5 * cunits->dom * gp->rhoH2 * l_H2shield;
                 const double tgas_touse = min(max(gp->tgas,100.),8000);
                 const double ngas_touse = min(gp->density * cunits->dom / gp->mmw, 1.e7);
                 const double aWG2019 = (0.8711 * log10(tgas_touse) - 1.928) *
@@ -77,7 +79,7 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
 	        const double NH_cgs = cunits->dom * gp->rhoH * l_H2shield;
 	        const double xH = NH_cgs / 2.85e23;
 	        const double fH_shield = pow(1.+xH,-1.62) * exp(-0.149*xH);
-	        const double NH2_cgs = cunits->dom * gp->rhoH2 * l_H2shield;
+	        const double NH2_cgs = 0.5 * cunits->dom * gp->rhoH2 * l_H2shield;  /* H2 molecules */
     	        const double DH2_cgs = 1.e-5 * sqrt(2.*1.38e-16*gp->tgas / 3.346e-24);
     	        const double xH2 = NH2_cgs / 8.465e13;
     	        const double fH2_shield = 0.9379/pow(1.f+xH2/DH2_cgs,1.879) + 0.03465/pow(1.f+xH2,0.473) * exp(-2.293e-4*sqrt(1+xH2));

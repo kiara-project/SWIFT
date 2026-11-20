@@ -55,7 +55,7 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
  * Habing, n the cloud H density, sigma' the dust-to-gas ratio relative to local_dust_to_gas_ratio, which sets both
  * sigma_g = 1.9e-21 sigma' cm^2 and the H2 formation rate, so it cancels from alphaG except in the bracket). The
  * particle's gas column N_H (its mean density times the H2 shielding length) has the same layer on its far side, so
- * at most 1 - N_HI / N_H of its hydrogen is molecular; any H2 above this is returned to HI. */
+ * at most 1 - 2 N_HI / N_H of its hydrogen is molecular; any H2 above this is returned to HI. */
 static void apply_sternberg_h2_limit(grackle_part_data *gp, const chemistry_data *chemistry, const crackle_units *cunits)
 {
 	if (gp->isrf_habing <= 0. || gp->rhoH <= 0. || gp->H2I_density <= 0. || gp->dust2gas <= tiny) return;
@@ -66,7 +66,7 @@ static void apply_sternberg_h2_limit(grackle_part_data *gp, const chemistry_data
 	                      / crackle_dust_area_factor(gp);
 	const double N_HI = log(0.5 * alphaG + 1.) / (chemistry->H2_dust_shielding_cross_section * sigma_rel);
 	const double N_H = cunits->dom * gp->rhoH * gp->H2_self_shielding_length * cunits->length_to_cgs;
-	const double fH2_max = fmax(1. - N_HI / fmax(N_H, tiny), 0.);
+	const double fH2_max = fmax(1. - 2. * N_HI / fmax(N_H, tiny), 0.);
 	const double excess = gp->H2I_density - fH2_max * gp->rhoH;
 	if (excess > 0.) {
 	    gp->H2I_density -= excess;
