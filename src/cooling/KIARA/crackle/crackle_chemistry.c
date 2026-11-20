@@ -154,6 +154,8 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_helium(&gp, &gp, chemistry, &my_rates, 0.5 * dtit); 
 	    if (chemistry->primordial_chemistry >= 2) evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, 0.5 * dtit);  
 	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dtit); 
+	    /* SNe_density is the SNe of the whole step: destroy their dust once, not every iteration */
+	    gp.SNe_density = 0.;
 	    evolve_elements(&gp, &gp_old, chemistry);
 
 	    /* Done with iteration */
@@ -189,6 +191,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, dt - dtcool); 
 	    evolve_elements(&gp, &gp_old, chemistry);
 	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dt - dtcool);
+	    gp.SNe_density = 0.;
 	}
 
 	/* Limit the molecular fraction to the Sternberg+14 shielded interior */
@@ -199,6 +202,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	}
 
 	check_hydrogen(&gp, 99);
+	gp.SNe_density = gp_io->SNe_density;  /* an input; zeroed above once used */
 	*gp_io = gp;
 
 	return 1;
