@@ -3191,11 +3191,13 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   /* Flag to enable H2 cooling attenuation from Ripamonti & Abel (2004).
    * Default: 0 */
   chemistry->h2_optical_depth_approximation = 0;
-  /* Flag to enable a spatially uniform heating term approximating
-   * photo-electric heating from dust from Tasker & Bryan (2008). Default: 0. */
-  chemistry->photoelectric_heating = 0;
-  /* photo-electric on [but not adjusted to local background, beware!] */
-  chemistry->photoelectric_heating_rate = 8.5e-26;
+  /* Photo-electric heating from dust. Crackle applies it whenever
+   * use_isrf_field is set, as Wolfire et al. (1995) eq. 1:
+   * gammah * 0.05 * G0, which needs gammah = 1e-24 erg/s, i.e. mode 2.
+   * (Mode 0/1 would make gammah = photoelectric_heating_rate, which already
+   * includes epsilon = 0.05 and G0 = 1.7, giving heating ~12x too low.) */
+  chemistry->photoelectric_heating = 2;
+  chemistry->photoelectric_heating_rate = 8.5e-26; /* unused in mode 2 */
 
   /* Flag to enable Compton heating from an X-ray background following Madau &
    * Efstathiou (1999). Default: 0. */
