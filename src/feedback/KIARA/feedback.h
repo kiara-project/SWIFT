@@ -299,6 +299,7 @@ __attribute__((always_inline)) INLINE static void feedback_init_spart(
 
   sp->feedback_data.kernel_wt_sum = 0.f;
   sp->feedback_data.wind_wt_sum = 0.f;
+  sp->feedback_data.wind_wt_sum_sfr = 0.f;
   sp->feedback_data.ngb_mass = 0.f;
   sp->feedback_data.wind_ngb_mass = 0.f;
 

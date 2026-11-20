@@ -100,34 +100,33 @@ __attribute__((always_inline)) INLINE static float feedback_set_kick_direction(
 }
 
 /**
- * @brief Compute customized kernel weight for feedback
+ * @brief Launch weight of a gas neighbour of a star (includes the mass).
  *
- * The weight is zero beyond kick_radius_over_h; with use_sfr_weighted_launch
- * the SFR is added to the kernel value to favour star-forming gas. The
- * result is multiplied by the particle mass.
+ * The weight is zero beyond kick_radius_over_h. Otherwise it is m_j W_ij,
+ * or with sfr_weighted (use_sfr_weighted_launch, and at least one
+ * star-forming neighbour) m_j W_ij SFR_j, zero for gas that does not form
+ * stars. The launch probability is the weight over the sum of the weights,
+ * so the SFR weighting does not depend on the unit system: winds are drawn
+ * from the star-forming gas in proportion to its SFR (as in Simba), biased
+ * towards the star, and from all nearby gas when none forms stars.
  *
  * @param pj gas particle.
  * @param wi SPH kernel weight at location of pj
  * @param ui Distance to pj in units of the star's smoothing length.
  * @param fb_props Properties of the feedback scheme.
+ * @param sfr_weighted Use the SFR-weighted form.
  * @return The (mass-weighted) launch weight of pj.
  */
 __attribute__((always_inline)) INLINE static float feedback_kernel_weight(
     const struct part *pj, const float wi, const float ui,
-    const struct feedback_props *fb_props) {
+    const struct feedback_props *fb_props, const int sfr_weighted) {
 
   /* If it's beyond the kick radius, then the weighting is zero */
   if (ui >= fb_props->kick_radius_over_h) return 0.f;
 
-  /* Weight towards higher SFR particles. As SFR->0, SFR_wi->wi and
-   * then radial weighting returns to normal. */
-  float weight = wi;
-  if (fb_props->use_sfr_weighted_launch == 1) {
-    weight = (pj->sf_data.SFR > 0.f) ? wi + pj->sf_data.SFR : wi;
-  }
-  weight *= hydro_get_mass(pj);
-
-  return weight;
+  const float weight = hydro_get_mass(pj) * wi;
+  if (!sfr_weighted) return weight;
+  return (pj->sf_data.SFR > 0.f) ? weight * pj->sf_data.SFR : 0.f;
 }
 
 /**
@@ -184,9 +183,12 @@ runner_iact_nonsym_feedback_density(const float r2, const float dx[3],
   if (pj->decoupled) return;
 
   /* Sum up the weights for normalizing the kernel later */
-  const float wt = feedback_kernel_weight(pj, wi, ui, fb_props);
+  const float wt = feedback_kernel_weight(pj, wi, ui, fb_props, 0);
   si->feedback_data.wind_wt_sum += wt;
   if (wt > 0.f) si->feedback_data.wind_ngb_mass += mj;
+  if (fb_props->use_sfr_weighted_launch == 1)
+    si->feedback_data.wind_wt_sum_sfr +=
+        feedback_kernel_weight(pj, wi, ui, fb_props, 1);
 }
 
 /**
@@ -247,8 +249,12 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
   float wi;
   kernel_eval(ui, &wi);
 
-  /* Bias towards the center of the kernel and to high SFR. Note: contains mj */
-  const float wt = feedback_kernel_weight(pj, wi, ui, fb_props);
+  /* Launch weight (contains mj): by SFR if any neighbour forms stars */
+  const int sfr_weighted = fb_props->use_sfr_weighted_launch == 1 &&
+                           si->feedback_data.wind_wt_sum_sfr > 0.f;
+  const float wt = feedback_kernel_weight(pj, wi, ui, fb_props, sfr_weighted);
+  const float wt_sum = sfr_weighted ? si->feedback_data.wind_wt_sum_sfr
+                                    : si->feedback_data.wind_wt_sum;
 
   /* No kick if weight is zero */
   if (wt <= 0.f) return;
@@ -270,7 +276,7 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
   const float wj = wt / hydro_get_mass(pj);
 
   /* Probability to swallow this particle */
-  const float prob = mass_to_launch * wj / si->feedback_data.wind_wt_sum;
+  const float prob = mass_to_launch * wj / wt_sum;
 
   /* Draw a random number (Note mixing both IDs), up to max probability */
   const float rand = random_unit_interval(si->id + pj->id, ti_current,
@@ -289,7 +295,7 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
       cosmo->z, si->id, pj->id, prob, rand,
       si->feedback_data.mass_to_launch / si->mass_init,
       si->feedback_data.mass_to_launch, si->mass_init, wj,
-      si->feedback_data.wind_wt_sum, pj->feedback_data.kick_id == si->id);
+      wt_sum, pj->feedback_data.kick_id == si->id);
 #endif
 }
 

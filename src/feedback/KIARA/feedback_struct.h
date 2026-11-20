@@ -124,6 +124,10 @@ struct feedback_spart_data {
 
   /*! Initial stream radius for firehose model */
   float firehose_radius_stream;
+
+  /*! Normalisation of the SFR-weighted launch weights (use_sfr_weighted_launch)
+   */
+  float wind_wt_sum_sfr;
 };
 
 #endif /* SWIFT_FEEDBACK_STRUCT_KIARA_H */
