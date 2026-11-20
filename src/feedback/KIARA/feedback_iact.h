@@ -153,9 +153,6 @@ runner_iact_nonsym_feedback_density(const float r2, const float dx[3],
                                     const struct feedback_props *fb_props,
                                     const integertime_t ti_current) {
 
-  /* Do not count winds in the density */
-  // if (pj->decoupled) return;
-
   const float rho = hydro_get_comoving_density(pj);
   if (rho <= 0.f) return;
 
@@ -180,6 +177,11 @@ runner_iact_nonsym_feedback_density(const float r2, const float dx[3],
 
   /* If pj is being kicked in this step, don't kick again */
   if (pj->feedback_data.kick_id > -1) return;
+
+  /* Existing winds (decoupled) are not kicked again, so they do not take
+   * part in the launch weights; they are still in kernel_wt_sum above, as
+   * they still receive their share of the enrichment */
+  if (pj->decoupled) return;
 
   /* Sum up the weights for normalizing the kernel later */
   const float wt = feedback_kernel_weight(pj, wi, ui, fb_props);
@@ -228,8 +230,9 @@ runner_iact_nonsym_feedback_prep1(const float r2, const float dx[3],
   /* If pj is being kicked by another star particle, don't kick again */
   if (pj->feedback_data.kick_id > -1) return;
 
-  /* If pj is already a wind particle, don't kick again */
-  // if (pj->decoupled) return;
+  /* If pj is already a wind particle, don't kick again (that would reset
+   * its decoupling timer and stream) */
+  if (pj->decoupled) return;
 
   /* Get r. */
   const float r = sqrtf(r2);
@@ -893,8 +896,8 @@ runner_iact_nonsym_feedback_apply(
     const struct cosmology *cosmo, const struct hydro_props *hydro_props,
     const struct feedback_props *fb_props, const integertime_t ti_current) {
 
-  /* Ignore decoupled particles */
-  // if (pj->decoupled) return;
+  /* Decoupled particles are enriched like the others (they are in
+   * kernel_wt_sum); they are never kicked, as prep1 skips them */
 
   /* Do chemical enrichment of gas, metals and dust from star */
   feedback_do_chemical_enrichment_of_gas_around_star(
