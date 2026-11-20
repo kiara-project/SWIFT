@@ -28,8 +28,7 @@
 #endif
 #include "chemistry/KIARA/dust.h"
 
-#define FIREHOSE_COOLLIM 0.1f            /* -u_new / u */
-#define FIREHOSE_HEATLIM 10.f            /* +u_new / u */
+#define FIREHOSE_HEATLIM 10.f /* u_new / u above which firehose_log_energy logs */
 #define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
 
 /**

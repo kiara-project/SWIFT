@@ -784,15 +784,14 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
    * 0.5 * mu * (dv^2 - dv'^2), with mu the reduced mass of the pair. */
   const float mu_pair = mi * mj / (mi + mj);
   float delta_KE = 0.5f * mu_pair * (v2 - new_v2);
-  const float min_KE = min(mi * new_pi_u, mj * new_pj_u);
-
-  /* Limit to minimum of the two particles */
-  if (delta_KE > min_KE) {
-    if (cd->firehose_log_energy)
+  /* All of it is heat (no limit, which would discard energy); log the
+   * pairs where it exceeds the smaller thermal energy (the old limit) */
+  if (cd->firehose_log_energy) {
+    const float min_KE = min(mi * new_pi_u, mj * new_pj_u);
+    if (delta_KE > min_KE)
       message("FIREHOSE_DKE z=%g pi=%lld pj=%lld dKE=%g lost=%g", cosmo->z,
               pi->id, pj->id, delta_KE * cosmo->a_factor_internal_energy,
               (delta_KE - min_KE) * cosmo->a_factor_internal_energy);
-    delta_KE = min_KE;
   }
 
   const float dKE_split = 0.5f * delta_KE;
