@@ -21,6 +21,7 @@
 #define SWIFT_KIARA_FEEDBACK_IACT_H
 
 /* Local includes */
+#include "cooling.h"
 #include "random.h"
 #include "timestep_sync_part.h"
 #include "tools.h"
@@ -413,8 +414,16 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     xpj->v_full[1] += dir[1] * prefactor;
     xpj->v_full[2] += dir[2] * prefactor;
 
-    /* DO WIND HEATING */
-    double u_new = fb_props->cold_wind_internal_energy;
+    /* Take particle out of subgrid ISM mode, so that its species (hence mu)
+     * are those it leaves with */
+    cooling_subgrid_exit(&pj->cooling_data, &xpj->cooling_data,
+                         hydro_get_physical_density(pj, cosmo));
+
+    /* DO WIND HEATING: cold winds are at cold_wind_temperature_K for the
+     * particle's own mean molecular weight (the one the cooling uses) */
+    double u_new = fb_props->cold_wind_temperature *
+                   fb_props->temp_to_u_factor_mu1 *
+                   cooling_get_inverse_mu(xpj);
     if (!fb_props->use_firehose_model) {
       float galaxy_stellar_mass = si->galaxy_data.stellar_mass;
 
@@ -499,10 +508,6 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     /* TODO: Move to chemistry module */
     pj->chemistry_data.diffusion_coefficient = 0.f;
 
-    /* Take particle out of subgrid ISM mode */
-    cooling_subgrid_exit(&pj->cooling_data, &xpj->cooling_data,
-                         hydro_get_physical_density(pj, cosmo));
-
     pj->feedback_data.number_of_times_decoupled += 1;
     xpj->feedback_data.bh_launch_type = 0;
 
@@ -518,7 +523,8 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
     const float velocity_convert = cosmo->a_inv / fb_props->kms_to_internal;
     const float rho_convert = cosmo->a3_inv * fb_props->rho_to_n_cgs;
     const float u_convert =
-        cosmo->a_factor_internal_energy / fb_props->temp_to_u_factor;
+        cosmo->a_factor_internal_energy /
+        (fb_props->temp_to_u_factor_mu1 * cooling_get_inverse_mu(xpj));
     /* Collect information about galaxy that the particle belongs to */
     const float galaxy_mstar = si->galaxy_data.stellar_mass;
     const float galaxy_ssfr = si->galaxy_data.specific_sfr;
