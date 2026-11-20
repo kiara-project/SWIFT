@@ -177,6 +177,11 @@ struct chemistry_global_data {
    * step */
   float firehose_max_fmix_per_step;
 
+  /*! Log FIREHOSE_HEAT lines for particles whose firehose heating this step
+   * exceeds FIREHOSE_HEATLIM times their energy, and FIREHOSE_DKE lines for
+   * pairs whose dissipated kinetic energy is limited (diagnostic) */
+  int firehose_log_energy;
+
   /*! Dust sputtering constant */
   float dust_sputtering_const;
 

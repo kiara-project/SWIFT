@@ -787,7 +787,13 @@ __attribute__((always_inline)) INLINE static void firehose_evolve_particle_sym(
   const float min_KE = min(mi * new_pi_u, mj * new_pj_u);
 
   /* Limit to minimum of the two particles */
-  if (delta_KE > min_KE) delta_KE = min_KE;
+  if (delta_KE > min_KE) {
+    if (cd->firehose_log_energy)
+      message("FIREHOSE_DKE z=%g pi=%lld pj=%lld dKE=%g lost=%g", cosmo->z,
+              pi->id, pj->id, delta_KE * cosmo->a_factor_internal_energy,
+              (delta_KE - min_KE) * cosmo->a_factor_internal_energy);
+    delta_KE = min_KE;
+  }
 
   const float dKE_split = 0.5f * delta_KE;
 
