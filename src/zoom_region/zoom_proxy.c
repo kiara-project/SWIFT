@@ -83,11 +83,43 @@ static double zoom_region_min_dist2(const double loc_i[3],
 }
 
 /**
+ * @brief Is a region fully inside the active region of the zoom mesh?
+ *
+ * This is the geometric equivalent of zoom_mesh_cell_is_covered. A cell is
+ * only covered if its top-level cell is too, so callers must apply this to
+ * the top-level cell as well as (or instead of) the sub-region.
+ *
+ * @param e The #engine.
+ * @param loc Lower corner of the region.
+ * @param width Width of the region.
+ *
+ * @return 1 if the region is covered, 0 otherwise (or if there is no zoom
+ * mesh).
+ */
+static int zoom_proxy_region_in_zoom_mesh(const struct engine *e,
+                                          const double loc[3],
+                                          const double width[3]) {
+
+  const struct zoom_pm_mesh *mesh = e->zoom_mesh;
+  if (mesh == NULL || !mesh->enabled) return 0;
+
+  for (int k = 0; k < 3; k++) {
+    if (loc[k] < mesh->active_min[k]) return 0;
+    if (loc[k] + width[k] > mesh->active_max[k]) return 0;
+  }
+  return 1;
+}
+
+/**
  * @brief Apply the proxy criteria to a pair of regions.
  *
  * Note that regions must have equal widths, i.e. recursion is done in step.
  *
  * Only zoom <-> zoom pairs can ever be hydro pairs.
+ *
+ * Pairs covered by the zoom mesh are tested against its (much shorter)
+ * cut-off, all other pairs against the periodic mesh, as in
+ * cell_can_use_mesh.
  *
  * @param e The #engine.
  * @param loc_i Lower corner of the first region.
@@ -95,18 +127,24 @@ static double zoom_region_min_dist2(const double loc_i[3],
  * @param width Width of both regions.
  * @param type_i Type of the cell the first region resolves to.
  * @param type_j Type of the cell the second region resolves to.
+ * @param zoom_mesh_covered Are both regions covered by the zoom mesh?
  *
  * @return The proxy type these regions require.
  */
 static int zoom_get_proxy_type(const struct engine *e, const double loc_i[3],
                                const double loc_j[3], const double width[3],
-                               const int type_i, const int type_j) {
+                               const int type_i, const int type_j,
+                               const int zoom_mesh_covered) {
 
   const struct space *s = e->s;
   const int with_gravity = (e->policy & engine_policy_self_gravity);
   const int with_hydro = (e->policy & engine_policy_hydro);
   const double theta_crit = e->gravity_properties->theta_crit;
-  const double max_mesh_dist2 = e->mesh->r_cut_max * e->mesh->r_cut_max;
+
+  /* Which mesh (if any) takes over the long-range forces for this pair? */
+  const int use_mesh = zoom_mesh_covered || s->periodic;
+  const double r_cut_max =
+      zoom_mesh_covered ? e->zoom_mesh->r_cut_max : e->mesh->r_cut_max;
 
   /* Derive the geometric criterion for a proxy. */
   const double r_diag2 =
@@ -122,7 +160,9 @@ static int zoom_get_proxy_type(const struct engine *e, const double loc_i[3],
 
   /* Do we need a gravity proxy? Nothing is needed beyond the mesh cutoff,
    * where the truncated forces are zero. */
-  if (with_gravity && !(s->periodic && min_dist_CoM2 >= max_mesh_dist2) &&
+  if (with_gravity &&
+      !(use_mesh && cell_mesh_distance_is_above_cutoff(
+                        min_dist_CoM2, r_cut_max * r_cut_max)) &&
       !(4. * r_max * r_max < theta_crit * theta_crit * min_dist_CoM2)) {
     proxy_type |= (int)proxy_cell_type_gravity;
   }
@@ -169,11 +209,170 @@ static void zoom_make_proxy_for_pair(struct engine *e, struct cell *ci,
 }
 
 /**
- * @brief Create proxies based on geometric pair recursion.
+ * @brief Flag which nodes own at least one zoom cell inside a void cell.
  *
- * This function will recurse through the pair of cells until we reach the zoom
- * top level depth. Once at the zoom top level depth we will check what proxies
- * we need.
+ * @param s The #space.
+ * @param void_cell The top-level void cell.
+ * @param owners Array of length nr_nodes, set to 1 for each owning node.
+ * @param nr_nodes The number of nodes.
+ */
+static void zoom_void_cell_owners(const struct space *s,
+                                  const struct cell *void_cell, char *owners,
+                                  const int nr_nodes) {
+
+  for (int n = 0; n < nr_nodes; n++) owners[n] = 0;
+
+  /* Zoom cells come first in cells_top. */
+  for (int cid = 0; cid < s->zoom_props->nr_zoom_cells; cid++) {
+    const struct cell *c = &s->cells_top[cid];
+    int inside = 1;
+    for (int k = 0; k < 3; k++) {
+      const double x = c->loc[k] + 0.5 * c->width[k];
+      inside &= (x > void_cell->loc[k]) &&
+                (x < void_cell->loc[k] + void_cell->width[k]);
+    }
+    if (inside) owners[c->nodeID] = 1;
+  }
+}
+
+/**
+ * @brief Decide which zoom cells must be sent to the rank owning a background
+ * cell, by recursing the void and background trees in step.
+ *
+ * Void cells are local on every rank, so the background rank splits all of
+ * the void <-> bkg pair itself. It only needs a foreign zoom cell's tree if
+ * that splitting reaches a (zoom cell, bkg progeny) pair at the zoom depth
+ * which cannot be handled by an M-M (the zoom top-level multipoles are known
+ * everywhere). The geometric criterion is monotonic, so we can stop as soon
+ * as a pair of regions is out of range.
+ *
+ * @param e The #engine.
+ * @param s The #space.
+ * @param loc_v Lower corner of the void-side region.
+ * @param loc_b Lower corner of the bkg-side region.
+ * @param width Width of both regions.
+ * @param depth Current recursion depth below the top-level cells.
+ * @param bkg_cell The top-level background cell.
+ * @param bkg_covered Is the background cell covered by the zoom mesh?
+ */
+static void zoom_make_proxies_void_bkg_recursive(
+    struct engine *e, const struct space *s, const double loc_v[3],
+    const double loc_b[3], const double width[3], const int depth,
+    struct cell *bkg_cell, const int bkg_covered) {
+
+  /* Out of range? Then so is everything below us. Only the leaf decision
+   * matters, and there the void side is a zoom (top-level) cell, so checking
+   * the void-side region itself is exact there and a safe bound above. The bkg
+   * side is only ever covered if its top-level cell is. */
+  const int proxy_type = zoom_get_proxy_type(
+      e, loc_v, loc_b, width, cell_type_zoom, bkg_cell->type,
+      bkg_covered && zoom_proxy_region_in_zoom_mesh(e, loc_v, width));
+  if (proxy_type == proxy_cell_type_none) return;
+
+  /* At the zoom level the zoom cell's tree is needed by the bkg rank. */
+  if (depth == s->zoom_props->zoom_cell_depth) {
+    struct cell *zoom_cell = &s->cells_top[cell_getid_from_pos(
+        s, loc_v[0] + 0.5 * width[0], loc_v[1] + 0.5 * width[1],
+        loc_v[2] + 0.5 * width[2])];
+    const int nodeID = e->nodeID;
+
+    if (zoom_cell->nodeID == nodeID && bkg_cell->nodeID != nodeID) {
+      /* We own the zoom cell: send it to the bkg rank. */
+      const int pid = engine_get_proxy_id(e, bkg_cell->nodeID);
+      proxy_addcell_out(&e->proxies[pid], zoom_cell, proxy_type);
+      zoom_cell->mpi.sendto |= (1ULL << pid);
+    } else if (zoom_cell->nodeID != nodeID && bkg_cell->nodeID == nodeID) {
+      /* We own the bkg cell: receive the zoom cell. */
+      const int pid = engine_get_proxy_id(e, zoom_cell->nodeID);
+      proxy_addcell_in(&e->proxies[pid], zoom_cell, proxy_type);
+    }
+    return;
+  }
+
+  /* Recurse (geometrically) into both trees. */
+  const double sub_width[3] = {0.5 * width[0], 0.5 * width[1], 0.5 * width[2]};
+  for (int i = 0; i < 8; i++) {
+    const double sub_loc_v[3] = {loc_v[0] + ((i & 4) ? sub_width[0] : 0.0),
+                                 loc_v[1] + ((i & 2) ? sub_width[1] : 0.0),
+                                 loc_v[2] + ((i & 1) ? sub_width[2] : 0.0)};
+    for (int j = 0; j < 8; j++) {
+      const double sub_loc_b[3] = {loc_b[0] + ((j & 4) ? sub_width[0] : 0.0),
+                                   loc_b[1] + ((j & 2) ? sub_width[1] : 0.0),
+                                   loc_b[2] + ((j & 1) ? sub_width[2] : 0.0)};
+      zoom_make_proxies_void_bkg_recursive(e, s, sub_loc_v, sub_loc_b,
+                                           sub_width, depth + 1, bkg_cell,
+                                           bkg_covered);
+    }
+  }
+}
+
+/**
+ * @brief Create the proxies for a void <-> background cell pair.
+ *
+ * The two directions need different criteria:
+ *
+ * - The bkg cell's tree is needed by every rank owning a zoom cell in the
+ *   void as soon as the top-level pair is in range. The void cell is local
+ *   everywhere, so each such rank splits the pair itself and the first level
+ *   of M-M interactions already uses the bkg cell's progeny.
+ * - A zoom cell's tree is only needed by the bkg rank if the task splitting
+ *   reaches that zoom cell (see zoom_make_proxies_void_bkg_recursive).
+ *
+ * Both sides of every proxy evaluate the same predicates in the same order,
+ * so the cells_in/cells_out lists still match across ranks.
+ *
+ * @param e The #engine.
+ * @param s The #space.
+ * @param void_cell The top-level void cell.
+ * @param bkg_cell The top-level background cell.
+ * @param owners Scratch array of length nr_nodes.
+ */
+static void zoom_make_proxies_void_bkg(struct engine *e, const struct space *s,
+                                       struct cell *void_cell,
+                                       struct cell *bkg_cell, char *owners) {
+
+  /* Is the top-level pair in range at all? */
+  const int bkg_covered =
+      zoom_proxy_region_in_zoom_mesh(e, bkg_cell->loc, bkg_cell->width);
+  const int proxy_type = zoom_get_proxy_type(
+      e, void_cell->loc, bkg_cell->loc, void_cell->width, cell_type_zoom,
+      bkg_cell->type,
+      bkg_covered &&
+          zoom_proxy_region_in_zoom_mesh(e, void_cell->loc, void_cell->width));
+  if (proxy_type == proxy_cell_type_none) return;
+
+  const int nodeID = e->nodeID;
+  zoom_void_cell_owners(s, void_cell, owners, e->nr_nodes);
+
+  if (bkg_cell->nodeID != nodeID) {
+    /* We need the bkg tree if we own any zoom cell in the void. */
+    if (owners[nodeID]) {
+      const int pid = engine_get_proxy_id(e, bkg_cell->nodeID);
+      proxy_addcell_in(&e->proxies[pid], bkg_cell, proxy_type);
+    }
+  } else {
+    /* Send the bkg tree to every other rank owning a zoom cell in the void. */
+    for (int n = 0; n < e->nr_nodes; n++) {
+      if (n == nodeID || !owners[n]) continue;
+      const int pid = engine_get_proxy_id(e, n);
+      proxy_addcell_out(&e->proxies[pid], bkg_cell, proxy_type);
+      bkg_cell->mpi.sendto |= (1ULL << pid);
+    }
+  }
+
+  /* Now the zoom cells the bkg rank needs. */
+  zoom_make_proxies_void_bkg_recursive(e, s, void_cell->loc, bkg_cell->loc,
+                                       void_cell->width, /*depth=*/0,
+                                       bkg_cell, bkg_covered);
+}
+
+/**
+ * @brief Create proxies between the zoom cells of two void regions based on
+ * geometric pair recursion.
+ *
+ * This function will recurse through the pair of regions until we reach the
+ * zoom top level depth. Once at the zoom top level depth we will check what
+ * proxies we need.
  *
  * Note that this could lead to us creating proxies for cells that may never
  * exist but we don't have enough information yet to avoid this.
@@ -186,28 +385,24 @@ static void zoom_make_proxy_for_pair(struct engine *e, struct cell *ci,
  * @param loc_i Lower corner of first region.
  * @param loc_j Lower corner of second region.
  * @param width Width of both regions.
- * @param type_i Type of the cells the first region resolves to at the zoom
- * level, i.e. #cell_type_zoom if we are descending inside a void cell.
- * @param type_j As type_i, for the second region.
  * @param depth Current recursion depth below the void cells.
- * @param proxy_loc_i Initial geometry for side i, used for mixed pairs.
- * @param proxy_loc_j Initial geometry for side j, used for mixed pairs.
- * @param proxy_width Initial width, used for mixed pairs.
  */
-static void zoom_make_proxies_pair_recursive(
-    struct engine *e, const struct space *s, const double loc_i[3],
-    const double loc_j[3], const double width[3], const int type_i,
-    const int type_j, const int depth, const double proxy_loc_i[3],
-    const double proxy_loc_j[3], const double proxy_width[3]) {
+static void zoom_make_proxies_pair_recursive(struct engine *e,
+                                             const struct space *s,
+                                             const double loc_i[3],
+                                             const double loc_j[3],
+                                             const double width[3],
+                                             const int depth) {
 
   const int zoom_depth = e->s->zoom_props->zoom_cell_depth;
 
-  /* Out of range? Then so is everything below us. */
-  const int mixed_pair =
-      (type_i == cell_type_zoom) != (type_j == cell_type_zoom);
+  /* Out of range? Then so is everything below us. Both sides are zoom
+   * (top-level) cells at the leaf, so region coverage is exact there and a
+   * safe bound above it. */
   const int proxy_type = zoom_get_proxy_type(
-      e, mixed_pair ? proxy_loc_i : loc_i, mixed_pair ? proxy_loc_j : loc_j,
-      mixed_pair ? proxy_width : width, type_i, type_j);
+      e, loc_i, loc_j, width, cell_type_zoom, cell_type_zoom,
+      zoom_proxy_region_in_zoom_mesh(e, loc_i, width) &&
+          zoom_proxy_region_in_zoom_mesh(e, loc_j, width));
   if (proxy_type == proxy_cell_type_none) return;
 
   /* At the zoom level we make the proxy (if necessary) */
@@ -239,8 +434,7 @@ static void zoom_make_proxies_pair_recursive(
                              loc_j[1] + ((j & 2) ? sub_width[1] : 0.0),
                              loc_j[2] + ((j & 1) ? sub_width[2] : 0.0)};
       zoom_make_proxies_pair_recursive(e, s, sub_loc_i, sub_loc_j, sub_width,
-                                       type_i, type_j, depth + 1, proxy_loc_i,
-                                       proxy_loc_j, proxy_width);
+                                       depth + 1);
     }
   }
 }
@@ -285,9 +479,8 @@ static void zoom_make_proxies_self_recursive(struct engine *e,
   /* Recurse into every pair of cells. */
   for (int a = 0; a < 8; a++) {
     for (int b = a + 1; b < 8; b++) {
-      zoom_make_proxies_pair_recursive(
-          e, s, sub_loc[a], sub_loc[b], sub_width, cell_type_zoom,
-          cell_type_zoom, depth + 1, sub_loc[a], sub_loc[b], sub_width);
+      zoom_make_proxies_pair_recursive(e, s, sub_loc[a], sub_loc[b], sub_width,
+                                       depth + 1);
     }
   }
 }
@@ -334,6 +527,10 @@ void zoom_engine_makeproxies(struct engine *e) {
       error("Failed to allocate proxy index.");
   for (int k = 0; k < e->nr_nodes; k++) e->proxy_ind[k] = -1;
   e->nr_proxies = 0;
+
+  /* Scratch space for the nodes owning zoom cells in a void cell. */
+  char *owners = (char *)malloc(e->nr_nodes * sizeof(char));
+  if (owners == NULL) error("Failed to allocate void cell owners.");
 
   /* Background cell scale. */
   const double bkg_cell_width[3] = {cells[bkg_offset].width[0],
@@ -427,20 +624,23 @@ void zoom_engine_makeproxies(struct engine *e) {
                 /* Bkg <-> Bkg pair: handle at the top level just like normal */
                 zoom_make_proxy_for_pair(
                     e, ci, cj,
-                    zoom_get_proxy_type(e, ci->loc, cj->loc, ci->width,
-                                        ci->type, cj->type));
+                    zoom_get_proxy_type(
+                        e, ci->loc, cj->loc, ci->width, ci->type, cj->type,
+                        zoom_proxy_region_in_zoom_mesh(e, ci->loc, ci->width) &&
+                            zoom_proxy_region_in_zoom_mesh(e, cj->loc,
+                                                           cj->width)));
+
+              } else if (ci_is_void && cj_is_void) {
+
+                /* Void <-> Void pair: recurse both to the zoom level. */
+                zoom_make_proxies_pair_recursive(e, s, ci->loc, cj->loc,
+                                                 ci->width, /*depth=*/0);
 
               } else {
-                /* Otherwise, recurse until we hit the zoom top level (either in
-                 * both for a void <-> void pair or on the void side in a void
-                 * <-> bkg pair */
-                /* A void side resolves to zoom cells at the zoom level, a
-                 * background side stays the cell it already is. */
-                zoom_make_proxies_pair_recursive(
-                    e, s, ci->loc, cj->loc, ci->width,
-                    ci_is_void ? cell_type_zoom : ci->type,
-                    cj_is_void ? cell_type_zoom : cj->type, /*depth=*/0,
-                    ci->loc, cj->loc, ci->width);
+
+                /* Void <-> Bkg pair: each direction has its own criterion. */
+                zoom_make_proxies_void_bkg(e, s, ci_is_void ? ci : cj,
+                                           ci_is_void ? cj : ci, owners);
               }
             }
           }
@@ -448,6 +648,8 @@ void zoom_engine_makeproxies(struct engine *e) {
       }
     }
   }
+
+  free(owners);
 
   if (e->verbose)
     message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
