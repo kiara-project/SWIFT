@@ -414,11 +414,13 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 	    gp->edot += edot_metal;
 	}
 
-	/* User-specified external heating terms */
+	/* User-specified external heating terms. The specific rate (the hydro
+	 * du/dt) may be negative, e.g. adiabatic expansion, and must be kept
+	 * since the caller replaces du/dt with the crackle result. */
 	if (chemistry->use_volumetric_heating_rate && gp->volumetric_heating_rate > tiny) {
 	    edot_ext += gp->volumetric_heating_rate * cunits->dom_inv * cunits->dom_inv * cunits->coolunit_inv;
 	}
-	if (chemistry->use_specific_heating_rate && gp->specific_heating_rate > tiny) {
+	if (chemistry->use_specific_heating_rate && gp->specific_heating_rate != 0.) {
 	    edot_ext += gp->specific_heating_rate * gp->density * mh * cunits->dom_inv * cunits->coolunit_inv;
 	}
 	gp->edot += edot_ext;
