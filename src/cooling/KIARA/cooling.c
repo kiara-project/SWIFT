@@ -2668,9 +2668,8 @@ void cooling_do_grackle_cooling(
       hydro_set_physical_internal_energy_dt(p, cosmo, cool_du_dt);
     }
 
-    /* If there is any dust outside of the ISM, sputter it
-     * back into gas phase metals */
-    cooling_sputter_dust(us, cosmo, cooling, p, xp, dt);
+    /* Dust outside the ISM has already been sputtered by crackle in the
+     * solve above (cooling_sputter_dust is only for gas that skips it) */
   } else {
     /* Particle is in subgrid mode; result is stored in subgrid_temp */
     p->cooling_data.subgrid_temp = cooling_convert_u_to_temp(
