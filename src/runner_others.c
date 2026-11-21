@@ -576,7 +576,7 @@ void runner_do_star_formation(struct runner *r, struct cell *c,
 
 #ifdef RT_KIARA
                 /* The star takes over the radiation of the gas it replaces */
-                if (part_converted) rt_convert_part_to_spart(p, sp);
+                if (part_converted) rt_convert_part_to_spart(p, sp, e->rt_props);
 #endif
 
                 /* Update the Star formation history */

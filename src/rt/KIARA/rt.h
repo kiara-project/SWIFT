@@ -231,6 +231,8 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
     const struct rt_props *restrict rt_props) {
 
   /* Don't reset conserved quantities here! ICs will be overwritten */
+  p->rt_data.ion_photons_injected = 0.;
+  p->rt_data.ion_photons_absorbed = 0.;
   rt_init_part(p);
   rt_reset_part(p, cosmo);
   rt_part_reset_mass_fluxes(p);
@@ -317,6 +319,8 @@ __attribute__((always_inline)) INLINE static void rt_first_init_spart(
     sp->rt_data.emission_this_step[g] = 0.f;
     sp->rt_data.emission_carry[g] = 0.f;
   }
+  sp->rt_data.ion_photons_injected = 0.;
+  sp->rt_data.ion_photons_absorbed = 0.;
 #ifdef SWIFT_KIARA_RT_DEBUG
   for (int i = 0; i < 6; i++) sp->rt_data.debug_dE[i] = 0.f;
   sp->rt_data.debug_dE_onesided = 0.f;
@@ -381,9 +385,14 @@ __attribute__((always_inline)) INLINE static void rt_spart_has_no_neighbours(
  *
  * @param p The gas particle being converted.
  * @param sp The new star particle.
+ * @param rtp The #rt_props.
  */
 __attribute__((always_inline)) INLINE static void rt_convert_part_to_spart(
-    const struct part *restrict p, struct spart *restrict sp) {
+    const struct part *restrict p, struct spart *restrict sp,
+    const struct rt_props *rtp) {
+
+  sp->rt_data.ion_photons_injected = p->rt_data.ion_photons_injected;
+  sp->rt_data.ion_photons_absorbed = p->rt_data.ion_photons_absorbed;
 
 #ifdef SWIFT_KIARA_RT_DEBUG
   /* Keep the gas particle's budget entries, which would otherwise leave the
@@ -405,6 +414,8 @@ __attribute__((always_inline)) INLINE static void rt_convert_part_to_spart(
 #endif
     if (E > 0.f) {
       sp->rt_data.emission_carry[g] += E;
+      /* Injected again by the star, and counted there */
+      sp->rt_data.ion_photons_injected -= E * rtp->ion_photons_per_energy[g];
 #ifdef SWIFT_KIARA_RT_DEBUG
       sp->rt_data.debug_dE[0] -= E;
 #endif
@@ -695,10 +706,11 @@ __attribute__((always_inline)) INLINE static void rt_end_gradient(
  * leaves it within ~kyr. The energy added is exactly what the stars gave.
  *
  * @param p The particle.
+ * @param rtp The #rt_props.
  * @param dt The particle's RT time step (physical).
  */
 __attribute__((always_inline)) INLINE static void rt_inject_pending_emission(
-    struct part *restrict p, const double dt) {
+    struct part *restrict p, const struct rt_props *rtp, const double dt) {
 
   struct rt_part_data *restrict rtd = &p->rt_data;
   const float Vinv = 1.f / p->geometry.volume;
@@ -716,6 +728,7 @@ __attribute__((always_inline)) INLINE static void rt_inject_pending_emission(
     }
     rtd->emission_pending[g] -= dE;
     rtd->radiation[g].energy_density += dE * Vinv;
+    rtd->ion_photons_injected += dE * rtp->ion_photons_per_energy[g];
 #ifdef SWIFT_KIARA_RT_DEBUG
     rtd->debug_dE[0] += dE;
 #endif
@@ -753,7 +766,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
   const float Vinv = 1.f / p->geometry.volume;
 
   /* Stellar emission received from the neighbouring stars this RT step */
-  rt_inject_pending_emission(p, dt);
+  rt_inject_pending_emission(p, rtp, dt);
 
   /* Do not redshift if we have a constant spectrum (type == 0) */
   const float redshift_factor =

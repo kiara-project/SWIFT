@@ -97,6 +97,15 @@ struct rt_part_data {
    * the radiation, the sum of the rates of the stars it came from */
   float emission_rate[RT_NGROUPS];
 
+  /*! Cumulative ionizing photons (all groups but the FUV group), in units of
+   * 1e50: injected into the particle's radiation by the stars, and absorbed
+   * by its gas species and subgrid ISM clouds. Their differences between
+   * snapshots give escape fractions on any scale. 16 bytes per particle:
+   * consider removing them (or compiling them out) for full production runs
+   * that do not need them, to save memory. */
+  double ion_photons_injected;
+  double ion_photons_absorbed;
+
   /*! Sum of the kernel weights of the neighbours eligible for transport,
    * for a particle that is not (decoupled or with its cooling shut off) and
    * gives its radiation to them (see rt_shed_collect()) */
@@ -245,6 +254,13 @@ struct rt_spart_data {
    * steps without gas neighbours, and the radiation of the gas particle the
    * star formed from */
   float emission_carry[RT_NGROUPS];
+
+  /*! The ionizing photon counters (rt_part_data.ion_photons_injected,
+   * ion_photons_absorbed) of the gas particle the star formed from, with
+   * the radiation it handed to the star taken out of the injected count
+   * (the star injects it again, and it is counted there) */
+  double ion_photons_injected;
+  double ion_photons_absorbed;
 
 #ifdef SWIFT_KIARA_RT_DEBUG
   /*! DEBUG: photon energy budget (rt_part_data.debug_dE) of the gas particle

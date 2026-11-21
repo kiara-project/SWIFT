@@ -594,6 +594,9 @@ INLINE void rt_do_thermochemistry(
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
 #endif
+    p->rt_data.ion_photons_absorbed +=
+        f * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+        p->geometry.volume * rt_props->ion_photons_per_energy[g];
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -958,6 +961,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
             units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) /
             rt_props->average_photon_energy[g];
 #endif
+      p->rt_data.ion_photons_absorbed +=
+          f_g * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+          p->geometry.volume * rt_props->ion_photons_per_energy[g];
       p->rt_data.radiation[g].energy_density *= (1. - f_g);
       for (int i = 0; i < 3; i++) {
         p->rt_data.radiation[g].flux[i] *= (1. - f_g);
@@ -1023,6 +1029,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
           units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) /
           rt_props->average_photon_energy[g];
 #endif
+    p->rt_data.ion_photons_absorbed +=
+        f * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+        p->geometry.volume * rt_props->ion_photons_per_energy[g];
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
