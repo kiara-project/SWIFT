@@ -447,6 +447,10 @@ struct black_holes_props {
    * in EAGLE); 0: in units of h_BH / (Plummer-equivalent factor) */
   int reposition_radius_from_softening;
 
+  /*! Minimum number of eligible star-forming gas neighbours for the BH to
+   * reposition onto star-forming gas only; with fewer, any gas is a target */
+  int reposition_min_sf_ngbs;
+
   /*! Switch to enable a relative velocity limit for particles to which the
    * black holes can reposition */
   int with_reposition_velocity_threshold;
@@ -1368,6 +1372,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:max_reposition_distance_ratio");
   bp->reposition_radius_from_softening = parser_get_opt_param_int(
       params, "ObsidianAGN:reposition_radius_from_softening", 1);
+  bp->reposition_min_sf_ngbs = parser_get_opt_param_int(
+      params, "ObsidianAGN:reposition_min_sf_ngbs", 1);
 
   bp->with_reposition_velocity_threshold = parser_get_param_int(
       params, "ObsidianAGN:with_reposition_velocity_threshold");

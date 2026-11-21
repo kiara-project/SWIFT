@@ -313,6 +313,7 @@ ObsidianAGN:
   reposition_radius_from_softening:     1               # 1 = max_reposition_distance_ratio is in units of the Plummer baryon softening (EAGLE); 0 = in units of h_BH / 2.8 (earlier Obsidian).
   max_reposition_mass:                  1e20            # Maximal BH mass considered for BH repositioning in solar masses (large number implies we always reposition).
   max_reposition_distance_ratio:        1.4             # Maximal distance a BH can be repositioned, in units of equiv Plummer softening length.
+  reposition_min_sf_ngbs:               1               # Reposition onto star-forming gas (SFR > 0) only, unless fewer than this many SF gas neighbours are eligible targets; then onto any gas.
   with_reposition_velocity_threshold:   1               # Should we only reposition to particles that move slowly w.r.t. the black hole?
   max_reposition_velocity_ratio:        0.5             # Maximal velocity offset of a particle to reposition a BH to, in units of the ambient sound speed of the BH. Only meaningful if with_reposition_velocity_threshold is 1.
   min_reposition_velocity_threshold:    -1.0            # Minimal value of the velocity threshold for repositioning [km/s], set to < 0 for no effect. Only meaningful if with_reposition_velocity_threshold is 1.

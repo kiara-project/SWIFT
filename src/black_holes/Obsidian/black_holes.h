@@ -898,6 +898,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->torque_ngb_mass = 0.f;
   bp->torque_radius = 0.f;
   bp->num_ngbs = 0;
+  bp->num_sf_repos_ngbs = 0;
   bp->reposition.delta_x[0] = -FLT_MAX;
   bp->reposition.delta_x[1] = -FLT_MAX;
   bp->reposition.delta_x[2] = -FLT_MAX;

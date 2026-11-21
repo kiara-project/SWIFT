@@ -298,6 +298,14 @@ runner_iact_nonsym_bh_gas_density(
   const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
   const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
 
+  /* Count the star-forming gas that is an eligible repositioning target
+   * (same static cuts as runner_iact_nonsym_bh_gas_repos) */
+  if (!pj->decoupled && pj->feedback_data.cooling_shutoff_delay_time <= 0.f &&
+      pj->sf_data.SFR > 0.f &&
+      bi->galaxy_data.stellar_mass <= pj->galaxy_data.stellar_mass &&
+      r2 < black_holes_max_reposition_distance2(bi, bh_props, grav_props))
+    bi->num_sf_repos_ngbs++;
+
   /* Gas for the dynamical friction: as for repositioning, no decoupled
    * winds or jets and no gas with cooling shut off (an outflow must not
    * drag the BH along with it) */
@@ -433,8 +441,12 @@ runner_iact_nonsym_bh_gas_repos(
   if (pj->decoupled || pj->feedback_data.cooling_shutoff_delay_time > 0.f)
     return;
 
-  /* Only reposition onto star-forming gas, not hot or diffuse gas */
-  if (pj->sf_data.SFR == 0.f) return;
+  /* Only reposition onto currently star-forming gas (SFR > 0; SFR < 0 marks
+   * gas that formed stars in the past and may now be hot), unless there is
+   * too little of it, in which case any gas is a target */
+  if (pj->sf_data.SFR <= 0.f &&
+      bi->num_sf_repos_ngbs >= bh_props->reposition_min_sf_ngbs)
+    return;
 
   /* Only reposition BH onto gas in a galaxy of same or greater mass */
   if (bi->galaxy_data.stellar_mass > pj->galaxy_data.stellar_mass) return;
