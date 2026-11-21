@@ -28,8 +28,7 @@
 #endif
 #include "chemistry/KIARA/dust.h"
 
-#define FIREHOSE_COOLLIM 0.1f            /* -u_new / u */
-#define FIREHOSE_HEATLIM 10.f            /* +u_new / u */
+#define FIREHOSE_HEATLIM 10.f /* u_new / u above which firehose_log_energy logs */
 #define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
 
 /**
@@ -176,6 +175,11 @@ struct chemistry_global_data {
   /*! Firehose maximum fraction of particles' mass that can be mixed in a single
    * step */
   float firehose_max_fmix_per_step;
+
+  /*! Log FIREHOSE_HEAT lines for particles whose firehose heating this step
+   * exceeds FIREHOSE_HEATLIM times their energy, and FIREHOSE_DKE lines for
+   * pairs whose dissipated kinetic energy is limited (diagnostic) */
+  int firehose_log_energy;
 
   /*! Dust sputtering constant */
   float dust_sputtering_const;

@@ -383,7 +383,9 @@ black_holes_update_spin_efficiencies(struct bpart *bp,
  * In the ADAF, only the Bondi share of the inflow is a magnetically arrested
  * disk; the torque-fed share has adaf_torque_phi_factor of its magnetic
  * flux, so jet efficiency x phi^2. This matches the jet spin-down in
- * black_hole_spinup_rate().
+ * black_hole_spinup_rate(). With adaf_jet_free_energy, the full MAD
+ * efficiency is used for all inflow (assumption: torque-fed accretion
+ * balances its jet spin-down; see black_holes_properties.h).
  *
  * @param bp The black hole particle.
  * @param props The properties of the black hole scheme.
@@ -898,6 +900,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->torque_ngb_mass = 0.f;
   bp->torque_radius = 0.f;
   bp->num_ngbs = 0;
+  bp->num_sf_repos_ngbs = 0;
   bp->reposition.delta_x[0] = -FLT_MAX;
   bp->reposition.delta_x[1] = -FLT_MAX;
   bp->reposition.delta_x[2] = -FLT_MAX;

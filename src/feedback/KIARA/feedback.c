@@ -1958,7 +1958,11 @@ void feedback_props_init(struct feedback_props *fp,
 #endif
 #endif
 
-  /* Convert Kelvin to internal energy and internal units */
+  /* Convert Kelvin to internal energy and internal units. Cold winds are
+   * converted at launch with the particle's own mu (temp_to_u_factor_mu1
+   * already includes the temperature unit), so keep their temperature in K;
+   * cold_wind_internal_energy (fully ionised mu) is only informative. */
+  fp->cold_wind_temperature = fp->cold_wind_internal_energy;
   fp->cold_wind_internal_energy *=
       fp->temp_to_u_factor /
       units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);

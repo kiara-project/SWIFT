@@ -55,7 +55,7 @@ int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, ch
  * Habing, n the cloud H density, sigma' the dust-to-gas ratio relative to local_dust_to_gas_ratio, which sets both
  * sigma_g = 1.9e-21 sigma' cm^2 and the H2 formation rate, so it cancels from alphaG except in the bracket). The
  * particle's gas column N_H (its mean density times the H2 shielding length) has the same layer on its far side, so
- * at most 1 - N_HI / N_H of its hydrogen is molecular; any H2 above this is returned to HI. */
+ * at most 1 - 2 N_HI / N_H of its hydrogen is molecular; any H2 above this is returned to HI. */
 static void apply_sternberg_h2_limit(grackle_part_data *gp, const chemistry_data *chemistry, const crackle_units *cunits)
 {
 	if (gp->isrf_habing <= 0. || gp->rhoH <= 0. || gp->H2I_density <= 0. || gp->dust2gas <= tiny) return;
@@ -66,7 +66,7 @@ static void apply_sternberg_h2_limit(grackle_part_data *gp, const chemistry_data
 	                      / crackle_dust_area_factor(gp);
 	const double N_HI = log(0.5 * alphaG + 1.) / (chemistry->H2_dust_shielding_cross_section * sigma_rel);
 	const double N_H = cunits->dom * gp->rhoH * gp->H2_self_shielding_length * cunits->length_to_cgs;
-	const double fH2_max = fmax(1. - N_HI / fmax(N_H, tiny), 0.);
+	const double fH2_max = fmax(1. - 2. * N_HI / fmax(N_H, tiny), 0.);
 	const double excess = gp->H2I_density - fH2_max * gp->rhoH;
 	if (excess > 0.) {
 	    gp->H2I_density -= excess;
@@ -154,6 +154,8 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_helium(&gp, &gp, chemistry, &my_rates, 0.5 * dtit); 
 	    if (chemistry->primordial_chemistry >= 2) evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, 0.5 * dtit);  
 	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dtit); 
+	    /* SNe_density is the SNe of the whole step: destroy their dust once, not every iteration */
+	    gp.SNe_density = 0.;
 	    evolve_elements(&gp, &gp_old, chemistry);
 
 	    /* Done with iteration */
@@ -189,6 +191,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, dt - dtcool); 
 	    evolve_elements(&gp, &gp_old, chemistry);
 	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dt - dtcool);
+	    gp.SNe_density = 0.;
 	}
 
 	/* Limit the molecular fraction to the Sternberg+14 shielded interior */
@@ -199,6 +202,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	}
 
 	check_hydrogen(&gp, 99);
+	gp.SNe_density = gp_io->SNe_density;  /* an input; zeroed above once used */
 	*gp_io = gp;
 
 	return 1;
@@ -414,11 +418,13 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 	    gp->edot += edot_metal;
 	}
 
-	/* User-specified external heating terms */
+	/* User-specified external heating terms. The specific rate (the hydro
+	 * du/dt) may be negative, e.g. adiabatic expansion, and must be kept
+	 * since the caller replaces du/dt with the crackle result. */
 	if (chemistry->use_volumetric_heating_rate && gp->volumetric_heating_rate > tiny) {
 	    edot_ext += gp->volumetric_heating_rate * cunits->dom_inv * cunits->dom_inv * cunits->coolunit_inv;
 	}
-	if (chemistry->use_specific_heating_rate && gp->specific_heating_rate > tiny) {
+	if (chemistry->use_specific_heating_rate && gp->specific_heating_rate != 0.) {
 	    edot_ext += gp->specific_heating_rate * gp->density * mh * cunits->dom_inv * cunits->coolunit_inv;
 	}
 	gp->edot += edot_ext;

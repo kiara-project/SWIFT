@@ -32,6 +32,9 @@
 #include "cooling_struct.h"
 #include "csds.h"
 #include "feedback_struct.h"
+#ifdef WITH_FOF_GALAXIES
+#include "fof_struct.h"
+#endif
 #include "forcing_struct.h"
 #include "fvpm_geometry_struct.h"
 #include "mhd_struct.h"
@@ -76,7 +79,7 @@ struct xpart {
   /* Additional data used by the tracers */
   struct tracers_xpart_data tracers_data;
 
-  /* Additional data used by the tracers */
+  /* Additional data used by the SF routines */
   struct star_formation_xpart_data sf_data;
 
   /* Additional data used by the feedback */
@@ -133,6 +136,14 @@ struct part {
 
   /*! Particle density. */
   float rho;
+
+  /*! Particle density gradient (KIARA: density-gradient length scale) */
+  float rho_gradient[3];
+
+#ifdef WITH_FOF_GALAXIES
+  /*! Additional data used to record host galaxy information */
+  struct fof_galaxy_data galaxy_data;
+#endif
 
   /* Store viscosity information in a separate struct. */
   struct {
@@ -239,6 +250,11 @@ struct part {
   /*! Black holes information (e.g. swallowing ID) */
   struct black_holes_part_data black_holes_data;
 
+#ifdef STAR_FORMATION_KIARA
+  /* Additional data used by the SF routines (only KIARA defines this) */
+  struct star_formation_part_data sf_data;
+#endif
+
   /*! Sink information (e.g. swallowing ID) */
   struct sink_part_data sink_data;
 
@@ -259,6 +275,9 @@ struct part {
 
   /*! Time-step limiter information */
   struct timestep_limiter_data limiter_data;
+
+  /*! Flag to indicate particle is decoupled (KIARA winds/jets) */
+  int decoupled;
 
 #ifdef SWIFT_DEBUG_CHECKS
 

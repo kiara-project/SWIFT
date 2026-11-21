@@ -29,7 +29,7 @@
 
 __attribute__((always_inline)) INLINE static void hydro_debug_particle(
     const struct part *p, const struct xpart *xp) {
-  warning("[PID%lld] part:", p->id);
+  warning("[PID%lld] part: decoupled=%d", p->id, p->decoupled);
   warning(
       "[PID%lld] x=[%.3e,%.3e,%.3e], "
       "v=[%.3e,%.3e,%.3e], a=[%.3e,%.3e,%.3e], "

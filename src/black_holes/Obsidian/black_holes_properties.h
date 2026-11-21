@@ -344,9 +344,15 @@ struct black_holes_props {
    * share is always a MAD) */
   float adaf_torque_phi_factor;
 
-  /*! If 1, ADAF jets have the full MAD efficiency for all inflow while the
-   * spin-down of the torque-fed share still uses adaf_torque_phi_factor, so
-   * part of the jet energy is not taken from the spin */
+  /*! If 1, ADAF jets have the full MAD efficiency for all inflow, while the
+   * spin-down of the torque-fed share still uses adaf_torque_phi_factor.
+   * Model assumption: the angular momentum brought in by torque-fed (disk)
+   * accretion balances the jet spin-down of that share, whereas Bondi
+   * inflow brings none and spins the BH down as a MAD. The jet energy of the
+   * torque-fed share is then not drawn from the BH spin, so the ADAF jet
+   * efficiency is effectively a tuned parameter (~eps_MAD(a ~ 1)) and spins
+   * stay high; needed for quenching (with 0 and a self-consistent flux the
+   * spins fall to ~0.1 and the jets are 1-2 dex weaker) */
   int adaf_jet_free_energy;
 
   /*! If > 0, the ADAF f_accretion (set by the subgrid jet loading) uses the
@@ -447,6 +453,10 @@ struct black_holes_props {
    * in EAGLE); 0: in units of h_BH / (Plummer-equivalent factor) */
   int reposition_radius_from_softening;
 
+  /*! Minimum number of eligible star-forming gas neighbours for the BH to
+   * reposition onto star-forming gas only; with fewer, any gas is a target */
+  int reposition_min_sf_ngbs;
+
   /*! Switch to enable a relative velocity limit for particles to which the
    * black holes can reposition */
   int with_reposition_velocity_threshold;
@@ -520,6 +530,10 @@ struct black_holes_props {
 
   /*! Maximal distance over which BHs merge, in units of softening length */
   float max_merging_distance_ratio;
+
+  /*! 1: the merging distance is in units of the Plummer baryon softening (as
+   * in EAGLE); 0: in units of h_BH / (Plummer-equivalent factor) */
+  int merger_radius_from_softening;
 
   /*! Multiplier of the dynamical-friction time after which a secondary BH in
    * a FoF galaxy is sunk onto the galaxy's most massive BH (<= 0: off) */
@@ -1368,6 +1382,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       params, "ObsidianAGN:max_reposition_distance_ratio");
   bp->reposition_radius_from_softening = parser_get_opt_param_int(
       params, "ObsidianAGN:reposition_radius_from_softening", 1);
+  bp->reposition_min_sf_ngbs = parser_get_opt_param_int(
+      params, "ObsidianAGN:reposition_min_sf_ngbs", 1);
 
   bp->with_reposition_velocity_threshold = parser_get_param_int(
       params, "ObsidianAGN:with_reposition_velocity_threshold");
@@ -1449,6 +1465,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->max_merging_distance_ratio =
       parser_get_param_float(params, "ObsidianAGN:merger_max_distance_ratio");
+  bp->merger_radius_from_softening = parser_get_opt_param_int(
+      params, "ObsidianAGN:merger_radius_from_softening", 1);
 
   bp->df_merger_time_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:bh_df_merger_time_factor", 1.f);

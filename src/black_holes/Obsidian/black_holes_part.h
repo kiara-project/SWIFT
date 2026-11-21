@@ -248,6 +248,11 @@ struct bpart {
   /*! Integer number of neighbours */
   int num_ngbs;
 
+  /*! Number of star-forming gas neighbours that are eligible repositioning
+   * targets (within the repositioning radius, not winds, in a galaxy at
+   * least as massive). Fewer than reposition_min_sf_ngbs: any gas is used */
+  int num_sf_repos_ngbs;
+
   /*! Number of seeds in this BH (i.e. itself + the merged ones) */
   int cumulative_number_seeds;
 

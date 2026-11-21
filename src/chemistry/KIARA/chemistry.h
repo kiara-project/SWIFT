@@ -648,6 +648,9 @@ static INLINE void chemistry_init_backend(struct swift_params *parameter_file,
 
     data->firehose_max_fmix_per_step = parser_get_opt_param_float(
         parameter_file, "KIARAChemistry:firehose_max_fmix_per_step", 0.1f);
+
+    data->firehose_log_energy = parser_get_opt_param_int(
+        parameter_file, "KIARAChemistry:firehose_log_energy", 0);
   }
 
   /* Read the total metallicity */
@@ -958,9 +961,24 @@ __attribute__((always_inline)) INLINE static void chemistry_end_force_body(
       }
 #endif
 
+      /* No limit on the change of u: the pairwise exchange conserves energy
+       * and is already bounded (u_new is a convex mix with at most
+       * firehose_max_fmix_per_step from the other phase, plus dissipated
+       * kinetic energy), and capping it here discarded energy the partner
+       * had already given up. Log large jumps (diagnostic). */
       const double energy_frac = (u > 0.) ? u_new / u : 1.;
-      if (energy_frac > FIREHOSE_HEATLIM) u_new = FIREHOSE_HEATLIM * u;
-      if (energy_frac < FIREHOSE_COOLLIM) u_new = FIREHOSE_COOLLIM * u;
+      if (cd->firehose_log_energy && energy_frac > FIREHOSE_HEATLIM) {
+        /* Energy above FIREHOSE_HEATLIM u (physical internal units), which
+         * the old cap discarded */
+        message(
+            "FIREHOSE_HEAT z=%g pid=%lld stream=%d jet=%d m=%g u=%g u_new=%g "
+            "excess=%g",
+            cosmo->z, p->id, p->decoupled > 0, p->feedback_data.jet_decoupled,
+            m, u * cosmo->a_factor_internal_energy,
+            u_new * cosmo->a_factor_internal_energy,
+            m * (u_new - FIREHOSE_HEATLIM * u) *
+                cosmo->a_factor_internal_energy);
+      }
 
       /* If it's in subgrid ISM mode, use additional heat to
        * lower ISM cold fraction */

@@ -308,6 +308,10 @@ struct feedback_props {
   /*! The internal energy corresponding to the unheated wind temperature */
   float cold_wind_internal_energy;
 
+  /*! Temperature of cold winds (K); their energy is set at launch with the
+   * particle's own mu */
+  float cold_wind_temperature;
+
   /*! The internal energy corresponding to the heated wind temperature */
   float hot_wind_internal_energy;
 
