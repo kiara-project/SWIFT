@@ -272,6 +272,7 @@ ObsidianAGN:
   # fixed_spin:                           0.9             # The spin of every black hole in the simulation.
   adaf_torque_phi_factor:               0.0             # Magnetic flux of torque-fed ADAF inflow relative to MAD (Bondi share is MAD)
   adaf_jet_free_energy:                 1               # 1: ADAF jets at full MAD efficiency regardless of spin-down
+  # adaf_jet_free_energy = 1 assumes torque-fed (disk) accretion supplies the angular momentum that balances its jet spin-down, so its jet energy is not taken from the spin; only the Bondi share spins the BH down (as a MAD). ADAF jet efficiency is then effectively a tuned ~eps_MAD(a~1) and BH spins stay high (not a spin prediction). Needed to quench: self-consistent jets (0, with nonzero adaf_torque_phi_factor) spin BHs down to a~0.1 and are 1-2 dex weaker.
   torque_accretion_max_radius_softening: 1.0            # Torque accretion only from cold gas within this many Plummer softenings
   adaf_coupling:                        0.02            # How much of the energy couples to the medium (at z=0). <1
   adaf_max_coupling:                    0.2             # Maximum coupling value, only used if adaf_z_scaling>0.

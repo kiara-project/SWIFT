@@ -344,9 +344,15 @@ struct black_holes_props {
    * share is always a MAD) */
   float adaf_torque_phi_factor;
 
-  /*! If 1, ADAF jets have the full MAD efficiency for all inflow while the
-   * spin-down of the torque-fed share still uses adaf_torque_phi_factor, so
-   * part of the jet energy is not taken from the spin */
+  /*! If 1, ADAF jets have the full MAD efficiency for all inflow, while the
+   * spin-down of the torque-fed share still uses adaf_torque_phi_factor.
+   * Model assumption: the angular momentum brought in by torque-fed (disk)
+   * accretion balances the jet spin-down of that share, whereas Bondi
+   * inflow brings none and spins the BH down as a MAD. The jet energy of the
+   * torque-fed share is then not drawn from the BH spin, so the ADAF jet
+   * efficiency is effectively a tuned parameter (~eps_MAD(a ~ 1)) and spins
+   * stay high; needed for quenching (with 0 and a self-consistent flux the
+   * spins fall to ~0.1 and the jets are 1-2 dex weaker) */
   int adaf_jet_free_energy;
 
   /*! If > 0, the ADAF f_accretion (set by the subgrid jet loading) uses the
