@@ -525,6 +525,10 @@ struct black_holes_props {
   /*! Maximal distance over which BHs merge, in units of softening length */
   float max_merging_distance_ratio;
 
+  /*! 1: the merging distance is in units of the Plummer baryon softening (as
+   * in EAGLE); 0: in units of h_BH / (Plummer-equivalent factor) */
+  int merger_radius_from_softening;
+
   /*! Multiplier of the dynamical-friction time after which a secondary BH in
    * a FoF galaxy is sunk onto the galaxy's most massive BH (<= 0: off) */
   float df_merger_time_factor;
@@ -1455,6 +1459,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->max_merging_distance_ratio =
       parser_get_param_float(params, "ObsidianAGN:merger_max_distance_ratio");
+  bp->merger_radius_from_softening = parser_get_opt_param_int(
+      params, "ObsidianAGN:merger_radius_from_softening", 1);
 
   bp->df_merger_time_factor = parser_get_opt_param_float(
       params, "ObsidianAGN:bh_df_merger_time_factor", 1.f);

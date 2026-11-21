@@ -324,7 +324,8 @@ ObsidianAGN:
   threshold_major_merger:               0.333           # Mass ratio threshold to consider a BH merger as 'major'
   threshold_minor_merger:               0.1             # Mass ratio threshold to consider a BH merger as 'minor'
   merger_threshold_type:                EscapeVelocity  # Type of velocity threshold for BH mergers (0: v_circ at kernel edge, 1: v_esc at actual distance, with softening, 2: v_esc at actual distance, no softening).
-  merger_max_distance_ratio:            1.4             # Maximal distance over which two BHs can merge, in units of equiv Plummer softening length.
+  merger_max_distance_ratio:            1.4             # Maximal distance over which two BHs can merge, in units of equiv Plummer softening length (or h_BH / 2.8 if merger_radius_from_softening = 0). Only BHs within the swallowing BH's kernel are tested.
+  merger_radius_from_softening:         1               # 1 = merger_max_distance_ratio is in units of the Plummer baryon softening (EAGLE); 0 = in units of h_BH / 2.8 (earlier Obsidian).
   with_potential_correction:            1               # Correct for the potential when repositioning?
   minimum_timestep_Myr:                 0.1             # Minimum of the accretion-limited time-step length.
   dt_accretion_factor:                  1.0            # OPTIONAL: Default 1.0, timestep limiter 5% growth

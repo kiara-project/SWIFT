@@ -53,6 +53,26 @@ black_holes_max_reposition_distance2(const struct bpart *bi,
   return d * d;
 }
 
+/**
+ * @brief Square of the (comoving) maximal BH-BH merging distance.
+ *
+ * merger_max_distance_ratio times the Plummer-equivalent baryon softening
+ * (as in EAGLE), or, with merger_radius_from_softening = 0, times
+ * h_BH / (Plummer-equivalent factor) of the swallowing BH (the earlier
+ * Obsidian choice). Only BHs within the swallowing BH's kernel are tested.
+ */
+__attribute__((always_inline)) INLINE static float
+black_holes_max_merging_distance2(const struct bpart *bi,
+                                  const struct black_holes_props *bh_props,
+                                  const struct gravity_props *grav_props) {
+  const float l = bh_props->merger_radius_from_softening
+                      ? grav_props->epsilon_baryon_cur
+                      : bi->h;
+  const float d = kernel_gravity_softening_plummer_equivalent_inv *
+                  bh_props->max_merging_distance_ratio * l;
+  return d * d;
+}
+
 // #define OBSIDIAN_DEBUG_CHECKS
 
 /**
@@ -927,12 +947,9 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float dx[3],
     h = hj;
   }
 
-  /* (Square of) max swallowing distance allowed based on the softening */
+  /* (Square of) max swallowing distance allowed */
   const float max_dist_merge2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_merging_distance_ratio *
-      bh_props->max_merging_distance_ratio * bi->h * bi->h;
+      black_holes_max_merging_distance2(bi, bh_props, grav_props);
 
   const float G_Newton = grav_props->G_Newton;
 
