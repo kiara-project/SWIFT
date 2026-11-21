@@ -49,6 +49,19 @@ struct rt_part_data {
    * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
    * dt) */
   float debug_heat[2];
+
+  /*! DEBUG: cumulative ionizing budget, in units of 1e50 (photons or ions):
+   * 0 ionizing photons absorbed by the gas species, 1 ionizing photons
+   * absorbed by the subgrid ISM clouds, 2 photoionizations asked of Grackle
+   * (ionization rates times the start-of-step HI, HeI and HeII atoms times
+   * dt), 3 net change of the ions HII + HeII + 2 HeIII over the
+   * thermochemistry steps (photo- and collisional ionizations minus
+   * recombinations) */
+  double debug_ion[4];
+
+  /*! DEBUG: largest absorption optical depth over one thermochemistry step
+   * (absorption rate times dt, before the cap at 1) of any ionizing group */
+  float debug_tau_max;
 #endif
 
   /* Radiation state vector. */

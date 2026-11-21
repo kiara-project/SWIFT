@@ -240,6 +240,8 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.debug_dE_onesided = 0.f;
   p->rt_data.debug_dE_acc = 0.f;
   for (int k = 0; k < 2; k++) p->rt_data.debug_heat[k] = 0.f;
+  for (int k = 0; k < 4; k++) p->rt_data.debug_ion[k] = 0.;
+  p->rt_data.debug_tau_max = 0.f;
 #endif
   rt_part_reset_fluxes(p);
 

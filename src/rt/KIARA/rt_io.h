@@ -270,6 +270,20 @@ INLINE static int rt_write_particles(const struct part *parts,
       "start-of-step HI atoms times dt). Zero unless "
       "KIARART:debug_grackle_heat");
   num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugIonizingBudget", DOUBLE, 4, UNIT_CONV_NO_UNITS, 0.f, parts,
+      rt_data.debug_ion,
+      "Cumulative ionizing budget in units of 1e50 photons or ions: photons "
+      "absorbed by the gas species, photons absorbed by the subgrid ISM "
+      "clouds, photoionizations asked of Grackle (rates times start-of-step "
+      "HI, HeI, HeII atoms times dt), net change of HII + HeII + 2 HeIII");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugMaxTau", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      rt_data.debug_tau_max,
+      "Largest absorption optical depth over one thermochemistry step (rate "
+      "times dt, before the cap at 1) of any ionizing group");
+  num_elements++;
   list[num_elements] = io_make_output_field_convert_part(
       "RTDebugInterfaceAreaRatio", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
       /*xparts=*/NULL, rt_convert_area_ratio,
