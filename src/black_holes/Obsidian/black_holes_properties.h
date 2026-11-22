@@ -310,6 +310,11 @@ struct black_holes_props {
   /*! The maximum temperature to heat a gas particle */
   float adaf_maximum_temperature;
 
+  /*! Halo virial temperature estimate used for the jet temperature and the
+   * ADAF heating cap: 0 = halo mass from M_BH (Zhang+23 fit), 1 = halo mass
+   * from the host galaxy stellar mass (inverse Moster+13 SMHM relation) */
+  int virial_temperature_model;
+
   /*! Above this density we should shut off cooling for heated particles */
   double adaf_heating_n_H_threshold_cgs;
 
@@ -1319,6 +1324,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->adaf_maximum_temperature = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_maximum_temperature_K", 5.e7f);
   bp->adaf_maximum_temperature *= T_K_to_int;
+
+  bp->virial_temperature_model = parser_get_opt_param_int(
+      params, "ObsidianAGN:virial_temperature_model", 0);
+  if (bp->virial_temperature_model != 0 && bp->virial_temperature_model != 1)
+    error("ObsidianAGN:virial_temperature_model must be 0 (M_BH, Zhang+23) "
+          "or 1 (host galaxy M*, Moster+13)");
 
   bp->adaf_heating_n_H_threshold_cgs = parser_get_opt_param_float(
       params, "ObsidianAGN:adaf_heating_n_H_threshold_cgs", 0.13f);

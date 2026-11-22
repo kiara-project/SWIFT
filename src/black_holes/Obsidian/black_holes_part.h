@@ -319,6 +319,10 @@ struct bpart {
   /*! The mass of stars within the kernel */
   float stellar_mass;
 
+  /*! Host halo virial temperature estimate (internal units), set once per
+   * step in black_holes_prepare_feedback */
+  float virial_temperature;
+
   /*! The radiative luminosity of the black hole */
   float radiative_luminosity;
 
