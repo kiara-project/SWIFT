@@ -1408,6 +1408,14 @@ runner_iact_nonsym_bh_gas_feedback(
       pj->decoupled = 1;
       pj->feedback_data.jet_decoupled = jet_flag;
 
+      /* Kernel crossing time for the escape-time recoupling (not for jets,
+       * which have their own criteria) */
+      pj->feedback_data.decoupled_time = 0.f;
+      pj->feedback_data.escape_crossing_time =
+          (!jet_flag && v_kick > 0.f)
+              ? kernel_gamma * pj->h * cosmo->a / v_kick
+              : 0.f;
+
       /* Give the wind a firehose stream radius, as for stellar winds, from
        * the BH's wind mass outflow rate (accretion rate times the jet or
        * wind mass loading), so that it mixes with and is entrained by the
