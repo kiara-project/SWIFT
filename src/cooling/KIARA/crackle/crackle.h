@@ -187,8 +187,9 @@ typedef struct {
   double dust_logT_lo; // dust temperature table
   double dust_dlogT;
   double dust_dlogT_inv;
-  double ssh_nfac_HI;  // UVB-dependent part of the HI, HeI self-shielding densities (0 if no UVB)
+  double ssh_nfac_HI;  // UVB-dependent part of the HI, HeI, HeII self-shielding densities (0 if no UVB)
   double ssh_nfac_HeI;
+  double ssh_nfac_HeII;  // self_shielding_method 4 only
 } interp_struct;
 
 typedef struct {

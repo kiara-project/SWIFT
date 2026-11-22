@@ -142,13 +142,17 @@ rt_get_interaction_rates_for_grackle(
  * @param average_photon_energy mean photon energy in group, in erg
  * @param csn number weighted photon interaction cross sections, in cm^2
  * @param c_red the particle's reduced speed of light (internal units)
+ * @param heii_absorbs 0 if HeII does not absorb: the chemistry does not
+ * photoionize HeII (self_shielding_method 3), so its photons pass through
+ * instead of being destroyed without ionizing or heating anything.
  * @param phys_const physical constants struct
  * @param us internal units struct
  **/
 __attribute__((always_inline)) INLINE static void rt_get_absorption_rates(
     double absorption_rates[RT_NGROUPS], gr_float species_densities[6],
     const double average_photon_energy[RT_NGROUPS], double **csn,
-    const float c_red, const struct phys_const *restrict phys_const,
+    const float c_red, const int heii_absorbs,
+    const struct phys_const *restrict phys_const,
     const struct unit_system *restrict us) {
 
   for (int g = 0; g < RT_NGROUPS; g++) absorption_rates[g] = 0.;
@@ -168,6 +172,7 @@ __attribute__((always_inline)) INLINE static void rt_get_absorption_rates(
 
   for (int g = 0; g < RT_NGROUPS; g++) {
     for (int s = 0; s < rt_ionizing_species_count; s++) {
+      if (s == rt_ionizing_species_HeII && !heii_absorbs) continue;
       absorption_rates[g] += c_cgs * csn[g][s] * ns_cgs[s];
     }
   }

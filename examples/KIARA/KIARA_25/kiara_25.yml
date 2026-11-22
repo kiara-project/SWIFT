@@ -156,7 +156,7 @@ KIARACooling:
   with_metal_cooling:           1                       # Enable or not the metal cooling
   provide_volumetric_heating_rates: 0                   # Provide volumetric heating rates to grackle
   provide_specific_heating_rates: 1                     # Provide specific heating rates to grackle; turning this off ignores adiabatic dudt
-  self_shielding_method:        3                       # Grackle (<= 3) self shielding method; 3 (default) is advised.
+  self_shielding_method:        3                       # Rahmati+13 self-shielding: 0 none, 1 HI, 2 HI+HeI, 3 (default) HI+HeI with HeII photoionization off, 4 HI+HeI+HeII
   ism_adiabatic_heating_method: 2                       # For subgrid ISM: 0=ignore adiabatic du/dt, 1=evolve in grackle, 2=use to evaporate cold ism
   grackle_max_steps:            200                     # maximum number of iterations for a single step in Grackle
   timestep_accuracy:            0.2                     # max change in energy, HI, or electron density in a single timestep

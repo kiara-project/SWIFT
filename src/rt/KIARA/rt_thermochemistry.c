@@ -572,12 +572,15 @@ INLINE void rt_do_thermochemistry(
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p),
+      /*heii_absorbs=*/1, phys_const, us);
 
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(absorption_rates_new, species_new,
                           rt_props->average_photon_energy,
-                          rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
+                          rt_props->number_weighted_cross_sections,
+                          rt_part_get_effective_speed_of_light(p),
+                          /*heii_absorbs=*/1, phys_const, us);
 
   /* Absorption of the FUV light by the dust */
   const double tau_dust =
@@ -932,11 +935,17 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   }
 
   /* Outside the subgrid ISM: absorption by the gas species.
+   * With self_shielding_method 3 the cooling chemistry ignores the RT HeII
+   * photoionization rate (and the RT runs have no UVB, so the HI and HeI
+   * shielding factors are 1); HeII then must not absorb, else its photons
+   * are destroyed without ionizing or heating anything.
    * First get absorption rates at the start of the step */
+  const int heii_absorbs = (cooling->chemistry.self_shielding_method != 3);
   double absorption_rates[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates, rt_species, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections,
+      rt_part_get_effective_speed_of_light(p), heii_absorbs, phys_const, us);
 
   /* Set up absorption rate calculation at end of step */
   gr_float rt_species_new[6];
@@ -955,7 +964,8 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   double absorption_rates_new[RT_NGROUPS];
   rt_get_absorption_rates(
       absorption_rates_new, rt_species_new, rt_props->average_photon_energy,
-      rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
+      rt_props->number_weighted_cross_sections,
+      rt_part_get_effective_speed_of_light(p), heii_absorbs, phys_const, us);
 
   /* Absorption of the FUV light by all of the dust */
   const double tau_dust =
