@@ -119,7 +119,7 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
             gp->fSShHI = 0.98*pow(1.+pow(nratio,1.64), -2.28) + 0.02*pow(1.+nratio, -0.84);
 	}
 
-        if (chemistry->self_shielding_method == 2 || chemistry->self_shielding_method == 3) {
+        if (chemistry->self_shielding_method >= 2) {
             /* HeI self-shielding factor */
 	    if (my_rates->k26 < tiny) gp->fSShHeI = 1.;
 	    else {
@@ -134,14 +134,26 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
             gp->fSShHeII = 0.f;
             my_rates->k25shield = 0.;  // as in Grackle: HeII photoionization ignored
         }
+        else if (chemistry->self_shielding_method == 4) {
+            /* HeII self-shielded like HI and HeI: the Rahmati+13 form with the HeII photoionization
+             * rate and cross-section of the UVB and the He number density. Unlike method 3, gas below
+             * the HeII self-shielding density keeps its HeII photoionization and photoheating. */
+            if (my_rates->k25 < tiny) gp->fSShHeII = 1.;
+            else {
+                const double nSSh_heii = interpolation->ssh_nfac_HeII * tfac;
+                const double nratio_heii = 0.25 * gp->rhoHe * cunits->dom / nSSh_heii;  // He number density
+                gp->fSShHeII = 0.98*pow(1.+pow(nratio_heii,1.64), -2.28) + 0.02*pow(1.+nratio_heii, -0.84);
+            }
+        }
 
 	my_rates->k24shield *= gp->fSShHI;
 	my_rates->k29shield *= gp->fSShHI;
-	if (chemistry->self_shielding_method == 2 || chemistry->self_shielding_method == 3) {
+	if (chemistry->self_shielding_method >= 2) {
 	    my_rates->k26shield *= gp->fSShHeI;
 	    my_rates->k28shield *= gp->fSShHeI;
 	    my_rates->k30shield *= gp->fSShHeI;
 	}
+	if (chemistry->self_shielding_method == 4) my_rates->k25shield *= gp->fSShHeII;
 
 	return f_shield;
 }
@@ -188,11 +200,13 @@ static inline void init_temperature_interpolation(grackle_part_data *gp, chemist
 	interpolation->dust_dlogT_inv = 1. / interpolation->dust_dlogT;
 
 	/* UVB-dependent factors in the HI and HeI self-shielding densities (Rahmati+13 form, as in Grackle) */
-	interpolation->ssh_nfac_HI = interpolation->ssh_nfac_HeI = 0.;
+	interpolation->ssh_nfac_HI = interpolation->ssh_nfac_HeI = interpolation->ssh_nfac_HeII = 0.;
 	if (chemistry->UVbackground > 0 && my_uvb_rates->k24 >= tiny)
 	    interpolation->ssh_nfac_HI = 6.73e-3 * pow(my_uvb_rates->crsHI * cunits->time_to_cgs * 1.e-12 / (2.49e-18 * my_uvb_rates->k24), -0.6666667);
 	if (chemistry->UVbackground > 0 && my_uvb_rates->k26 >= tiny)
 	    interpolation->ssh_nfac_HeI = 6.73e-3 * pow(my_uvb_rates->crsHeI * cunits->time_to_cgs * 1.e-12 / (2.49e-18 * my_uvb_rates->k26), -0.6666667);
+	if (chemistry->self_shielding_method == 4 && chemistry->UVbackground > 0 && my_uvb_rates->k25 >= tiny)
+	    interpolation->ssh_nfac_HeII = 6.73e-3 * pow(my_uvb_rates->crsHeII * cunits->time_to_cgs * 1.e-12 / (2.49e-18 * my_uvb_rates->k25), -0.6666667);
 
 	/* Accuracy value must be non-zero otherwise code will not do cooling */
 	assert(chemistry->accuracy > 0.f && "CRACKLE ERROR: chemistry->accuracy input value must be greater than zero! (typically 0.1)");

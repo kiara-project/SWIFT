@@ -478,6 +478,10 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   /* Self shielding */
   cooling->self_shielding_method = parser_get_opt_param_int(
       parameter_file, "KIARACooling:self_shielding_method", 3);
+  if (cooling->self_shielding_method < 0 || cooling->self_shielding_method > 4)
+    error(
+        "KIARACooling:self_shielding_method must be 0 (none), 1 (HI), 2 (HI, "
+        "HeI), 3 (HI, HeI; HeII photoionization off) or 4 (HI, HeI, HeII)");
 
   /* What to do with adiabatic du/dt when in ISM mode */
   cooling->ism_adiabatic_heating_method = parser_get_opt_param_int(

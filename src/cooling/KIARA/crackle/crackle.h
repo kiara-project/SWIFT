@@ -52,6 +52,7 @@ typedef struct
   double delta_e;
   int verbose;
   int freeze_shielding;  // if set, compute_edot reuses the self-shielding factors and shielded rates already computed
+  int fixed_energy;  // if set, evolve the species (and H2) at fixed internal energy: no radiative or external energy change, no dust evolution
   int id;
 
   /* Scalar copy of grackle_field_data */
@@ -166,6 +167,7 @@ static inline void crackle_init_part(grackle_part_data *gp)
 	gp->tdust = -1.;  // initialize to negative value so it makes an initial guess
 	gp->verbose = 0;
 	gp->freeze_shielding = 0;
+	gp->fixed_energy = 0;
 }
 
 typedef struct {
@@ -187,8 +189,9 @@ typedef struct {
   double dust_logT_lo; // dust temperature table
   double dust_dlogT;
   double dust_dlogT_inv;
-  double ssh_nfac_HI;  // UVB-dependent part of the HI, HeI self-shielding densities (0 if no UVB)
+  double ssh_nfac_HI;  // UVB-dependent part of the HI, HeI, HeII self-shielding densities (0 if no UVB)
   double ssh_nfac_HeI;
+  double ssh_nfac_HeII;  // self_shielding_method 4 only
 } interp_struct;
 
 typedef struct {

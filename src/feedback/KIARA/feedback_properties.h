@@ -295,6 +295,11 @@ struct feedback_props {
   /*! Factor (<1) below ISM density below which to recouple */
   float recouple_density_factor;
 
+  /*! A decoupled (non-jet) wind still, or again, in ISM-density ambient gas
+   * after this many launch kernel-crossing times has failed to escape (or
+   * has fallen back) and recouples; 0 = off */
+  float recouple_escape_kernels;
+
   /*! Once its decoupling time is up, a jet particle recouples only below
    * this physical H number density (cgs)... */
   float jet_recouple_nH_cgs;

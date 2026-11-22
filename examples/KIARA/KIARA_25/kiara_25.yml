@@ -156,7 +156,7 @@ KIARACooling:
   with_metal_cooling:           1                       # Enable or not the metal cooling
   provide_volumetric_heating_rates: 0                   # Provide volumetric heating rates to grackle
   provide_specific_heating_rates: 1                     # Provide specific heating rates to grackle; turning this off ignores adiabatic dudt
-  self_shielding_method:        3                       # Grackle (<= 3) self shielding method; 3 (default) is advised.
+  self_shielding_method:        3                       # Rahmati+13 self-shielding: 0 none, 1 HI, 2 HI+HeI, 3 (default) HI+HeI with HeII photoionization off, 4 HI+HeI+HeII
   ism_adiabatic_heating_method: 2                       # For subgrid ISM: 0=ignore adiabatic du/dt, 1=evolve in grackle, 2=use to evaporate cold ism
   grackle_max_steps:            200                     # maximum number of iterations for a single step in Grackle
   timestep_accuracy:            0.2                     # max change in energy, HI, or electron density in a single timestep
@@ -261,7 +261,7 @@ ObsidianAGN:
   bh_characteristic_suppression_mass:   3.e7            # the exponential e-folding mass for Simba-C style BH suppression
   jet_loading_type:                     MixedLoaded    # EnergyLoaded or MomentumLoaded
   jet_frac_energy_loaded:               0.1
-  jet_temperature_K:                    -1.          # Temperature to heat the jet particles, in Kelvin. If <0, use abs(value) times Tvir (estimated from MBH)
+  jet_temperature_K:                    -1.          # Temperature to heat the jet particles, in Kelvin. If <0, use abs(value) times Tvir (see virial_temperature_model)
   jet_velocity_km_s:                    5000.           # Resolved, large-scale jet velocity in km/s
   jet_subgrid_velocity_km_s:            100000.          # Subgrid jet velocity in km/s, sets the small-scale mass loading.
   jet_launch_dir:                       4               # Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards
@@ -281,7 +281,8 @@ ObsidianAGN:
   adaf_wind_speed_km_s:                 -2000.           # Wind speed for ADAF kick, or if <0 it is the max speed
   adaf_wind_dir:                        4             # Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards
   adaf_f_quasar_psi:                    -1.
-  adaf_maximum_temperature_K:           -1.           # The maximum temperature to heat an individual particle in the ADAF thermal energy dump; If <0, use abs(value) times Tvir (estimated from MBH)
+  adaf_maximum_temperature_K:           -1.           # The maximum temperature to heat an individual particle in the ADAF thermal energy dump; If <0, use abs(value) times Tvir (see virial_temperature_model)
+  virial_temperature_model:             0             # Tvir used by jet_temperature_K and adaf_maximum_temperature_K < 0: 0 = halo mass from MBH (Zhang+23 fit), 1 = from host galaxy M* (inverse Moster+13 SMHM)
   adaf_mass_limit_Msun:                 0.5e8           # Minimum black hole mass (Msun) for the ADAF mode to activate
   adaf_mass_limit_spread_Msun:          1.0e8
   adaf_mass_limit_a_scaling:            0.

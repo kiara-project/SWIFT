@@ -29,6 +29,13 @@ struct feedback_part_data {
   /*! remaining time left for decoupling */
   float decoupling_delay_time;
 
+  /*! Time since this particle was decoupled (internal units) */
+  float decoupled_time;
+
+  /*! Kernel crossing time at launch, kernel size / launch speed (internal
+   * units); 0 = no escape-time recoupling (jets, or not decoupled) */
+  float escape_crossing_time;
+
   /*! Number of times decoupled */
   int number_of_times_decoupled;
 

@@ -57,6 +57,7 @@ firehose_init_ambient_quantities(struct part *restrict p,
 
   cpd->w_ambient = 0.f;
   cpd->rho_ambient = 0.f;
+  cpd->rho_ambient_full = -1.f;
   cpd->u_ambient = 0.f;
   for (int k = 0; k < 3; k++) cpd->v_ambient[k] = 0.f;
 }
@@ -150,6 +151,11 @@ firehose_end_ambient_quantities(struct part *restrict p,
 
     /* h_inv_dim can sometimes lead to rho_ambient -> 0 after normalization */
     p->chemistry_data.rho_ambient *= h_inv_dim;
+
+    /* Uncapped ambient density, for the recoupling criteria */
+    p->chemistry_data.rho_ambient_full =
+        (p->chemistry_data.rho_ambient > 0.f) ? p->chemistry_data.rho_ambient
+                                              : 0.f;
 
     if (p->chemistry_data.rho_ambient > 0.f) {
       const float norm = h_inv_dim / p->chemistry_data.rho_ambient;
