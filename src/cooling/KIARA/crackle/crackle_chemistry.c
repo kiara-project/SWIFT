@@ -112,6 +112,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    /* In the first iteration we need edot for the timestep; afterwards we use the effective edot of the previous iteration */
 	    if (iter == 0) {
 	        compute_edot(&gp, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);
+	        if (gp.fixed_energy) gp.edot = gp.edot_ext = gp.edot_end = 0.;
 	    }
 	    /* Species rates for the timestep must be recomputed every iteration, else a large initial rate keeps dtit tiny all step */
 	    gp.HIdot = compute_HIdot(chemistry->primordial_chemistry, &gp, chemistry, &my_rates, units);
@@ -140,7 +141,16 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 
 	    /* Energy update with step-averaged species: 2nd-order L-stable Rosenbrock (ROS2) step, stable even when dtit is much
 	     * longer than the thermal relaxation time (e.g. near thermal equilibrium, where |edot| << individual heating/cooling terms) */
-	    evolve_energy_ros2(&gp, gp_old.internal_energy, dtit, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);
+	    if (!gp.fixed_energy) {
+	        evolve_energy_ros2(&gp, gp_old.internal_energy, dtit, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);
+	    }
+	    else {
+	        /* Species only: u stays at its start value (T follows the mean molecular weight). compute_edot keeps the
+	         * self-shielded photo-rates current for the species update; its energy rates are discarded. */
+	        gp.internal_energy = gp_old.internal_energy;
+	        compute_edot(&gp, chemistry, grackle_rates, &my_rates, my_uvb_rates, &interpolation, units, &cunits, ism_flag);
+	        gp.edot = gp.edot_ext = gp.edot_end = 0.;
+	    }
 
 	    /* Species rates at the mid-step temperature for the second species half-step */
 	    grackle_part_data gp_mid = gp;
@@ -153,7 +163,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_hydrogen(&gp, &gp, chemistry, &my_rates, 0.5 * dtit);  
 	    evolve_helium(&gp, &gp, chemistry, &my_rates, 0.5 * dtit); 
 	    if (chemistry->primordial_chemistry >= 2) evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, 0.5 * dtit);  
-	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dtit); 
+	    if (chemistry->use_dust_evol && !gp.fixed_energy) evolve_dust(&gp, chemistry, units, ism_flag, dtit); 
 	    /* SNe_density is the SNe of the whole step: destroy their dust once, not every iteration */
 	    gp.SNe_density = 0.;
 	    evolve_elements(&gp, &gp_old, chemistry);
@@ -190,7 +200,7 @@ int crackle_solve_part(grackle_part_data *gp_io, chemistry_data *chemistry, cons
 	    evolve_hydrogen(&gp, &gp, chemistry, &my_rates, dt - dtcool);  
 	    evolve_H2(&gp, ism_flag, chemistry, &my_rates, &cunits, dt - dtcool); 
 	    evolve_elements(&gp, &gp_old, chemistry);
-	    if (chemistry->use_dust_evol) evolve_dust(&gp, chemistry, units, ism_flag, dt - dtcool);
+	    if (chemistry->use_dust_evol && !gp.fixed_energy) evolve_dust(&gp, chemistry, units, ism_flag, dt - dtcool);
 	    gp.SNe_density = 0.;
 	}
 

@@ -1086,15 +1086,12 @@ runner_iact_nonsym_bh_gas_feedback(
 
   float v_kick = bi->v_kick; /* PHYSICAL */
 
+#ifdef OBSIDIAN_DEBUG_CHECKS
   const float bh_mass_msun = bi->subgrid_mass * bh_props->mass_to_solar_mass;
+#endif
 
-  /* by-eye fit from Fig 6 of Zhang+2023 (2305.06803) */
-  double halo_mass = 1.e12 * pow(bh_mass_msun * 1.e-7, 0.75);
-  if (halo_mass < 6.3e11) halo_mass = 6.3e11;
-
-  /* In internal temperature units */
-  const double T_vir = 9.52e7 * pow(halo_mass * 1.e-15, 0.6666) *
-                       bh_props->T_K_to_int * (1. + cosmo->z);
+  /* Host halo T_vir (internal units), from black_holes_prepare_feedback */
+  const double T_vir = bi->virial_temperature;
 
   /* In the swallow loop the particle was marked as a kick particle */
   const int swallow_flag = (pj->black_holes_data.swallow_id == bi->id);
@@ -1410,6 +1407,14 @@ runner_iact_nonsym_bh_gas_feedback(
       pj->feedback_data.decoupling_delay_time = dt + f_decouple * t_H;
       pj->decoupled = 1;
       pj->feedback_data.jet_decoupled = jet_flag;
+
+      /* Kernel crossing time for the escape-time recoupling (not for jets,
+       * which have their own criteria) */
+      pj->feedback_data.decoupled_time = 0.f;
+      pj->feedback_data.escape_crossing_time =
+          (!jet_flag && v_kick > 0.f)
+              ? kernel_gamma * pj->h * cosmo->a / v_kick
+              : 0.f;
 
       /* Give the wind a firehose stream radius, as for stellar winds, from
        * the BH's wind mass outflow rate (accretion rate times the jet or

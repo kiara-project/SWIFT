@@ -86,6 +86,8 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_set_flags(
     struct part *p, struct xpart *xp, const struct cosmology *cosmo) {
 
   p->feedback_data.decoupling_delay_time = 0.f;
+  p->feedback_data.decoupled_time = 0.f;
+  p->feedback_data.escape_crossing_time = 0.f;
   p->feedback_data.cooling_shutoff_delay_time = 0.f;
   p->feedback_data.jet_decoupled = 0;
   p->decoupled = 0;
@@ -141,6 +143,7 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
     if (p->decoupled) {
       /* Decrement the counter */
       p->feedback_data.decoupling_delay_time -= dt_part;
+      p->feedback_data.decoupled_time += dt_part;
 
       /* Estimate if it will decouple in the next step, if so set flag=2 */
       if (p->feedback_data.decoupling_delay_time <= dt_part) {
@@ -148,8 +151,8 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
       }
 
       /**
-       * Recouple under 3 conditions:
-       * (1) Below the density threshold.
+       * Recouple under 4 conditions:
+       * (1) Below the density threshold (ambient density, see below).
        * (2) If the stream radius is negative.
        * (3) If the timer has run out. A jet particle then also has to be
        *     outside the ISM or no longer highly supersonic: recoupling a
@@ -160,6 +163,29 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
           hydro_get_physical_density(p, cosmo) * fb_props->rho_to_n_cgs;
       const double rho_recouple_cgs = fb_props->recouple_density_factor *
                                       fb_props->recouple_ism_density_nH_cgs;
+
+      /* The density criteria use the density of the coupled neighbours (from
+       * the firehose ambient sums, before its cap): the SPH density includes
+       * the other wind particles, and a group of them keeps each other above
+       * any threshold. Without ambient sums, the SPH density as before. */
+      const double rho_amb_nH_cgs =
+          (p->chemistry_data.rho_ambient_full >= 0.f)
+              ? p->chemistry_data.rho_ambient_full * cosmo->a3_inv *
+                    fb_props->rho_to_n_cgs
+              : rho_nH_cgs;
+
+      /* (4) Escape time: a non-jet wind still, or again, in ISM-density
+       * ambient gas after recouple_escape_kernels launch kernel-crossing
+       * times either never left the ISM (e.g. slow BH winds) or has fallen
+       * back (a fountain), so it is no longer an outflow */
+      const int escape_recouple =
+          (fb_props->recouple_escape_kernels > 0.f &&
+           p->feedback_data.escape_crossing_time > 0.f &&
+           !p->feedback_data.jet_decoupled &&
+           p->feedback_data.decoupled_time >
+               fb_props->recouple_escape_kernels *
+                   p->feedback_data.escape_crossing_time &&
+           rho_amb_nH_cgs > fb_props->recouple_ism_density_nH_cgs);
 
       int timer_recouple = (p->feedback_data.decoupling_delay_time <= 0.f);
       if (timer_recouple && p->feedback_data.jet_decoupled) {
@@ -185,14 +211,16 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
 
       const int recouple = (timer_recouple ||
                             p->chemistry_data.radius_stream < 0.f ||
-                            rho_nH_cgs < rho_recouple_cgs);
+                            rho_amb_nH_cgs < rho_recouple_cgs ||
+                            escape_recouple);
 
       /* Optional log of where and why BH-launched particles recouple */
       if (recouple && p->decoupled != 1 && fb_props->bh_recouple_log &&
           xp->feedback_data.bh_launch_type > 0) {
         const int reason = (timer_recouple ? 1 : 0) +
                            (p->chemistry_data.radius_stream < 0.f ? 2 : 0) +
-                           (rho_nH_cgs < rho_recouple_cgs ? 4 : 0);
+                           (rho_amb_nH_cgs < rho_recouple_cgs ? 4 : 0) +
+                           (escape_recouple ? 8 : 0);
         double d2 = 0.;
         float v2 = 0.f;
         for (int k = 0; k < 3; k++) {
@@ -407,6 +435,8 @@ __attribute__((always_inline)) INLINE static void feedback_first_init_part(
     struct part *restrict p, struct xpart *restrict xp) {
 
   p->feedback_data.decoupling_delay_time = 0.f;
+  p->feedback_data.decoupled_time = 0.f;
+  p->feedback_data.escape_crossing_time = 0.f;
   p->feedback_data.number_of_times_decoupled = 0;
   p->feedback_data.jet_decoupled = 0;
   p->feedback_data.cooling_shutoff_delay_time = 0.f;

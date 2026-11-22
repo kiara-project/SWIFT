@@ -467,6 +467,14 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
   num++;
 
   list[num] = io_make_output_field(
+      "VirialTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
+      virial_temperature,
+      "Host halo virial temperature estimate used for the jet temperature "
+      "and the ADAF heating cap (from M_BH or from the host galaxy stellar "
+      "mass, see ObsidianAGN:virial_temperature_model), at the last step.");
+  num++;
+
+  list[num] = io_make_output_field(
       "RadiativeEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
       radiative_efficiency,
       "Radiative efficiencies of the black holes at their last accretion "
