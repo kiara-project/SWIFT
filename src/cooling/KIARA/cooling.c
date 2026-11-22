@@ -1866,6 +1866,48 @@ void cooling_crackle_validate_direct(
 #endif
 
 /**
+ * @brief Evolve the primordial species of a particle that skips the cooling
+ * solve (decoupled, or with its cooling shut off), at fixed internal energy.
+ *
+ * Without this its ionization and molecular state stays frozen at the values
+ * it had in the ISM while wind or AGN heating takes it to 1e5-1e6 K. That gas
+ * then counts as HI, and on recoupling crackle starts from a neutral state at
+ * high temperature, so ionizing it and the HI line cooling drain its thermal
+ * energy. Here the species follow the particle's temperature and density
+ * (including the UVB and its self-shielding), while u, du/dt and the dust are
+ * left untouched (dust is sputtered in firehose_cooling_and_dust()).
+ *
+ * @param cosmo The #cosmology.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle extra data.
+ * @param dt The time-step of this particle.
+ */
+void cooling_update_species_fixed_energy(
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, const double dt) {
+
+  if (dt <= 0.) return;
+
+  cooling_normalize_primordial_species(p, xp);
+
+  code_units units = cooling->units;
+  chemistry_data *chemistry = (chemistry_data *)&cooling->chemistry;
+  gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
+
+  grackle_part_data gp;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, /*SNe_count=*/0.,
+                          /*T_warm=*/0., iact_rates, /*mode=*/0);
+  gp.fixed_energy = 1;
+  if (crackle_solve_part(&gp, chemistry, &grackle_rates,
+                         &cooling_crackle_step.uvb_rates, &units,
+                         &cooling_crackle_step.cunits, fabs(dt)) == 0)
+    error("Error in crackle_solve_part (fixed energy).");
+  cooling_copy_from_crackle(&gp, p, xp, cooling);
+}
+
+/**
  * @brief Compute the energy of a particle after dt and update the particle
  * chemistry data, or another quantity depending on the mode.
  *
@@ -2825,6 +2867,9 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
 
     /* Update cooling times this step. */
     p->cooling_data.ncool_this_step += 1;
+  } else {
+    /* No cooling, but the ionization state follows the gas */
+    cooling_update_species_fixed_energy(cosmo, cooling, p, xp, dt);
   }
 
   /* The SNe deposited by stellar feedback have now been used (for the dust

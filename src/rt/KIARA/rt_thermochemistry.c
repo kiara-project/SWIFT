@@ -702,6 +702,9 @@ INLINE void rt_do_thermochemistry_with_subgrid(
     /* Update the subgrid properties */
     cooling_set_particle_subgrid_properties(phys_const, us, cosmo, hydro_props,
                                             floor_props, cooling, p, xp);
+    /* No cooling, but the ionization state follows the gas (the RT field
+     * is not applied to decoupled gas, as before) */
+    cooling_update_species_fixed_energy(cosmo, cooling, p, xp, dt);
     return;
   }
 
