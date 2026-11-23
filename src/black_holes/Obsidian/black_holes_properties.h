@@ -494,9 +494,6 @@ struct black_holes_props {
   /*! Correct potential of BH? */
   int correct_bh_potential_for_repositioning;
 
-  /*! Flag to only reposition if central (i.e. most massive) BH */
-  int reposition_central_only;
-
   /* ---- Properties of the gas dynamical-friction model ---------- */
 
   /*! 0: off (repositioning only); 1: subgrid gas dynamical friction
@@ -1448,9 +1445,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->correct_bh_potential_for_repositioning =
       parser_get_param_int(params, "ObsidianAGN:with_potential_correction");
-
-  bp->reposition_central_only = parser_get_opt_param_int(
-      params, "ObsidianAGN:reposition_central_only", 0);
 
   /* Merger parameters ------------------------------------- */
 
