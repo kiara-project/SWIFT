@@ -175,8 +175,9 @@ __attribute__((always_inline)) INLINE static void feedback_recouple_part(
               : rho_nH_cgs;
 
       /* (4) Escape time: a non-jet wind still, or again, in ISM-density
-       * ambient gas after recouple_escape_kernels launch kernel-crossing
-       * times either never left the ISM (e.g. slow BH winds) or has fallen
+       * ambient gas after recouple_escape_kernels escape crossing times
+       * (over the launch kernel or the initial stream radius, see
+       * recouple_escape_length) either never left the ISM (e.g. slow BH winds) or has fallen
        * back (a fountain), so it is no longer an outflow */
       const int escape_recouple =
           (fb_props->recouple_escape_kernels > 0.f &&

@@ -1893,6 +1893,12 @@ void feedback_props_init(struct feedback_props *fp,
       params, "KIARAFeedback:recouple_escape_kernels", 0.);
   if (fp->recouple_escape_kernels < 0.f)
     error("KIARAFeedback:recouple_escape_kernels must be >= 0 (0 = off)");
+  fp->recouple_escape_length = parser_get_opt_param_int(
+      params, "KIARAFeedback:recouple_escape_length", 0);
+  if (fp->recouple_escape_length != 0 && fp->recouple_escape_length != 1)
+    error(
+        "KIARAFeedback:recouple_escape_length must be 0 (launch kernel) or 1 "
+        "(initial stream radius)");
 
   /* Jets recouple only outside the ISM or once they are no longer highly
    * supersonic, so they never recouple at full speed inside dense gas */
