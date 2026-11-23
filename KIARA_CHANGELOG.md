@@ -40,6 +40,7 @@ Covered: every `romeel_dev` merge (PRs #32–#55), plus `rt_fuv` (#53), which wa
 - **Resolved leftover merge-conflict markers in `configure.ac`** (b897bf792). They sat in the `--with-subgrid` help string, from PR #38. The help text now lists the options the `case` statement actually accepts.
 - **Removed `ObsidianAGN:reposition_central_only`** (b897bf792). It has had no effect since PR #34, and a parameter file that still sets it now gets it reported as unused.
 - **New option `ObsidianAGN:jet_velocity_cold_km_s`** (9efb4cf66), default 0 (off). The resolved jet speed is interpolated in log from `jet_velocity_km_s` at host gas fraction 0 to this value at gas fraction 1, with f_gas = M_gas/(M_gas+M*) from the FOF galaxy. Jet power is unchanged; gas-rich hosts get heavier, slower jets (more subgrid entrainment). Restart compatible.
+- **New option `KIARAFeedback:recouple_escape_length`** (3cc710659), default 0 (launch kernel, as before). With 1, the escape-time recoupling (`recouple_escape_kernels`) measures crossing times over the initial firehose stream radius, which scales with the galaxy size, for both stellar and BH winds. Recalibrate N when switching. Restart compatible.
 
 ---
 
