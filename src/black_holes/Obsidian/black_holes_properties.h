@@ -436,6 +436,10 @@ struct black_holes_props {
   /*! power-law scaling of jet vel with (LBH/1.e45 erg/s) */
   float jet_velocity_scaling_with_BH_lum;
 
+  /*! Jet speed for a host galaxy gas fraction of 1 (0 = off). The jet speed
+   * is interpolated in log between |jet_velocity| (f_gas=0) and this */
+  float jet_velocity_cold;
+
   /*! Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards,
    * 4=BH spin axis */
   int jet_launch_dir;
@@ -1067,6 +1071,16 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->jet_velocity_scaling_with_BH_lum = parser_get_opt_param_float(
       params, "ObsidianAGN:jet_velocity_scaling_with_BH_lum", 0.f);
 
+  /* Jet speed for a gas-rich host: log-interpolated in the host galaxy's
+   * gas fraction between |jet_velocity| (f_gas=0) and this (f_gas=1), so
+   * jets are heavier (more subgrid entrainment) in gas-rich galaxies */
+  bp->jet_velocity_cold = parser_get_opt_param_float(
+      params, "ObsidianAGN:jet_velocity_cold_km_s", 0.f);
+  if (bp->jet_velocity_cold < 0.f) {
+    error("jet_velocity_cold_km_s must be >= 0 (0 = off).");
+  }
+  bp->jet_velocity_cold *= bp->kms_to_internal;
+
   /* Default: along the BH spin axis */
   bp->jet_launch_dir =
       parser_get_opt_param_int(params, "ObsidianAGN:jet_launch_dir", 4);
@@ -1569,6 +1583,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             bp->bondi_BH_mass_cap * bp->mass_to_solar_mass);
     message("Black hole jet velocity is %g km/s",
             bp->jet_velocity / bp->kms_to_internal);
+    if (bp->jet_velocity_cold > 0.f) {
+      message(
+          "Black hole jet velocity varies with host f_gas, from %g km/s "
+          "(f_gas=0) to %g km/s (f_gas=1)",
+          fabs(bp->jet_velocity) / bp->kms_to_internal,
+          bp->jet_velocity_cold / bp->kms_to_internal);
+    }
     if (bp->jet_loading_type == BH_jet_momentum_loaded) {
       message("Black hole jet loading (momentum) is %g", bp->jet_mass_loading);
     } else if (bp->jet_loading_type == BH_jet_mixed_loaded) {
@@ -1685,6 +1706,18 @@ black_hole_compute_jet_velocity(const struct bpart *bi,
                                 const struct black_holes_props *props) {
 
   float jet_velocity = fabs(props->jet_velocity);
+
+  /* Heavier, slower jets in gas-rich hosts: interpolate log(v_jet) linearly
+   * in the host galaxy gas fraction (FOF galaxy ISM gas and stars) */
+  if (props->jet_velocity_cold > 0.f) {
+    const float m_gas = bi->galaxy_data.gas_mass;
+    const float m_star = bi->galaxy_data.stellar_mass;
+    float f_gas = 0.f;
+    if (m_gas > 0.f) f_gas = m_gas / (m_gas + fmaxf(m_star, 0.f));
+    f_gas = fminf(fmaxf(f_gas, 0.f), 1.f);
+    jet_velocity *= powf(props->jet_velocity_cold / jet_velocity, f_gas);
+  }
+
   /* If the user supplied a variable jet velocity we must recalculate the
    * mass loading based on the variable jet velocity */
   if (props->jet_velocity < 0.f ||
