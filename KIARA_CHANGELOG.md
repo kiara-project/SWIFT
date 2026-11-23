@@ -1,15 +1,17 @@
 # KIARA changelog
 
-This file records what each merge of `romeel_dev` into `master` changed: bug fixes, new or changed runtime parameters, behaviour changes, and restart compatibility. It is meant as the record for `master`, so you don't have to read the individual `romeel_dev` commits. Commit hashes are given for the details.
+This file records what each KIARA merge into `master` changed: bug fixes, new or changed runtime parameters, behaviour changes, and restart compatibility. It is meant as the record for `master`, so you don't have to read the individual development-branch commits. Commit hashes are given for the details.
 
-Newest first. Add a section here with each new `romeel_dev` → `master` PR.
+Newest first. Normally every change goes through `romeel_dev`. Add a section here with each `romeel_dev` → `master` PR, and list work not yet merged under "Unreleased".
 
-Not covered here: merges into `master` from other branches (`zoom-kiara-merge` #45, #50; `rt_fuv` #53), and the direct upstream SWIFT merge 9636cc20c (2026-11-12). Pre-KIARA upstream SWIFT history is in the upstream repository.
+Covered: every `romeel_dev` merge (PRs #32–#55), plus `rt_fuv` (#53), which was merged directly. Not covered: the `zoom-kiara-merge` merges (#45, #50) and the direct upstream SWIFT merge 9636cc20c (2026-11-12). Pre-KIARA upstream SWIFT history is in the upstream repository.
 
 | PR | date | merge | theme |
 |---|---|---|---|
+| [—](#unreleased) | — | — | Unreleased changes on `romeel_dev` |
 | [#55](#pr-55) | 2026-11-23 | ddf619d5c | crackle/feedback/BH bug fixes, wind recoupling, HeII self-shielding, halo T_vir |
 | [#54](#pr-54) | 2026-11-18 | 23224c129 | MAGMA2 gradient limiter, direct neighbour counts |
+| [#53](#pr-53) | 2026-11-16 | 5abd30c94 | KIARA RT FUV band, G0 from RT and photon conservation |
 | [#52](#pr-52) | 2026-11-12 | 7c533e9e1 | Firehose momentum-exchange fixes |
 | [#51](#pr-51) | 2026-11-10 | a76aaad84 | Size-resolved dust, WN07 SF-law knobs, AGN-wind diagnostics |
 | [#48](#pr-48) | 2026-11-04 | 6a85aa342 | KIARA_25 example, unified SF efficiency, optional photometry |
@@ -27,6 +29,16 @@ Not covered here: merges into `master` from other branches (`zoom-kiara-merge` #
 | [#34](#pr-34) | 2026-05-05 | 11056dfb3 | AGN cooling shutoff for all modes |
 | [#33](#pr-33) | 2026-05-04 | 5e09e5436 | Upstream SWIFT sync |
 | [#32](#pr-32) | 2026-04-26 | 1b3186832 | Initial KIARA model import: MAGMA2, KIARA cooling/chemistry/feedback, Obsidian BHs, KIARA-RT |
+
+---
+
+<a id="unreleased"></a>
+
+## Unreleased (on `romeel_dev`)
+
+- **Added `KIARA_CHANGELOG.md`** (667d0bd9e).
+- **Resolved leftover merge-conflict markers in `configure.ac`** (b897bf792). They sat in the `--with-subgrid` help string, from PR #38. The help text now lists the options the `case` statement actually accepts.
+- **Removed `ObsidianAGN:reposition_central_only`** (b897bf792). It has had no effect since PR #34, and a parameter file that still sets it now gets it reported as unused.
 
 ---
 
@@ -104,6 +116,57 @@ One commit (88184ed4b) that adds an optional MAGMA2 limiter on oversized matrix 
 
 ### Other
 - `kiara_25.yml`: drops `dust_growth_tauref` and sets `dust_growth_densref` to 2.0e-24 (was 5.0e-24).
+
+---
+
+<a id="pr-53"></a>
+
+## PR #53 — KIARA RT FUV band, G0 from RT and photon conservation (2026-11-16, merge 5abd30c94)
+
+Adds a non-ionizing FUV (Habing-band) photon group to KIARA RT, uses it to set G0 and LW H2 dissociation in crackle, and makes the RT transport, stellar emission and subgrid-ISM absorption conserve photons. This came from the rt_fuv branch, merged straight into master rather than through romeel_dev, and also brought in a batch of upstream SWIFT commits.
+
+> ⚠️ Restart files from earlier builds are not compatible.
+
+### Bug fixes
+- **Transport was not conservative** (15d41b9a3). An inactive neighbour got the interface area of every step of a smaller-step active particle; each interface is now counted once per own step. Flux was converted to energy with the scale factor at the time it was applied rather than at the exchange, so inactive receivers got Δa/a less than the sender lost (about 3% of injected energy by z = 9).
+- **Radiation was lost or stuck in ineligible particles** (08e13c44b, f76bae273). Decoupled winds and cooling-off particles now hand their radiation to eligible neighbours over their next RT step, conservatively. Stars inject into all neighbours, and a star with no neighbours keeps its emission for the next step. A gas particle turning into a star passes its radiation (including pending transport) to the star. The fraction handed over per RT step is capped at 1, which stops the negative-energy clamp creating energy (a runaway in the FUV runs).
+- **RT gradient loop dropped neighbours of large-h particles** (d5e4729be). The RT loop cut-offs used `hydro.h_max_active`, which misses RT-active particles on RT sub-cycles (e.g. decoupled winds). The RT loops now use `hydro.h_max`; the hydro loops are unchanged.
+- **Stellar emission injected all at once** (4b8cfc91c). A star's whole-step emission went into its neighbours in one go and left the dense gas within ~kyr, so star-forming gas had G0 10^3–10^4 below the stellar field. Neighbours now hold it as `emission_pending` and add rate·dt of it each RT step. In a 6.25 Mpc/h test to z = 9, G0 summed over star-forming gas went from 2e-4 to 0.3–0.6 of the unattenuated stellar field, with 16% more run time.
+- **Untransported emission in the final snapshot** (c0259d37d). The final step has no RT sub-cycles, so its emission sat next to young stars (FUV G0 1e3–1e4 too high). The star time step is now set to zero on the final step.
+- **RT crackle instance ignored KIARACooling** (455c00997). ISRF H2 photodissociation and the Sternberg limit were off, `H2_self_shielding` was 4 instead of 3, and dust parameters were hard-coded. The new `cooling_set_crackle_dust_parameters()` is applied to the RT instance after `cooling_init()` and on restart. This changes the results of existing KIARA-RT runs.
+- **Huge interface areas at the smoothing-length floor** (c11f72e4a). Areas reached ~1000× those of a sphere, so particles exported most of their radiation every step. Areas are now capped in the exchange too, conservatively, using min(s_i, s_j).
+
+### New features / options
+| parameter | default | what it does |
+|---|---|---|
+| `KIARART:photon_escape_fraction_FUV` | required if a FUV group exists | Escape fraction for the FUV group (72e67739d) |
+| `KIARART:dust_opacity_FUV_cm2_per_g` | 9.1e4 | Dust opacity per unit dust mass for the FUV group (9925f6e8b) |
+| `KIARART:G0_nH_min_cgs` | 1e-3 | G0 from RT is zero below this n_H, so the IGM gets none (31855229b) |
+| `KIARART:FUV_LW_photon_fraction` | 0.208 | LW photon fraction of the FUV band (BPASS, Z = 0.014); scales crackle's Draine-based ISRF H2 rate by 1.84 by default, for RT-derived G0 only (455c00997, 12c66e57e) |
+| `KIARART:transport_length_floor_softening` | 1 | Floor the RT transport length at the gravitational softening (15d41b9a3) |
+| `KIARART:local_cfl_reduced_c` | 1 | Scale c_red by length_courant/length (floor 1e-3) for softening-floored particles; removes G0 knots in sub-softening particles (15d41b9a3) |
+| `KIARART:transport_area_ratio_max` | 10 | Cap on sum\|A\|R/V (sphere = 3) in the exchange, time step and c_scale; replaces the compile-time `rt_area_ratio_max` (c11f72e4a) |
+| `KIARACooling:G0_computation_method` | — | New value 8: G0 = E_FUV (c_red/c)/u_Habing from the RT FUV group, inside and outside the subgrid ISM. Stops with an error without KIARA RT or a FUV group (31855229b) |
+
+- BPASS tables are read per band name, one per group. A group 0 entirely below 13.6 eV is the FUV group and uses `Table_FUV` (mean energy 9.18 eV, no cross section). `tools/make_kiara_rt_bpass_tables.py` builds the tables from the BPASS SED grid (72e67739d). With three groups the behaviour is unchanged.
+- FUV absorption is dust-only. There is a warm-phase path with (1 − f_cold) of the dust, and a cloud path with covering fraction C and chords of 4R/3 (9925f6e8b, 3b37a9109).
+- The effective speed of light c_red·max(1, min(ratio, cap)/3) is used for every energy-density↔flux conversion (G0, absorption, photoionization rates); transport, time step and the flux limiter keep c_red. New snapshot field `RTEffectiveLightspeed` (c11f72e4a).
+- Outside the ISM, cooling passes −1 − G0 as crackle's `isrf_habing` (decoded by crackle). With other G0 methods this is still exactly −1 (31855229b).
+
+### Behaviour changes
+- `KIARART:ism_cold_cloud_temperature_K` is removed (3b37a9109, e9515cc9a). Subgrid clouds no longer go transparent above 300 K. For FUV, only dust absorbs, independent of subgrid temperature; before, FUV heating could make the ISM transparent (G0 ~ 1e7 in dense gas by z = 6). For ionizing groups, clouds absorb at any temperature over 4R/3 chords, up to their case-B recombination rate α_B n_H,cl² φ V dt. The warm phase stays transparent to ionizing photons.
+- The LW factor applies only to RT-derived G0 (method 8). Recipe G0 keeps the assumed Draine rate (12c66e57e).
+- The KIARA-RT crackle instance now follows the `KIARACooling` dust/H2/ISRF settings (455c00997, see above).
+
+### Other
+- Debug outputs (`--enable-rt-debug` / `SWIFT_KIARA_RT_DEBUG`) for checking photon conservation: `RTDebugPendingTransport`, `RTDebugOneSidedTransport`, `RTDebugTransportAccumulated`, `RTDebugEnergyBudget`, `RTDebugEmissionCarry`, `RTDebugEmissionPending`, plus a rate-limited over-export report (15d41b9a3, 08e13c44b, 4b8cfc91c, f76bae273).
+
+### Upstream SWIFT
+- FOF speed-ups (b3d5e935d). `FOF:group_id_offset` is removed (an error if set to anything other than 1). `FOF:min_group_size` must be ≥ 2, and the linking-length and `group_id_default` checks are stricter. Restarting at the end of a run now does a full `engine_rebuild` so FOF works over MPI.
+- Mesh potential no longer includes each particle's own smoothed mass; the exact-gravity check adds the self periodic-image term (0fd5a1089).
+- Stars ghost-loop and self-recursion improvements, with a debug field `N_density_exact_edge` in EAGLE sparts (4d85fd802).
+- Small fixes (d659e0a8a): sign of the spart `x_diff` displacement update in `runner_others.c`, default values of optional I/O fields written at the correct type width, GEAR sink fixes, and configure checks for GEAR sink and star-formation dependencies.
+- Distributed mesh send-count loops stop at the first empty bucket (4b3b4ddd6). CI python jobs run in a venv (6547ac217).
 
 ---
 
@@ -558,8 +621,8 @@ Mostly a sync with upstream SWIFT master (TREECOOL cooling, GEAR BH model, FOF o
 ### Other
 - Debug output: more detail in the low chemistry-timestep message (later commented out). New MAGMA2 "LOW COURANT/KICK TIMESTEP" warnings when dt_min < 1e-10. Obsidian BH_KICK/BH_HEAT diagnostics moved under `OBSIDIAN_DEBUG_CHECKS` and hard-wired to one BH id (0d2fc2f00, 980c791c3).
 - Merge leftovers on master:
-  - Unresolved `<<<<<<< HEAD` / `>>>>>>>` conflict markers remain in the `--with-subgrid` help string in `configure.ac`. *Still present as of PR #55.*
-  - `part.h` gains a `MAGMA_SPH` branch for `hydro/MAGMA`, a directory that does not exist. *Still present as of PR #55.*
+  - Unresolved `<<<<<<< HEAD` / `>>>>>>>` conflict markers remain in the `--with-subgrid` help string in `configure.ac`. *Fixed in b897bf792.*
+  - `part.h`, `hydro.h`, `hydro_io.h`, `hydro_parameters.h` and `debug.c` gain `MAGMA_SPH` branches for the `src/hydro/MAGMA` scheme. `configure` has no option that selects it.
   - Upstream conflict resolutions in `space.h`, `fof.c` and `configure.ac` (825104867, 7bb15e5a0, b821ca74f).
 
 ### Upstream SWIFT
