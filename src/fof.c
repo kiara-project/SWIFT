@@ -863,15 +863,22 @@ __attribute__((always_inline)) INLINE static void fof_union(
  *
  * @param c The foreign #cell.
  */
-__attribute__((always_inline)) INLINE static void fof_check_foreign_cell(
+__attribute__((always_inline)) INLINE static int fof_check_foreign_cell(
     const struct cell *c) {
 
-  if (c->grav.count > 0 && c->grav.parts_fof_foreign == NULL)
-    error(
-        "FOF needs the particles of a foreign cell (rank %d, depth %d, %d "
-        "gparts, loc=[%e %e %e], width=[%e %e %e]) that were not received.",
+  /* TEMPORARY WORKAROUND: this used to be a fatal error. It is hit
+   * reproducibly in s25n256 at z~0.13 by a sparse (73 gparts) foreign cell
+   * with no gravity recv task. Skip the pair (losing at most the links into
+   * that cell) instead of aborting until the comms are fixed upstream. */
+  if (c->grav.count > 0 && c->grav.parts_fof_foreign == NULL) {
+    message(
+        "WARNING: FOF skipping foreign cell whose particles were not received "
+        "(rank %d, depth %d, %d gparts, loc=[%e %e %e], width=[%e %e %e]).",
         c->nodeID, c->depth, c->grav.count, c->loc[0], c->loc[1], c->loc[2],
         c->width[0], c->width[1], c->width[2]);
+    return 0;
+  }
+  return 1;
 }
 
 #ifdef WITH_MPI
@@ -1251,7 +1258,7 @@ void fof_search_pair_cells_foreign(
 #ifdef WITH_MPI
   const size_t count_i = ci->grav.count;
   const size_t count_j = cj->grav.count;
-  fof_check_foreign_cell(cj);
+  if (!fof_check_foreign_cell(cj)) return;
   const struct gpart *gparts_i = ci->grav.parts;
   const struct gpart_fof_foreign *gparts_j = cj->grav.parts_fof_foreign;
 
@@ -1899,7 +1906,7 @@ void fof_attach_pair_cells_ci_local(const struct fof_props *props,
 
   const size_t count_i = ci->grav.count;
   const size_t count_j = cj->grav.count;
-  fof_check_foreign_cell(cj);
+  if (!fof_check_foreign_cell(cj)) return;
   struct gpart *gparts_i = ci->grav.parts;
   struct gpart_fof_foreign *gparts_j = cj->grav.parts_fof_foreign;
 
@@ -2051,7 +2058,7 @@ void fof_attach_pair_cells_cj_local(const struct fof_props *props,
 
   const size_t count_i = ci->grav.count;
   const size_t count_j = cj->grav.count;
-  fof_check_foreign_cell(ci);
+  if (!fof_check_foreign_cell(ci)) return;
   struct gpart_fof_foreign *gparts_i = ci->grav.parts_fof_foreign;
   struct gpart *gparts_j = cj->grav.parts;
 
