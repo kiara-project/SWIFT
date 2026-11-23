@@ -60,7 +60,9 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
 	    if (chemistry->H2_self_shielding == 3) {
 	    /* H2 self-shielding following Wolcott-Green & Haiman (2019),
  	       range of validity: T=100-8000 K, n<=1e7 cm^-3 */
-	        const double N_H2 = cunits->dom * gp->rhoH2 * l_H2shield;
+	        /* dom * rhoH2 is the number density of H nuclei in H2; the column of H2 molecules is half of that
+	         * (Grackle's solve_rate_cool_g.F omits the 1/2) */
+	        const double N_H2 = 0.5 * cunits->dom * gp->rhoH2 * l_H2shield;
                 const double tgas_touse = min(max(gp->tgas,100.),8000);
                 const double ngas_touse = min(gp->density * cunits->dom / gp->mmw, 1.e7);
                 const double aWG2019 = (0.8711 * log10(tgas_touse) - 1.928) *
@@ -77,7 +79,7 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
 	        const double NH_cgs = cunits->dom * gp->rhoH * l_H2shield;
 	        const double xH = NH_cgs / 2.85e23;
 	        const double fH_shield = pow(1.+xH,-1.62) * exp(-0.149*xH);
-	        const double NH2_cgs = cunits->dom * gp->rhoH2 * l_H2shield;
+	        const double NH2_cgs = 0.5 * cunits->dom * gp->rhoH2 * l_H2shield;  /* H2 molecules */
     	        const double DH2_cgs = 1.e-5 * sqrt(2.*1.38e-16*gp->tgas / 3.346e-24);
     	        const double xH2 = NH2_cgs / 8.465e13;
     	        const double fH2_shield = 0.9379/pow(1.f+xH2/DH2_cgs,1.879) + 0.03465/pow(1.f+xH2,0.473) * exp(-2.293e-4*sqrt(1+xH2));
@@ -117,7 +119,7 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
             gp->fSShHI = 0.98*pow(1.+pow(nratio,1.64), -2.28) + 0.02*pow(1.+nratio, -0.84);
 	}
 
-        if (chemistry->self_shielding_method == 2 || chemistry->self_shielding_method == 3) {
+        if (chemistry->self_shielding_method >= 2) {
             /* HeI self-shielding factor */
 	    if (my_rates->k26 < tiny) gp->fSShHeI = 1.;
 	    else {
@@ -132,14 +134,26 @@ static inline float compute_self_shielded_rates(grackle_part_data *gp, chemistry
             gp->fSShHeII = 0.f;
             my_rates->k25shield = 0.;  // as in Grackle: HeII photoionization ignored
         }
+        else if (chemistry->self_shielding_method == 4) {
+            /* HeII self-shielded like HI and HeI: the Rahmati+13 form with the HeII photoionization
+             * rate and cross-section of the UVB and the He number density. Unlike method 3, gas below
+             * the HeII self-shielding density keeps its HeII photoionization and photoheating. */
+            if (my_rates->k25 < tiny) gp->fSShHeII = 1.;
+            else {
+                const double nSSh_heii = interpolation->ssh_nfac_HeII * tfac;
+                const double nratio_heii = 0.25 * gp->rhoHe * cunits->dom / nSSh_heii;  // He number density
+                gp->fSShHeII = 0.98*pow(1.+pow(nratio_heii,1.64), -2.28) + 0.02*pow(1.+nratio_heii, -0.84);
+            }
+        }
 
 	my_rates->k24shield *= gp->fSShHI;
 	my_rates->k29shield *= gp->fSShHI;
-	if (chemistry->self_shielding_method == 2 || chemistry->self_shielding_method == 3) {
+	if (chemistry->self_shielding_method >= 2) {
 	    my_rates->k26shield *= gp->fSShHeI;
 	    my_rates->k28shield *= gp->fSShHeI;
 	    my_rates->k30shield *= gp->fSShHeI;
 	}
+	if (chemistry->self_shielding_method == 4) my_rates->k25shield *= gp->fSShHeII;
 
 	return f_shield;
 }
@@ -186,11 +200,13 @@ static inline void init_temperature_interpolation(grackle_part_data *gp, chemist
 	interpolation->dust_dlogT_inv = 1. / interpolation->dust_dlogT;
 
 	/* UVB-dependent factors in the HI and HeI self-shielding densities (Rahmati+13 form, as in Grackle) */
-	interpolation->ssh_nfac_HI = interpolation->ssh_nfac_HeI = 0.;
+	interpolation->ssh_nfac_HI = interpolation->ssh_nfac_HeI = interpolation->ssh_nfac_HeII = 0.;
 	if (chemistry->UVbackground > 0 && my_uvb_rates->k24 >= tiny)
 	    interpolation->ssh_nfac_HI = 6.73e-3 * pow(my_uvb_rates->crsHI * cunits->time_to_cgs * 1.e-12 / (2.49e-18 * my_uvb_rates->k24), -0.6666667);
 	if (chemistry->UVbackground > 0 && my_uvb_rates->k26 >= tiny)
 	    interpolation->ssh_nfac_HeI = 6.73e-3 * pow(my_uvb_rates->crsHeI * cunits->time_to_cgs * 1.e-12 / (2.49e-18 * my_uvb_rates->k26), -0.6666667);
+	if (chemistry->self_shielding_method == 4 && chemistry->UVbackground > 0 && my_uvb_rates->k25 >= tiny)
+	    interpolation->ssh_nfac_HeII = 6.73e-3 * pow(my_uvb_rates->crsHeII * cunits->time_to_cgs * 1.e-12 / (2.49e-18 * my_uvb_rates->k25), -0.6666667);
 
 	/* Accuracy value must be non-zero otherwise code will not do cooling */
 	assert(chemistry->accuracy > 0.f && "CRACKLE ERROR: chemistry->accuracy input value must be greater than zero! (typically 0.1)");

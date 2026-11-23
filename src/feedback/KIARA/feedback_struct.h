@@ -29,6 +29,13 @@ struct feedback_part_data {
   /*! remaining time left for decoupling */
   float decoupling_delay_time;
 
+  /*! Time since this particle was decoupled (internal units) */
+  float decoupled_time;
+
+  /*! Kernel crossing time at launch, kernel size / launch speed (internal
+   * units); 0 = no escape-time recoupling (jets, or not decoupled) */
+  float escape_crossing_time;
+
   /*! Number of times decoupled */
   int number_of_times_decoupled;
 
@@ -124,6 +131,10 @@ struct feedback_spart_data {
 
   /*! Initial stream radius for firehose model */
   float firehose_radius_stream;
+
+  /*! Normalisation of the SFR-weighted launch weights (use_sfr_weighted_launch)
+   */
+  float wind_wt_sum_sfr;
 };
 
 #endif /* SWIFT_FEEDBACK_STRUCT_KIARA_H */

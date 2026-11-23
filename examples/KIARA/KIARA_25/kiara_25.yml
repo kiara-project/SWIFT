@@ -156,7 +156,7 @@ KIARACooling:
   with_metal_cooling:           1                       # Enable or not the metal cooling
   provide_volumetric_heating_rates: 0                   # Provide volumetric heating rates to grackle
   provide_specific_heating_rates: 1                     # Provide specific heating rates to grackle; turning this off ignores adiabatic dudt
-  self_shielding_method:        3                       # Grackle (<= 3) self shielding method; 3 (default) is advised.
+  self_shielding_method:        3                       # Rahmati+13 self-shielding: 0 none, 1 HI, 2 HI+HeI, 3 (default) HI+HeI with HeII photoionization off, 4 HI+HeI+HeII
   ism_adiabatic_heating_method: 2                       # For subgrid ISM: 0=ignore adiabatic du/dt, 1=evolve in grackle, 2=use to evaporate cold ism
   grackle_max_steps:            200                     # maximum number of iterations for a single step in Grackle
   timestep_accuracy:            0.2                     # max change in energy, HI, or electron density in a single timestep
@@ -261,7 +261,7 @@ ObsidianAGN:
   bh_characteristic_suppression_mass:   3.e7            # the exponential e-folding mass for Simba-C style BH suppression
   jet_loading_type:                     MixedLoaded    # EnergyLoaded or MomentumLoaded
   jet_frac_energy_loaded:               0.1
-  jet_temperature_K:                    -1.          # Temperature to heat the jet particles, in Kelvin. If <0, use abs(value) times Tvir (estimated from MBH)
+  jet_temperature_K:                    -1.          # Temperature to heat the jet particles, in Kelvin. If <0, use abs(value) times Tvir (see virial_temperature_model)
   jet_velocity_km_s:                    5000.           # Resolved, large-scale jet velocity in km/s
   jet_subgrid_velocity_km_s:            100000.          # Subgrid jet velocity in km/s, sets the small-scale mass loading.
   jet_launch_dir:                       4               # Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards
@@ -272,6 +272,7 @@ ObsidianAGN:
   # fixed_spin:                           0.9             # The spin of every black hole in the simulation.
   adaf_torque_phi_factor:               0.0             # Magnetic flux of torque-fed ADAF inflow relative to MAD (Bondi share is MAD)
   adaf_jet_free_energy:                 1               # 1: ADAF jets at full MAD efficiency regardless of spin-down
+  # adaf_jet_free_energy = 1 assumes torque-fed (disk) accretion supplies the angular momentum that balances its jet spin-down, so its jet energy is not taken from the spin; only the Bondi share spins the BH down (as a MAD). ADAF jet efficiency is then effectively a tuned ~eps_MAD(a~1) and BH spins stay high (not a spin prediction). Needed to quench: self-consistent jets (0, with nonzero adaf_torque_phi_factor) spin BHs down to a~0.1 and are 1-2 dex weaker.
   torque_accretion_max_radius_softening: 1.0            # Torque accretion only from cold gas within this many Plummer softenings
   adaf_coupling:                        0.02            # How much of the energy couples to the medium (at z=0). <1
   adaf_max_coupling:                    0.2             # Maximum coupling value, only used if adaf_z_scaling>0.
@@ -280,7 +281,8 @@ ObsidianAGN:
   adaf_wind_speed_km_s:                 -2000.           # Wind speed for ADAF kick, or if <0 it is the max speed
   adaf_wind_dir:                        4             # Direction of jet launch: 0=random, 1=L_gas, 2=L_BH, 3=outwards
   adaf_f_quasar_psi:                    -1.
-  adaf_maximum_temperature_K:           -1.           # The maximum temperature to heat an individual particle in the ADAF thermal energy dump; If <0, use abs(value) times Tvir (estimated from MBH)
+  adaf_maximum_temperature_K:           -1.           # The maximum temperature to heat an individual particle in the ADAF thermal energy dump; If <0, use abs(value) times Tvir (see virial_temperature_model)
+  virial_temperature_model:             0             # Tvir used by jet_temperature_K and adaf_maximum_temperature_K < 0: 0 = halo mass from MBH (Zhang+23 fit), 1 = from host galaxy M* (inverse Moster+13 SMHM)
   adaf_mass_limit_Msun:                 0.5e8           # Minimum black hole mass (Msun) for the ADAF mode to activate
   adaf_mass_limit_spread_Msun:          1.0e8
   adaf_mass_limit_a_scaling:            0.
@@ -313,6 +315,7 @@ ObsidianAGN:
   reposition_radius_from_softening:     1               # 1 = max_reposition_distance_ratio is in units of the Plummer baryon softening (EAGLE); 0 = in units of h_BH / 2.8 (earlier Obsidian).
   max_reposition_mass:                  1e20            # Maximal BH mass considered for BH repositioning in solar masses (large number implies we always reposition).
   max_reposition_distance_ratio:        1.4             # Maximal distance a BH can be repositioned, in units of equiv Plummer softening length.
+  reposition_min_sf_ngbs:               1               # Reposition onto star-forming gas (SFR > 0) only, unless fewer than this many SF gas neighbours are eligible targets; then onto any gas.
   with_reposition_velocity_threshold:   1               # Should we only reposition to particles that move slowly w.r.t. the black hole?
   max_reposition_velocity_ratio:        0.5             # Maximal velocity offset of a particle to reposition a BH to, in units of the ambient sound speed of the BH. Only meaningful if with_reposition_velocity_threshold is 1.
   min_reposition_velocity_threshold:    -1.0            # Minimal value of the velocity threshold for repositioning [km/s], set to < 0 for no effect. Only meaningful if with_reposition_velocity_threshold is 1.
@@ -323,7 +326,8 @@ ObsidianAGN:
   threshold_major_merger:               0.333           # Mass ratio threshold to consider a BH merger as 'major'
   threshold_minor_merger:               0.1             # Mass ratio threshold to consider a BH merger as 'minor'
   merger_threshold_type:                EscapeVelocity  # Type of velocity threshold for BH mergers (0: v_circ at kernel edge, 1: v_esc at actual distance, with softening, 2: v_esc at actual distance, no softening).
-  merger_max_distance_ratio:            1.4             # Maximal distance over which two BHs can merge, in units of equiv Plummer softening length.
+  merger_max_distance_ratio:            1.4             # Maximal distance over which two BHs can merge, in units of equiv Plummer softening length (or h_BH / 2.8 if merger_radius_from_softening = 0). Only BHs within the swallowing BH's kernel are tested.
+  merger_radius_from_softening:         1               # 1 = merger_max_distance_ratio is in units of the Plummer baryon softening (EAGLE); 0 = in units of h_BH / 2.8 (earlier Obsidian).
   with_potential_correction:            1               # Correct for the potential when repositioning?
   minimum_timestep_Myr:                 0.1             # Minimum of the accretion-limited time-step length.
   dt_accretion_factor:                  1.0            # OPTIONAL: Default 1.0, timestep limiter 5% growth

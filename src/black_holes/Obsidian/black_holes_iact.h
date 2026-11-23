@@ -53,6 +53,26 @@ black_holes_max_reposition_distance2(const struct bpart *bi,
   return d * d;
 }
 
+/**
+ * @brief Square of the (comoving) maximal BH-BH merging distance.
+ *
+ * merger_max_distance_ratio times the Plummer-equivalent baryon softening
+ * (as in EAGLE), or, with merger_radius_from_softening = 0, times
+ * h_BH / (Plummer-equivalent factor) of the swallowing BH (the earlier
+ * Obsidian choice). Only BHs within the swallowing BH's kernel are tested.
+ */
+__attribute__((always_inline)) INLINE static float
+black_holes_max_merging_distance2(const struct bpart *bi,
+                                  const struct black_holes_props *bh_props,
+                                  const struct gravity_props *grav_props) {
+  const float l = bh_props->merger_radius_from_softening
+                      ? grav_props->epsilon_baryon_cur
+                      : bi->h;
+  const float d = kernel_gravity_softening_plummer_equivalent_inv *
+                  bh_props->max_merging_distance_ratio * l;
+  return d * d;
+}
+
 // #define OBSIDIAN_DEBUG_CHECKS
 
 /**
@@ -298,6 +318,14 @@ runner_iact_nonsym_bh_gas_density(
   const float L_y = mj * (dx[2] * dv[0] - dx[0] * dv[2]);
   const float L_z = mj * (dx[0] * dv[1] - dx[1] * dv[0]);
 
+  /* Count the star-forming gas that is an eligible repositioning target
+   * (same static cuts as runner_iact_nonsym_bh_gas_repos) */
+  if (!pj->decoupled && pj->feedback_data.cooling_shutoff_delay_time <= 0.f &&
+      pj->sf_data.SFR > 0.f &&
+      bi->galaxy_data.stellar_mass <= pj->galaxy_data.stellar_mass &&
+      r2 < black_holes_max_reposition_distance2(bi, bh_props, grav_props))
+    bi->num_sf_repos_ngbs++;
+
   /* Gas for the dynamical friction: as for repositioning, no decoupled
    * winds or jets and no gas with cooling shut off (an outflow must not
    * drag the BH along with it) */
@@ -433,8 +461,12 @@ runner_iact_nonsym_bh_gas_repos(
   if (pj->decoupled || pj->feedback_data.cooling_shutoff_delay_time > 0.f)
     return;
 
-  /* Only reposition onto star-forming gas, not hot or diffuse gas */
-  if (pj->sf_data.SFR == 0.f) return;
+  /* Only reposition onto currently star-forming gas (SFR > 0; SFR < 0 marks
+   * gas that formed stars in the past and may now be hot), unless there is
+   * too little of it, in which case any gas is a target */
+  if (pj->sf_data.SFR <= 0.f &&
+      bi->num_sf_repos_ngbs >= bh_props->reposition_min_sf_ngbs)
+    return;
 
   /* Only reposition BH onto gas in a galaxy of same or greater mass */
   if (bi->galaxy_data.stellar_mass > pj->galaxy_data.stellar_mass) return;
@@ -915,12 +947,9 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float dx[3],
     h = hj;
   }
 
-  /* (Square of) max swallowing distance allowed based on the softening */
+  /* (Square of) max swallowing distance allowed */
   const float max_dist_merge2 =
-      kernel_gravity_softening_plummer_equivalent_inv *
-      kernel_gravity_softening_plummer_equivalent_inv *
-      bh_props->max_merging_distance_ratio *
-      bh_props->max_merging_distance_ratio * bi->h * bi->h;
+      black_holes_max_merging_distance2(bi, bh_props, grav_props);
 
   const float G_Newton = grav_props->G_Newton;
 
@@ -1057,15 +1086,12 @@ runner_iact_nonsym_bh_gas_feedback(
 
   float v_kick = bi->v_kick; /* PHYSICAL */
 
+#ifdef OBSIDIAN_DEBUG_CHECKS
   const float bh_mass_msun = bi->subgrid_mass * bh_props->mass_to_solar_mass;
+#endif
 
-  /* by-eye fit from Fig 6 of Zhang+2023 (2305.06803) */
-  double halo_mass = 1.e12 * pow(bh_mass_msun * 1.e-7, 0.75);
-  if (halo_mass < 6.3e11) halo_mass = 6.3e11;
-
-  /* In internal temperature units */
-  const double T_vir = 9.52e7 * pow(halo_mass * 1.e-15, 0.6666) *
-                       bh_props->T_K_to_int * (1. + cosmo->z);
+  /* Host halo T_vir (internal units), from black_holes_prepare_feedback */
+  const double T_vir = bi->virial_temperature;
 
   /* In the swallow loop the particle was marked as a kick particle */
   const int swallow_flag = (pj->black_holes_data.swallow_id == bi->id);
@@ -1381,6 +1407,14 @@ runner_iact_nonsym_bh_gas_feedback(
       pj->feedback_data.decoupling_delay_time = dt + f_decouple * t_H;
       pj->decoupled = 1;
       pj->feedback_data.jet_decoupled = jet_flag;
+
+      /* Kernel crossing time for the escape-time recoupling (not for jets,
+       * which have their own criteria) */
+      pj->feedback_data.decoupled_time = 0.f;
+      pj->feedback_data.escape_crossing_time =
+          (!jet_flag && v_kick > 0.f)
+              ? kernel_gamma * pj->h * cosmo->a / v_kick
+              : 0.f;
 
       /* Give the wind a firehose stream radius, as for stellar winds, from
        * the BH's wind mass outflow rate (accretion rate times the jet or

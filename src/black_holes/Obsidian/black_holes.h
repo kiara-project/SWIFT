@@ -383,7 +383,9 @@ black_holes_update_spin_efficiencies(struct bpart *bp,
  * In the ADAF, only the Bondi share of the inflow is a magnetically arrested
  * disk; the torque-fed share has adaf_torque_phi_factor of its magnetic
  * flux, so jet efficiency x phi^2. This matches the jet spin-down in
- * black_hole_spinup_rate().
+ * black_hole_spinup_rate(). With adaf_jet_free_energy, the full MAD
+ * efficiency is used for all inflow (assumption: torque-fed accretion
+ * balances its jet spin-down; see black_holes_properties.h).
  *
  * @param bp The black hole particle.
  * @param props The properties of the black hole scheme.
@@ -780,6 +782,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
         bp->id, bp->subgrid_mass);
   }
   bp->total_accreted_mass = 0.f;
+  bp->virial_temperature = 0.f;
   bp->accretion_disk_mass = 0.f;
   bp->accretion_disk_bondi_mass = 0.f;
   bp->accretion_rate = 0.f;
@@ -898,6 +901,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->torque_ngb_mass = 0.f;
   bp->torque_radius = 0.f;
   bp->num_ngbs = 0;
+  bp->num_sf_repos_ngbs = 0;
   bp->reposition.delta_x[0] = -FLT_MAX;
   bp->reposition.delta_x[1] = -FLT_MAX;
   bp->reposition.delta_x[2] = -FLT_MAX;
@@ -1406,6 +1410,79 @@ __attribute__((always_inline)) INLINE static float gaussian_random_number(
 }
 
 /**
+ * @brief Stellar-to-halo mass ratio of Moster, Naab & White (2013),
+ * eq. 2 with the redshift evolution of eqs. 11-14 and their Table 1 fit.
+ *
+ * @param log_Mh log10 of the halo mass M200c in Msun.
+ * @param z Redshift.
+ * @return log10 of the stellar mass in Msun.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_moster13_log_mstar(const double log_Mh, const double z) {
+  const double zz = z / (1. + z);
+  const double log_M1 = 11.590 + 1.195 * zz;
+  const double N = 0.0351 - 0.0247 * zz;
+  const double beta = 1.376 - 0.826 * zz;
+  const double gamma = 0.608 + 0.329 * zz;
+  const double x = pow(10., log_Mh - log_M1);
+  return log_Mh + log10(2. * N / (pow(x, -beta) + pow(x, gamma)));
+}
+
+/**
+ * @brief Host halo virial temperature (internal units) used for the jet
+ * temperature and the ADAF heating cap.
+ *
+ * T_vir = 9.52e7 K (M_h / 1e15 Msun)^(2/3) (1 + z), with M_h >= 6.3e11 Msun
+ * and M_h estimated either from the BH mass (by-eye fit to Fig. 6 of
+ * Zhang+23, 2305.06803; virial_temperature_model 0) or from the host galaxy
+ * stellar mass by inverting the Moster+13 relation (model 1). Model 1 falls
+ * back to model 0 when the BH has no host galaxy yet.
+ *
+ * The M_BH-based estimate tracks the simulated BH-halo relation: BHs that
+ * sit above Zhang+23 get a T_vir several times that of their real halo.
+ *
+ * @param props The properties of the black hole scheme.
+ * @param bp The black hole particle.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_virial_temperature(const struct black_holes_props *props,
+                               const struct bpart *bp,
+                               const struct cosmology *cosmo) {
+  const double mstar_msun =
+      bp->galaxy_data.stellar_mass * props->mass_to_solar_mass;
+  double halo_mass;
+
+  if (props->virial_temperature_model == 1 && mstar_msun > 0.) {
+    /* Bisect the monotonic Moster+13 M*(M_h) for M_h in [1e9, 1e16] Msun */
+    const double target = log10(mstar_msun);
+    double lo = 9., hi = 16.;
+    if (black_holes_moster13_log_mstar(hi, cosmo->z) <= target) {
+      lo = hi;
+    } else if (black_holes_moster13_log_mstar(lo, cosmo->z) >= target) {
+      hi = lo;
+    } else {
+      for (int i = 0; i < 40; i++) {
+        const double mid = 0.5 * (lo + hi);
+        if (black_holes_moster13_log_mstar(mid, cosmo->z) < target)
+          lo = mid;
+        else
+          hi = mid;
+      }
+    }
+    halo_mass = pow(10., 0.5 * (lo + hi));
+  } else {
+    /* by-eye fit from Fig 6 of Zhang+2023 (2305.06803) */
+    const double bh_mass_msun = bp->subgrid_mass * props->mass_to_solar_mass;
+    halo_mass = 1.e12 * pow(bh_mass_msun * 1.e-7, 0.75);
+  }
+  if (halo_mass < 6.3e11) halo_mass = 6.3e11;
+
+  return 9.52e7 * pow(halo_mass * 1.e-15, 0.6666) * props->T_K_to_int *
+         (1. + cosmo->z);
+}
+
+/**
  * @brief Compute the accretion rate of the black hole and all the quantities
  * required for the feedback loop.
  *
@@ -1438,6 +1515,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   bp->angular_momentum_gas_prev[0] = bp->angular_momentum_gas[0];
   bp->angular_momentum_gas_prev[1] = bp->angular_momentum_gas[1];
   bp->angular_momentum_gas_prev[2] = bp->angular_momentum_gas[2];
+
+  /* Host halo T_vir for this step's jet heating and ADAF heating cap */
+  bp->virial_temperature = black_holes_virial_temperature(props, bp, cosmo);
 
   if (dt == 0. || bp->rho_gas == 0. || bp->h == 0.) return;
 

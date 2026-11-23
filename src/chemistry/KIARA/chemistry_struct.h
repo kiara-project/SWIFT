@@ -28,8 +28,7 @@
 #endif
 #include "chemistry/KIARA/dust.h"
 
-#define FIREHOSE_COOLLIM 0.1f            /* -u_new / u */
-#define FIREHOSE_HEATLIM 10.f            /* +u_new / u */
+#define FIREHOSE_HEATLIM 10.f /* u_new / u above which firehose_log_energy logs */
 #define FIREHOSE_EPSILON_TOLERANCE 1.e-6 /* Minimum rel. difference to add */
 
 /**
@@ -177,6 +176,11 @@ struct chemistry_global_data {
    * step */
   float firehose_max_fmix_per_step;
 
+  /*! Log FIREHOSE_HEAT lines for particles whose firehose heating this step
+   * exceeds FIREHOSE_HEATLIM times their energy, and FIREHOSE_DKE lines for
+   * pairs whose dissipated kinetic energy is limited (diagnostic) */
+  int firehose_log_energy;
+
   /*! Dust sputtering constant */
   float dust_sputtering_const;
 
@@ -262,6 +266,11 @@ struct chemistry_part_data {
 
   /*! Firehose ambient gas density */
   float rho_ambient;
+
+  /*! Ambient (coupled-neighbour) gas density of a decoupled particle before
+   * the firehose cap, comoving; 0 if it has no coupled neighbours, -1 if not
+   * computed (non-wind particle or firehose model off). Used for recoupling */
+  float rho_ambient_full;
 
   /*! Firehose ambient gas (mass-weighted) velocity, internal units */
   float v_ambient[3];

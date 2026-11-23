@@ -1866,6 +1866,48 @@ void cooling_crackle_validate_direct(
 #endif
 
 /**
+ * @brief Evolve the primordial species of a particle that skips the cooling
+ * solve (decoupled, or with its cooling shut off), at fixed internal energy.
+ *
+ * Without this its ionization and molecular state stays frozen at the values
+ * it had in the ISM while wind or AGN heating takes it to 1e5-1e6 K. That gas
+ * then counts as HI, and on recoupling crackle starts from a neutral state at
+ * high temperature, so ionizing it and the HI line cooling drain its thermal
+ * energy. Here the species follow the particle's temperature and density
+ * (including the UVB and its self-shielding), while u, du/dt and the dust are
+ * left untouched (dust is sputtered in firehose_cooling_and_dust()).
+ *
+ * @param cosmo The #cosmology.
+ * @param cooling The #cooling_function_data used in the run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the particle extra data.
+ * @param dt The time-step of this particle.
+ */
+void cooling_update_species_fixed_energy(
+    const struct cosmology *restrict cosmo,
+    const struct cooling_function_data *restrict cooling,
+    struct part *restrict p, struct xpart *restrict xp, const double dt) {
+
+  if (dt <= 0.) return;
+
+  cooling_normalize_primordial_species(p, xp);
+
+  code_units units = cooling->units;
+  chemistry_data *chemistry = (chemistry_data *)&cooling->chemistry;
+  gr_float iact_rates[5] = {0., 0., 0., 0., 0.};
+
+  grackle_part_data gp;
+  cooling_copy_to_crackle(&gp, cosmo, cooling, p, xp, /*SNe_count=*/0.,
+                          /*T_warm=*/0., iact_rates, /*mode=*/0);
+  gp.fixed_energy = 1;
+  if (crackle_solve_part(&gp, chemistry, &grackle_rates,
+                         &cooling_crackle_step.uvb_rates, &units,
+                         &cooling_crackle_step.cunits, fabs(dt)) == 0)
+    error("Error in crackle_solve_part (fixed energy).");
+  cooling_copy_from_crackle(&gp, p, xp, cooling);
+}
+
+/**
  * @brief Compute the energy of a particle after dt and update the particle
  * chemistry data, or another quantity depending on the mode.
  *
@@ -2668,9 +2710,8 @@ void cooling_do_grackle_cooling(
       hydro_set_physical_internal_energy_dt(p, cosmo, cool_du_dt);
     }
 
-    /* If there is any dust outside of the ISM, sputter it
-     * back into gas phase metals */
-    cooling_sputter_dust(us, cosmo, cooling, p, xp, dt);
+    /* Dust outside the ISM has already been sputtered by crackle in the
+     * solve above (cooling_sputter_dust is only for gas that skips it) */
   } else {
     /* Particle is in subgrid mode; result is stored in subgrid_temp */
     p->cooling_data.subgrid_temp = cooling_convert_u_to_temp(
@@ -2826,6 +2867,9 @@ void cooling_cool_part(const struct phys_const *restrict phys_const,
 
     /* Update cooling times this step. */
     p->cooling_data.ncool_this_step += 1;
+  } else {
+    /* No cooling, but the ionization state follows the gas */
+    cooling_update_species_fixed_energy(cosmo, cooling, p, xp, dt);
   }
 
   /* The SNe deposited by stellar feedback have now been used (for the dust
@@ -3191,11 +3235,13 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   /* Flag to enable H2 cooling attenuation from Ripamonti & Abel (2004).
    * Default: 0 */
   chemistry->h2_optical_depth_approximation = 0;
-  /* Flag to enable a spatially uniform heating term approximating
-   * photo-electric heating from dust from Tasker & Bryan (2008). Default: 0. */
-  chemistry->photoelectric_heating = 0;
-  /* photo-electric on [but not adjusted to local background, beware!] */
-  chemistry->photoelectric_heating_rate = 8.5e-26;
+  /* Photo-electric heating from dust. Crackle applies it whenever
+   * use_isrf_field is set, as Wolfire et al. (1995) eq. 1:
+   * gammah * 0.05 * G0, which needs gammah = 1e-24 erg/s, i.e. mode 2.
+   * (Mode 0/1 would make gammah = photoelectric_heating_rate, which already
+   * includes epsilon = 0.05 and G0 = 1.7, giving heating ~12x too low.) */
+  chemistry->photoelectric_heating = 2;
+  chemistry->photoelectric_heating_rate = 8.5e-26; /* unused in mode 2 */
 
   /* Flag to enable Compton heating from an X-ray background following Madau &
    * Efstathiou (1999). Default: 0. */

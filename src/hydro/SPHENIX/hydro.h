@@ -477,6 +477,10 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     const struct hydro_props *restrict hydro_properties,
     const struct cosmology *restrict cosmo) {
 
+  /* Decoupled (KIARA wind/jet) particles feel no hydro forces, so they are
+   * not limited by the CFL condition (as in MAGMA2) */
+  if (p->decoupled) return FLT_MAX;
+
   const float CFL_condition = hydro_properties->CFL_condition;
 
   /* CFL condition */
@@ -575,6 +579,15 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   p->viscosity.div_v = 0.f;
   p->diffusion.laplace_u = 0.f;
+
+  p->rho_gradient[0] = 0.f;
+  p->rho_gradient[1] = 0.f;
+  p->rho_gradient[2] = 0.f;
+
+#ifdef COOLING_KIARA
+  /* Init ncool at beginning of each hydro step (as in MAGMA2). */
+  p->cooling_data.ncool_this_step = 0;
+#endif
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   p->N_density = 1; /* Self contribution */
@@ -747,6 +760,10 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
 
   p->viscosity.v_sig = 2.f * p->force.soundspeed;
   p->force.alpha_visc_max_ngb = p->viscosity.alpha;
+
+  p->rho_gradient[0] = 0.f;
+  p->rho_gradient[1] = 0.f;
+  p->rho_gradient[2] = 0.f;
 }
 
 /**
@@ -771,6 +788,12 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
   /* Include the extra factors in the del^2 u */
 
   p->diffusion.laplace_u *= 2.f * h_inv_dim_plus_one;
+
+  /* Finish the density gradient (same normalisation as MAGMA2) */
+  const float rho_inv = 1.f / hydro_get_comoving_density(p);
+  p->rho_gradient[0] *= h_inv_dim_plus_one * rho_inv;
+  p->rho_gradient[1] *= h_inv_dim_plus_one * rho_inv;
+  p->rho_gradient[2] *= h_inv_dim_plus_one * rho_inv;
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   p->n_gradient += kernel_root;
@@ -812,6 +835,10 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
   p->density.rot_v[0] = 0.f;
   p->density.rot_v[1] = 0.f;
   p->density.rot_v[2] = 0.f;
+
+  p->rho_gradient[0] = 0.f;
+  p->rho_gradient[1] = 0.f;
+  p->rho_gradient[2] = 0.f;
 
   /* Probably not shocking, so this is safe to do */
   p->viscosity.div_v = 0.f;
@@ -1038,8 +1065,14 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 
   const float h_inv = 1.f / p->h;
 
-  /* Predict smoothing length */
-  const float w1 = p->force.h_dt * h_inv * dt_drift;
+  /* Predict smoothing length, never drifting below h_min (the floor the
+   * density loop also applies). A stale, large negative h_dt on a long step
+   * would otherwise shrink h towards zero and overflow the predicted rho. The
+   * density is scaled by the same factor, so rho h^3 is conserved. (Ported
+   * from MAGMA2.) */
+  float w1 = p->force.h_dt * h_inv * dt_drift;
+  if (hydro_props->h_min > 0.f)
+    w1 = fmaxf(w1, fminf(logf(hydro_props->h_min * h_inv), 0.f));
   if (fabsf(w1) < 0.2f)
     p->h *= approx_expf(w1); /* 4th order expansion of exp(w) */
   else
@@ -1220,6 +1253,22 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   xp->v_full[1] = p->v[1];
   xp->v_full[2] = p->v[2];
   xp->u_full = p->u;
+
+  /* KIARA: particles start coupled */
+  p->decoupled = 0;
+
+  p->rho_gradient[0] = 0.f;
+  p->rho_gradient[1] = 0.f;
+  p->rho_gradient[2] = 0.f;
+
+#ifdef WITH_FOF_GALAXIES
+  /* Initialise FoF galaxy data */
+  p->galaxy_data.stellar_mass = 0.f;
+  p->galaxy_data.gas_mass = 0.f;
+  p->galaxy_data.specific_sfr = 0.f;
+  p->galaxy_data.sfr_radius = 0.f;
+  p->galaxy_data.centre_distance = 0.f;
+#endif
 
   hydro_reset_acceleration(p);
   hydro_init_part(p, NULL);

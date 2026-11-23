@@ -295,6 +295,11 @@ struct feedback_props {
   /*! Factor (<1) below ISM density below which to recouple */
   float recouple_density_factor;
 
+  /*! A decoupled (non-jet) wind still, or again, in ISM-density ambient gas
+   * after this many launch kernel-crossing times has failed to escape (or
+   * has fallen back) and recouples; 0 = off */
+  float recouple_escape_kernels;
+
   /*! Once its decoupling time is up, a jet particle recouples only below
    * this physical H number density (cgs)... */
   float jet_recouple_nH_cgs;
@@ -307,6 +312,10 @@ struct feedback_props {
 
   /*! The internal energy corresponding to the unheated wind temperature */
   float cold_wind_internal_energy;
+
+  /*! Temperature of cold winds (K); their energy is set at launch with the
+   * particle's own mu */
+  float cold_wind_temperature;
 
   /*! The internal energy corresponding to the heated wind temperature */
   float hot_wind_internal_energy;

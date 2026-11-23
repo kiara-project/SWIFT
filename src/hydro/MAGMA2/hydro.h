@@ -1566,11 +1566,13 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
          * velocity_gradient_aux i: dv vector direction
          *                       k: kernel gradient direction
          *
-         * aux_matrix j: spatial derivative direction
-         *            i: velocity direction
+         * aux_matrix i: velocity direction
+         *            j: spatial derivative direction
+         * i.e. aux_matrix[i][j] = d v_i / d x_j, so that row i is the
+         * gradient of v_i (as the slope limiter below assumes).
          */
         for (int k = 0; k < 3; k++) {
-          aux_matrix[j][i] += p->gradients.velocity_tensor_aux_norm[j][k] *
+          aux_matrix[i][j] += p->gradients.velocity_tensor_aux_norm[j][k] *
                               p->gradients.velocity_tensor_aux[i][k];
         }
       }
@@ -1840,7 +1842,14 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
   }
 
   /* Contract the correction matrix with the internal energy gradient and with
-   * the velocity tensor */
+   * the velocity tensor. Conventions after the contraction:
+   *   velocity_tensor[i][j]      = d v_i / d x_j
+   *   velocity_hessian[i][j][k]  = d^2 v_i / d x_j d x_k
+   * i.e. the velocity component comes first, as the reconstruction
+   * (hydro_vector_second_order_reconstruction), the slope limiter (row i
+   * limited with dv_min/max[i]) and the Balsara curl expect. The raw
+   * velocity_hessian[i][j][m] sums the differences of d v_i / d x_j (from
+   * velocity_tensor_aux) times dx_m, so it is corrected on its last index. */
   hydro_real_t u_gradient[3] = {0};
   hydro_real_t u_hessian[3][3] = {0};
   hydro_real_t velocity_tensor[3][3] = {0};
@@ -1852,11 +1861,11 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
       for (int k = 0; k < 3; k++) {
         u_hessian[j][i] +=
             p->gradients.correction_matrix[j][k] * p->gradients.u_hessian[i][k];
-        velocity_tensor[j][i] += p->gradients.correction_matrix[j][k] *
+        velocity_tensor[i][j] += p->gradients.correction_matrix[j][k] *
                                  p->gradients.velocity_tensor[i][k];
 
         for (int m = 0; m < 3; m++) {
-          velocity_hessian[j][i][k] += p->gradients.correction_matrix[j][m] *
+          velocity_hessian[j][i][k] += p->gradients.correction_matrix[k][m] *
                                        p->gradients.velocity_hessian[j][i][m];
         }
       }
