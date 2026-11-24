@@ -149,6 +149,8 @@ typedef struct
   double UVbackground_redshift_off;
   double UVbackground_redshift_fullon;
   double UVbackground_redshift_drop;
+  double HeII_reionization_redshift;
+  double HeII_reionization_width;
 
   /* Factor to account for extra electrons from metals.
      Only for old-style Cloudy tables.

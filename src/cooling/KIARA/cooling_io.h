@@ -478,6 +478,13 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   /* Self shielding */
   cooling->self_shielding_method = parser_get_opt_param_int(
       parameter_file, "KIARACooling:self_shielding_method", 3);
+  cooling->HeII_reionization_redshift = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:HeII_reionization_redshift", -1.);
+  cooling->HeII_reionization_width = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:HeII_reionization_width", 0.5);
+  if (cooling->HeII_reionization_redshift >= 0. &&
+      cooling->HeII_reionization_width <= 0.)
+    error("KIARACooling:HeII_reionization_width must be > 0");
   if (cooling->self_shielding_method < 0 || cooling->self_shielding_method > 4)
     error(
         "KIARACooling:self_shielding_method must be 0 (none), 1 (HI), 2 (HI, "

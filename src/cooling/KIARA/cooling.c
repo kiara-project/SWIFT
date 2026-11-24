@@ -323,6 +323,11 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
   message("Metal cooling flag = %i", cooling->chemistry.metal_cooling);
   message("Metal-line cooling factor = %g", cooling->chemistry.metal_cooling_factor);
   message("Self Shielding flag = %i", cooling->self_shielding_method);
+  if (cooling->HeII_reionization_redshift >= 0.)
+    message("HeII reionization: UVB HeII photoionization/heating scaled by "
+            "0.5 [1 - tanh((z - %g) / %g)]",
+            cooling->HeII_reionization_redshift,
+            cooling->HeII_reionization_width);
   message("Max subgrid density (internal units) = %g",
           cooling->max_subgrid_density);
   message("Min subgrid density (internal units) = %g",
@@ -3344,6 +3349,8 @@ void cooling_init_grackle(struct cooling_function_data *cooling) {
   /* Use self-shielding; 0=none, 1=HI only, 2=HI+HeI, 3=HI+HeI but
    * set HeII rates to 0 */
   chemistry->self_shielding_method = cooling->self_shielding_method;
+  chemistry->HeII_reionization_redshift = cooling->HeII_reionization_redshift;
+  chemistry->HeII_reionization_width = cooling->HeII_reionization_width;
 
   /* control behaviour of Grackle sub-step integrator */
   chemistry->max_iterations = cooling->max_step;

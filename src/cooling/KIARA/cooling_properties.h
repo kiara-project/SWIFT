@@ -99,6 +99,11 @@ struct cooling_function_data {
    * GEAR) */
   int self_shielding_method;
 
+  /*! HeII reionization redshift and width (UVB HeII photoionization and
+   * photoheating scaled by 0.5 [1 - tanh((z - z_HeII) / width)]; < 0 = off) */
+  double HeII_reionization_redshift;
+  double HeII_reionization_width;
+
   /*! What to do with adiabatic du/dt when in ISM mode: 0=no adiabatic heating,
    * 1=evolve in grackle, 2=use to evaporate cold ism */
   int ism_adiabatic_heating_method;
