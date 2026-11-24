@@ -214,6 +214,8 @@ int _solve_chemistry(chemistry_data *my_chemistry,
   my_fields.volumetric_heating_rate  = volumetric_heating_rate;
   my_fields.specific_heating_rate    = specific_heating_rate;
   my_fields.RT_heating_rate          = RT_heating_rate;
+  my_fields.cr_ionization_rate       = NULL;
+  my_fields.cr_heating_rate          = NULL;
   my_fields.RT_HI_ionization_rate    = RT_HI_ionization_rate;
   my_fields.RT_HeI_ionization_rate   = RT_HeI_ionization_rate;
   my_fields.RT_HeII_ionization_rate  = RT_HeII_ionization_rate;

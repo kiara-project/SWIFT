@@ -285,6 +285,9 @@ rt_get_grackle_particle_fields(grackle_field_data *grackle_fields,
   grackle_fields->volumetric_heating_rate = NULL;
   /* specific heating rate (provide in units [egs s^-1 g^-1] */
   grackle_fields->specific_heating_rate = NULL;
+  /* no cosmic rays in the RT thermochemistry */
+  grackle_fields->cr_ionization_rate = NULL;
+  grackle_fields->cr_heating_rate = NULL;
 
   /* radiative transfer ionization / dissociation rate fields (provide in units
    * [1/s]) */

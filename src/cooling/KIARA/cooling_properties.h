@@ -237,6 +237,20 @@ struct cooling_function_data {
   /*! For Grackle subgrid model, arbitrary multiplier for G0 */
   double G0_multiplier;
 
+  /*! Cosmic-ray ionization rate per H atom (s^-1) in the subgrid ISM of a
+   * galaxy with the Milky Way's sSFR; scaled linearly with the host galaxy
+   * sSFR (0 = no cosmic rays) */
+  double cosmic_ray_ionization_rate_MW;
+
+  /*! Milky Way sSFR (Gyr^-1) at which the rate above applies */
+  double cosmic_ray_ssfr_MW;
+
+  /*! Cap on the cosmic-ray rate, in units of the MW rate (0 = no cap) */
+  double cosmic_ray_max_factor;
+
+  /*! Heat deposited per cosmic-ray ionization (erg) */
+  double cosmic_ray_heat_per_ionization;
+
   /*! For Grackle subgrid model, set max density to avoid pointlessly
    * over-iterating in Grackle */
   double max_subgrid_density;

@@ -328,6 +328,12 @@ void cooling_print_backend(const struct cooling_function_data *cooling) {
   message("Min subgrid density (internal units) = %g",
           cooling->min_subgrid_density);
   message("Min self-shielding length = %g h", cooling->min_shield_h_frac);
+  if (cooling->cosmic_ray_ionization_rate_MW > 0.)
+    message("Cosmic rays in the subgrid ISM: zeta = %g s^-1 x (sSFR / %g "
+            "Gyr^-1), cap %g x MW (0 = none), %g eV heat per ionization",
+            cooling->cosmic_ray_ionization_rate_MW, cooling->cosmic_ray_ssfr_MW,
+            cooling->cosmic_ray_max_factor,
+            cooling->cosmic_ray_heat_per_ionization / 1.60218e-12);
   message("H2 ISRF photodissociation = %d (rate %g s^-1 per G0, dust sigma %g "
           "cm^2); shielding column at mean density = %d",
           cooling->H2_isrf_dissociation, cooling->H2_isrf_dissociation_rate,
@@ -867,6 +873,40 @@ static INLINE int cooling_value_is_finite(const gr_float x) {
 #endif
 }
 
+/**
+ * @brief Cosmic-ray ionization and heating rates of a particle's cold phase.
+ *
+ * The rate per H atom is cosmic_ray_ionization_rate_MW scaled linearly with
+ * the host galaxy sSFR relative to the Milky Way's (capped at
+ * cosmic_ray_max_factor times the MW rate if that is > 0). Cosmic rays act
+ * only in the subgrid ISM (as the ISRF); elsewhere both rates are 0.
+ *
+ * @param p The particle.
+ * @param cooling The cooling properties.
+ * @param mode The cooling_copy_to_grackle() mode (1 = cooling time: none).
+ * @param zeta_code (return) Ionization rate per H atom (1 / internal time).
+ * @param heat_cgs (return) Heating rate per neutral H atom (erg/s).
+ */
+static void cooling_cosmic_ray_rates(
+    const struct part *p, const struct cooling_function_data *cooling,
+    const int mode, gr_float *zeta_code, gr_float *heat_cgs) {
+  *zeta_code = 0.;
+  *heat_cgs = 0.;
+  if (cooling->cosmic_ray_ionization_rate_MW <= 0. || mode == 1) return;
+  if (p->cooling_data.subgrid_temp <= 0.f ||
+      p->cooling_data.subgrid_fcold <= 1.e-6)
+    return;
+  /* Host galaxy sSFR in Gyr^-1 */
+  const double ssfr_Gyr =
+      fmax(p->galaxy_data.specific_sfr, 0.f) * 1.e3 / cooling->time_to_Myr;
+  double factor = ssfr_Gyr / cooling->cosmic_ray_ssfr_MW;
+  if (cooling->cosmic_ray_max_factor > 0.)
+    factor = fmin(factor, cooling->cosmic_ray_max_factor);
+  const double zeta_cgs = cooling->cosmic_ray_ionization_rate_MW * factor;
+  *zeta_code = zeta_cgs * cooling->units.time_units;
+  *heat_cgs = zeta_cgs * cooling->cosmic_ray_heat_per_ionization;
+}
+
 #ifdef CRACKLE_VALIDATE_DIRECT
 /*! The crackle input state of the last field-path and direct-path calls of
  * this thread */
@@ -908,6 +948,8 @@ static void cooling_crackle_override_fields(const grackle_part_data *gp,
   sd[21] = gp->SNe_density;
   sd[22] = gp->isrf_habing;
   sd[23] = gp->H2_self_shielding_length;
+  sd[47] = gp->cr_ionization_rate;
+  sd[48] = gp->cr_heating_rate;
   for (int i = 0; i < NUM_METAL_SPECIES_GRACKLE; i++) {
     sd[25 + i] = gp->gas_metalDensity[i];
     sd[36 + i] = gp->dust_metalDensity[i];
@@ -1130,6 +1172,14 @@ void cooling_copy_to_grackle(
       chemistry_get_total_metal_mass_fraction_for_cooling(p) *
       species_densities[12];
   data->metal_density = &species_densities[19];
+
+#if COOLING_GRACKLE_MODE >= 2
+  /* Cosmic-ray ionization and heating (subgrid ISM only) */
+  cooling_cosmic_ray_rates(p, cooling, mode, &species_densities[47],
+                           &species_densities[48]);
+  data->cr_ionization_rate = &species_densities[47];
+  data->cr_heating_rate = &species_densities[48];
+#endif
 
   for (i = 0; i < N_SPECIES; i++) {
     if (!cooling_value_is_finite(species_densities[i])) {
@@ -1363,6 +1413,10 @@ void cooling_copy_to_crackle(
   gp->RT_HeI_ionization_rate = iact_rates[2];
   gp->RT_HeII_ionization_rate = iact_rates[3];
   gp->RT_H2_dissociation_rate = iact_rates[4];
+
+  /* Cosmic-ray ionization and heating (subgrid ISM only) */
+  cooling_cosmic_ray_rates(p, cooling, mode, &gp->cr_ionization_rate,
+                           &gp->cr_heating_rate);
 
   gp->metal_density =
       chemistry_get_total_metal_mass_fraction_for_cooling(p) * rho;
