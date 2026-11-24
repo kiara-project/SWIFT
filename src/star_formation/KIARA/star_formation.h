@@ -1053,8 +1053,10 @@ INLINE static void starformation_init_backend(
 
   /* PopIII star formation: the threshold is chem5's PopIII metallicity, so
    * that the stars formed this way get the PopIII IMF */
-  starform->popIII_max_metallicity = parser_get_opt_param_float(
-      parameter_file, "KIARAFeedback:popIII_max_metallicity", -1.f);
+  /* Same type and default as in feedback_props_init(): the parser refuses
+   * a parameter read twice with different defaults */
+  starform->popIII_max_metallicity = (float)parser_get_opt_param_double(
+      parameter_file, "KIARAFeedback:popIII_max_metallicity", -999.);
   starform->popIII_H2_fraction = parser_get_opt_param_float(
       parameter_file, "KIARAStarFormation:popIII_H2_fraction", 1.f);
   if (starform->popIII_H2_fraction < 0.f || starform->popIII_H2_fraction > 1.f)
