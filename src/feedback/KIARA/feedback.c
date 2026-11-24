@@ -1257,9 +1257,11 @@ void feedback_prepare_interpolation_tables(
             feedback_life_time(fb_props, fb_props->M_u2, 0.02), fb_props->ximf);
     if (fb_props->zmax3 >= 0.0f) {
       message(
-          "Pop3:  %.2f %.1f  %.2e %.2e  x=%.2f\n", fb_props->M_l3,
-          fb_props->M_u3, feedback_life_time(fb_props, fb_props->M_l3, 0.02),
-          feedback_life_time(fb_props, fb_props->M_u3, 0.02), fb_props->ximf3);
+          "Pop3:  %.2f %.1f  %.2e %.2e  x=%.2f  (stars with Z <= %g)",
+          fb_props->M_l3, fb_props->M_u3,
+          feedback_life_time(fb_props, fb_props->M_l3, 0.02),
+          feedback_life_time(fb_props, fb_props->M_u3, 0.02), fb_props->ximf3,
+          fb_props->zmax3);
     }
   }
 
@@ -1681,10 +1683,29 @@ void feedback_props_init(struct feedback_props *fp,
     fp->M_l = 0.07;
   }
 
-  fp->ximf3 = 1.35;
-  fp->M_u3 = 120.; /* >= M_u */
-  fp->M_l3 = 20.;  /* >= M_l */
-  fp->zmax3 = -999.;
+  /* PopIII stars: star particles with total metal mass fraction <=
+   * popIII_max_metallicity (< 0 = off) get a Salpeter-like IMF of slope
+   * popIII_imf_slope (x in phi(m) ~ m^-x, 1.35 = Salpeter) over
+   * [popIII_mass_min, popIII_mass_max] Msun, with the Z = 0 SN/HN yields.
+   * Stars above M_u2 collapse to black holes without ejecta, and there are
+   * no pair-instability SNe. KIARAStarFormation also reads the threshold
+   * (star formation of metal-free gas, popIII_H2_fraction). */
+  fp->zmax3 = parser_get_opt_param_double(
+      params, "KIARAFeedback:popIII_max_metallicity", -999.);
+  if (fp->zmax3 < 0.) fp->zmax3 = -999.;
+  fp->ximf3 = parser_get_opt_param_double(params, "KIARAFeedback:popIII_imf_slope",
+                                          1.35);
+  fp->M_u3 = parser_get_opt_param_double(
+      params, "KIARAFeedback:popIII_mass_max_Msun", 120.); /* >= M_u */
+  fp->M_l3 = parser_get_opt_param_double(
+      params, "KIARAFeedback:popIII_mass_min_Msun", 20.); /* >= M_l */
+  if (fp->M_u3 < fp->M_u)
+    error("KIARAFeedback:popIII_mass_max_Msun (%g) must be >= the IMF upper "
+          "mass %g",
+          fp->M_u3, fp->M_u);
+  if (fp->M_l3 < fp->M_l || fp->M_l3 >= fp->M_u3)
+    error("KIARAFeedback:popIII_mass_min_Msun (%g) must be in [%g, %g)",
+          fp->M_l3, fp->M_l, fp->M_u3);
   fp->M_u2 = 50.;
   fp->M_l2 = 8.;
   fp->b_rg = 0.02; /* binary parameter for SNIa */

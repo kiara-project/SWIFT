@@ -119,6 +119,14 @@ struct star_formation {
   /*! Total metal mass fraction in the Sun */
   float Z_solar;
 
+  /*! PopIII: gas with total metal mass fraction <= this (the chem5 PopIII
+   * threshold KIARAFeedback:popIII_max_metallicity; < 0 = off) forms stars
+   * with at least popIII_H2_fraction in place of its H2 fraction */
+  float popIII_max_metallicity;
+
+  /*! PopIII: H2 fraction assumed for star formation in metal-free gas */
+  float popIII_H2_fraction;
+
   /* The lognormal & WadaNorman SF model parameters */
   struct {
     /*! Characteristic density (approx 10^-1.5 Mo/pc^3) */
@@ -393,6 +401,37 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
  * @param cosmo the cosmological parameters and properties.
  * @param dt_star The time-step of this particle.
  */
+/**
+ * @brief The H2 fraction used by the WadaNorman and lognormal SF laws.
+ *
+ * This is the particle's (cold-phase) H2 fraction, except that gas below the
+ * PopIII metallicity threshold uses at least popIII_H2_fraction: primordial
+ * gas becomes fully molecular only in collapsing cores far below the
+ * resolution (3-body H2 formation at n > 1e8 cm^-3), so its resolved H2
+ * fraction does not trace its star formation.
+ *
+ * @param p #part.
+ * @param xp the #xpart.
+ * @param starform the star formation law properties to use.
+ */
+INLINE static float star_formation_H2_fraction(
+    const struct part *p, const struct xpart *xp,
+    const struct star_formation *starform) {
+  float H2_frac = xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac;
+  if (starform->popIII_max_metallicity < 0.f) return H2_frac;
+  /* Metallicity of the star that would form: gas-phase metals plus those
+   * in dust (as in star_formation_copy_properties), which chem5 compares
+   * with the same threshold to pick the PopIII IMF */
+  float Z = p->chemistry_data.metal_mass_fraction_total;
+#if COOLING_GRACKLE_MODE >= 2
+  if (p->cooling_data.dust_mass > 0.f)
+    Z += p->cooling_data.dust_mass / hydro_get_mass(p);
+#endif
+  if (Z <= starform->popIII_max_metallicity)
+    H2_frac = fmaxf(H2_frac, starform->popIII_H2_fraction);
+  return H2_frac;
+}
+
 INLINE static void star_formation_compute_SFR_wn07(
     struct part *p, struct xpart *xp, const struct star_formation *starform,
     const struct phys_const *phys_const, const struct hydro_props *hydro_props,
@@ -507,9 +546,8 @@ INLINE static void star_formation_compute_SFR_wn07(
   const double sfr =
       rhosfr * (p->cooling_data.subgrid_fcold * hydro_get_mass(p));
 
-  /* Multiply by the H2 fraction */
-  const float H2_frac =
-      (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  /* Multiply by the H2 fraction (PopIII: see star_formation_H2_fraction) */
+  const float H2_frac = star_formation_H2_fraction(p, xp, starform);
   p->sf_data.SFR = starform->lognormal.epsilon * sfr * H2_frac;
 }
 
@@ -536,9 +574,8 @@ INLINE static void star_formation_compute_SFR_lognormal(
   /* Limit for Eq. 12 in Wada+Norman 2007 */
   const double rho_limit = 1.001 * starform->lognormal.rho0;
 
-  /* H2 fraction in the particle */
-  const float H2_frac =
-      (xp->cooling_data.H2I_frac + xp->cooling_data.H2II_frac);
+  /* H2 fraction in the particle (PopIII: see star_formation_H2_fraction) */
+  const float H2_frac = star_formation_H2_fraction(p, xp, starform);
 
   /* Mean density of the gas described by a lognormal PDF
    * (i.e. subgrid ISM gas) PHYSICAL */
@@ -957,6 +994,21 @@ INLINE static void starformation_init_backend(
   starform->Z_solar = parser_get_opt_param_double(
       parameter_file, "KIARAStarFormation:Z_solar", 0.0134f);
 
+  /* PopIII star formation: the threshold is chem5's PopIII metallicity, so
+   * that the stars formed this way get the PopIII IMF */
+  starform->popIII_max_metallicity = parser_get_opt_param_float(
+      parameter_file, "KIARAFeedback:popIII_max_metallicity", -1.f);
+  starform->popIII_H2_fraction = parser_get_opt_param_float(
+      parameter_file, "KIARAStarFormation:popIII_H2_fraction", 1.f);
+  if (starform->popIII_H2_fraction < 0.f || starform->popIII_H2_fraction > 1.f)
+    error("KIARAStarFormation:popIII_H2_fraction must be in [0, 1]");
+  if (starform->popIII_max_metallicity >= 0.f &&
+      starform->SF_model == kiara_star_formation_SchmidtLaw &&
+      starform->H2_model != kiara_star_formation_kmt_model)
+    message(
+        "PopIII: the SchmidtLaw SF model does not use the H2 fraction "
+        "(except with KMT), so popIII_H2_fraction has no effect");
+
   /* Read the critical density contrast from the parameter file*/
   starform->min_over_den = parser_get_param_double(
       parameter_file, "KIARAStarFormation:min_over_density");
@@ -1063,6 +1115,12 @@ INLINE static void starformation_print_backend(
       "T < %e K, n_H > %e cm^-3, and overdensity > %e",
       starform->subgrid_thresh.T_threshold,
       starform->subgrid_thresh.nH_threshold, starform->min_over_den);
+
+  if (starform->popIII_max_metallicity >= 0.f)
+    message(
+        "PopIII star formation: gas with Z <= %g forms stars with an H2 "
+        "fraction of at least %g",
+        starform->popIII_max_metallicity, starform->popIII_H2_fraction);
 
   if (starform->SF_model == kiara_star_formation_SchmidtLaw) {
     message(
