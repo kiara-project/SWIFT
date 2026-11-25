@@ -42,6 +42,7 @@
 #include "common_io.h"
 #include "custom_mpi.h"
 #include "engine.h"
+#include "rt_properties.h"
 #include "fof_catalogue_io.h"
 #include "hashmap.h"
 #include "memuse.h"
@@ -3346,6 +3347,12 @@ void fof_seed_black_holes(const struct fof_props *props,
         /* Copy over all the gas properties that we want */
         black_holes_create_from_gas(bp, bh_props, constants, cosmo, p, xp,
                                     s->e->ti_current);
+#if defined(RT_KIARA) && defined(BLACK_HOLES_OBSIDIAN)
+        /* The black hole hands the gas particle's radiation to its
+         * neighbours (the BH is zeroed above, so its carry starts empty) */
+        black_holes_rt_take_radiation(bp, p,
+                                      s->e->rt_props->ion_photons_per_energy);
+#endif
         tracers_first_init_bpart(bp, s->e->internal_units,
                                  s->e->physical_constants, cosmo);
 

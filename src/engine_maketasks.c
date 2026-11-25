@@ -2094,6 +2094,12 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
 #endif
         scheduler_addunlock(s, c->black_holes.black_holes_out,
                             c->super->timestep);
+#if defined(RT_KIARA) && defined(BLACK_HOLES_OBSIDIAN)
+        /* The radiation black holes take over from gas is handed to the
+         * gas in the BH feedback loop: before the RT step */
+        if (with_rt && with_feedback)
+          scheduler_addunlock(s, c->black_holes.black_holes_out, c->rt.rt_in);
+#endif
       }
 
       if (with_black_holes && with_feedback) {

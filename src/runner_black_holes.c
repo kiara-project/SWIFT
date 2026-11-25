@@ -30,6 +30,7 @@
 #include "black_holes.h"
 #include "cell.h"
 #include "engine.h"
+#include "rt_properties.h"
 #include "timers.h"
 
 /**
@@ -141,6 +142,11 @@ void runner_do_gas_swallow(struct runner *r, struct cell *c, int timer) {
 
             /* Swallow the gas particle (i.e. update the BH properties) */
             black_holes_swallow_part(bp, p, xp, e->cosmology);
+#if defined(RT_KIARA) && defined(BLACK_HOLES_OBSIDIAN)
+            /* ... and its radiation, which the BH hands to the gas */
+            black_holes_rt_take_radiation(bp, p,
+                                          e->rt_props->ion_photons_per_energy);
+#endif
 
             /* Release the space as we are done updating the bpart */
             if (lock_unlock(&s->lock) != 0)
@@ -387,6 +393,14 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
             black_holes_swallow_bpart(bp, cell_bp, e->cosmology, e->time,
                                       with_cosmology, props,
                                       e->physical_constants);
+#if defined(RT_KIARA) && defined(BLACK_HOLES_OBSIDIAN)
+            /* The radiation an active swallowed BH was to hand to the gas in
+             * this step's feedback loop, which it no longer runs (that of an
+             * inactive one was handed out in its last active step) */
+            if (bpart_is_active(cell_bp, e))
+              for (int g = 0; g < RT_NGROUPS; g++)
+                bp->rt_carry[g] += cell_bp->rt_carry_out[g];
+#endif
 
             /* Release the space as we are done updating the bpart */
             if (lock_unlock(&s->lock) != 0)
