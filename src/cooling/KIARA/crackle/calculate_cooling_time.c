@@ -137,6 +137,8 @@ int _calculate_cooling_time(chemistry_data *my_chemistry,
   my_fields.volumetric_heating_rate  = volumetric_heating_rate;
   my_fields.specific_heating_rate    = specific_heating_rate;
   my_fields.RT_heating_rate          = RT_heating_rate;
+  my_fields.cr_ionization_rate       = NULL;
+  my_fields.cr_heating_rate          = NULL;
 
   if (local_calculate_cooling_time(my_chemistry, my_rates, my_units,
                                    &my_fields, cooling_time) == FAIL) {

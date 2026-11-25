@@ -478,6 +478,13 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
   /* Self shielding */
   cooling->self_shielding_method = parser_get_opt_param_int(
       parameter_file, "KIARACooling:self_shielding_method", 3);
+  cooling->HeII_reionization_redshift = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:HeII_reionization_redshift", -1.);
+  cooling->HeII_reionization_width = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:HeII_reionization_width", 0.5);
+  if (cooling->HeII_reionization_redshift >= 0. &&
+      cooling->HeII_reionization_width <= 0.)
+    error("KIARACooling:HeII_reionization_width must be > 0");
   if (cooling->self_shielding_method < 0 || cooling->self_shielding_method > 4)
     error(
         "KIARACooling:self_shielding_method must be 0 (none), 1 (HI), 2 (HI, "
@@ -603,6 +610,32 @@ __attribute__((always_inline)) INLINE static void cooling_read_parameters(
 
   cooling->G0_multiplier = parser_get_opt_param_double(
       parameter_file, "KIARACooling:G0_multiplier", 1.0);
+
+  cooling->cosmic_ray_ionization_rate_MW = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:cosmic_ray_ionization_rate_MW", 0.);
+  if (cooling->cosmic_ray_ionization_rate_MW < 0.)
+    error("KIARACooling:cosmic_ray_ionization_rate_MW must be >= 0");
+  /* Milky Way: SFR 1.65 Msun/yr, M* 6.1e10 Msun (Licquia & Newman 2015) */
+  cooling->cosmic_ray_ssfr_MW = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:cosmic_ray_ssfr_MW_per_Gyr", 0.027);
+  if (cooling->cosmic_ray_ssfr_MW <= 0.)
+    error("KIARACooling:cosmic_ray_ssfr_MW_per_Gyr must be > 0");
+  cooling->cosmic_ray_max_factor = parser_get_opt_param_double(
+      parameter_file, "KIARACooling:cosmic_ray_max_factor", 0.);
+  if (cooling->cosmic_ray_max_factor < 0.)
+    error("KIARACooling:cosmic_ray_max_factor must be >= 0");
+  /* ~10 eV of heat per primary+secondary ionization in atomic/molecular gas
+   * (Glassgold et al. 2012) */
+  cooling->cosmic_ray_heat_per_ionization =
+      parser_get_opt_param_double(parameter_file,
+                                  "KIARACooling:cosmic_ray_heating_eV", 10.) *
+      1.60218e-12;
+  if (cooling->cosmic_ray_heat_per_ionization < 0.)
+    error("KIARACooling:cosmic_ray_heating_eV must be >= 0");
+#if COOLING_GRACKLE_MODE < 2
+  if (cooling->cosmic_ray_ionization_rate_MW > 0.)
+    error("KIARACooling:cosmic_ray_ionization_rate_MW needs COOLING_GRACKLE_MODE >= 2");
+#endif
 
   cooling->G0_local_fraction = parser_get_opt_param_double(
       parameter_file, "KIARACooling:G0_local_fraction", 0.5);

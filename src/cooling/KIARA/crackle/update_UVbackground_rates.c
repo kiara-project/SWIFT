@@ -232,6 +232,19 @@ int update_UVbackground_rates(chemistry_data *my_chemistry,
   my_uvb_rates->piHeII *= Ramp;
   my_uvb_rates->piHeI *= Ramp;
 
+  /* HeII reionization: an optically thin, spatially uniform UVB (e.g.
+     FG2011) ionizes and heats the IGM HeII by z ~ 4.5, well before HeII
+     reionization (z ~ 3-3.5, complete by z ~ 2.7), because before it the
+     HeII-ionizing background is absorbed by the still-HeII IGM. Turn the
+     HeII photoionization and photoheating on smoothly around z_HeII. */
+  if (my_chemistry->HeII_reionization_redshift >= 0.) {
+    const double f_HeII = 0.5 * (1. - tanh((Redshift -
+        my_chemistry->HeII_reionization_redshift) /
+        my_chemistry->HeII_reionization_width));
+    my_uvb_rates->k25 *= f_HeII;
+    my_uvb_rates->piHeII *= f_HeII;
+  }
+
   /* Molecular hydrogen constant photo-dissociation */
 
   /* Note that k31 can be set by above by the UV background table, in

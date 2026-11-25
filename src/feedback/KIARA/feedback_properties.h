@@ -296,9 +296,13 @@ struct feedback_props {
   float recouple_density_factor;
 
   /*! A decoupled (non-jet) wind still, or again, in ISM-density ambient gas
-   * after this many launch kernel-crossing times has failed to escape (or
-   * has fallen back) and recouples; 0 = off */
+   * after this many escape crossing times (see recouple_escape_length) has
+   * failed to escape (or has fallen back) and recouples; 0 = off */
   float recouple_escape_kernels;
+
+  /*! Length for the escape crossing time: 0 = launch kernel (kernel_gamma h),
+   * 1 = initial firehose stream radius (scales with the galaxy size) */
+  int recouple_escape_length;
 
   /*! Once its decoupling time is up, a jet particle recouples only below
    * this physical H number density (cgs)... */

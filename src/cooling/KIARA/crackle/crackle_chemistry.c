@@ -29,6 +29,7 @@
 #define ITER_HEATLIM 10.  // max heating factor in u allowed in a single iteration
 #define JAC_EPS 0.05  // fractional change in u for the finite-difference d(edot)/du; coarse to tolerate tdust solver noise
 #define H2_FRAC_MIN_NONISM 1.e-3  // outside the ISM, H2/H mass fraction below which H2 is returned to HI rather than evolved
+#define CR_HEI_FACTOR 1.1  // cosmic-ray ionization rate per HeI atom relative to the rate per HI atom
 
 
 int crackle_solve_chemistry(grackle_field_data *p, chemistry_data *chemistry, chemistry_data_storage grackle_rates, photo_rate_storage my_uvb_rates, code_units *units, double dt) 
@@ -313,7 +314,7 @@ void evolve_internal_energy(grackle_part_data *gp, chemistry_data *chemistry, do
 
 void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemistry_data_storage *grackle_rates, chemistry_rate_storage *my_rates, const photo_rate_storage *my_uvb_rates, interp_struct *interpolation, code_units *units, const crackle_units *cunits, int ism_flag)
 {
-	double edot_prim = 0., edot_h2 = 0., edot_gasgr = 0., edot_uvb = 0., edot_pe = 0., edot_edust = 0., edot_comp = 0., edot_rt = 0., edot_h2heat = 0., edot_ext = 0., edot_metal = 0.;
+	double edot_prim = 0., edot_h2 = 0., edot_gasgr = 0., edot_uvb = 0., edot_pe = 0., edot_edust = 0., edot_comp = 0., edot_rt = 0., edot_cr = 0., edot_h2heat = 0., edot_ext = 0., edot_metal = 0.;
 
 	/* Interpolate primordial excitation, ionization, and recombination rates for given T */
 	primordial_cooling_rates(interpolation, grackle_rates, my_rates);
@@ -409,6 +410,12 @@ void compute_edot(grackle_part_data *gp, chemistry_data *chemistry, const chemis
 	    gp->edot_ext += edot_rt;
 	}
 
+	/* Cosmic-ray heating of the neutral gas (HI and H2, per H nucleus) */
+	if (gp->cr_heating_rate > 0.) {
+	    edot_cr += gp->cr_heating_rate / cunits->coolunit * (gp->HI_density + gp->H2I_density) * cunits->dom_inv;
+	    gp->edot += edot_cr;
+	}
+
 	/* H2 heating */
 	if (chemistry->primordial_chemistry >= 2) {
 	    double h2heatfac = 1. + my_rates->n_cr_n / (cunits->dom * (my_rates->n_cr_d1 * gp->HI_density + 0.5 * my_rates->n_cr_d2 * gp->H2I_density));
@@ -474,6 +481,8 @@ double compute_dedot(int chemistry_flag, const grackle_part_data *gp, chemistry_
 	if (chemistry->use_radiative_transfer && gp->RT_heating_rate > FLT_MIN) {
 	    dedot += gp->RT_HI_ionization_rate * gp->fSShHI * gp->HI_density + 0.25 * (gp->RT_HeI_ionization_rate * gp->fSShHeI * gp->HeI_density + gp->RT_HeII_ionization_rate * gp->fSShHeII * gp->HeII_density);
 	}
+	/* Cosmic-ray ionization */
+	dedot += gp->cr_ionization_rate * (gp->HI_density + 0.25 * CR_HEI_FACTOR * gp->HeI_density);
 
 	/* Molecular */
 	if (chemistry_flag > 1) {
@@ -504,6 +513,7 @@ double compute_HIdot(int chemistry_flag, const grackle_part_data *gp, chemistry_
 	if (chemistry->use_radiative_transfer) {
 	    HIdot -= gp->RT_HI_ionization_rate * gp->fSShHI * gp->HI_density;
 	}
+	HIdot -= gp->cr_ionization_rate * gp->HI_density;  // cosmic rays
 
 	/* Molecular */
 	if (chemistry_flag >= 2) {
@@ -541,6 +551,7 @@ void evolve_helium(grackle_part_data *p, grackle_part_data *gp_old, chemistry_da
 	    acoef += my_rates->k26shield;
 	}
 	if (chemistry->use_radiative_transfer) acoef += p->RT_HeI_ionization_rate * p->fSShHeI;
+	acoef += CR_HEI_FACTOR * p->cr_ionization_rate;  // cosmic rays
 	double HeIp = (scoef * dtit + p->HeI_density) / (1.f + acoef * dtit);
 	if (HeIp < 0. ) HeIp = 0.;
 	p->delta_HeI = HeIp - p->HeI_density;
@@ -557,6 +568,7 @@ void evolve_helium(grackle_part_data *p, grackle_part_data *gp_old, chemistry_da
 	    scoef += p->RT_HeI_ionization_rate * p->fSShHeI * HeIp;
 	    acoef += p->RT_HeII_ionization_rate * p->fSShHeII;
 	}
+	scoef += CR_HEI_FACTOR * p->cr_ionization_rate * HeIp;  // cosmic rays
 	double HeIIp = (scoef * dtit + p->HeII_density) / (1.f + acoef * dtit);
 	if (HeIIp < 0. ) HeIIp = 0.;
 	p->delta_HeII = HeIIp - p->HeII_density;
@@ -607,6 +619,7 @@ void evolve_hydrogen(grackle_part_data *p, grackle_part_data *gp_old, chemistry_
 	if (chemistry->use_radiative_transfer) {
 	      acoef += p->RT_HI_ionization_rate * p->fSShHI;
 	}
+	acoef += p->cr_ionization_rate;  // cosmic rays
 	if (chemistry->primordial_chemistry >= 2) {
 	    acoef += my_rates->k7 * p->e_density
 	          + my_rates->k8 * p->HM_density
@@ -638,6 +651,7 @@ void evolve_hydrogen(grackle_part_data *p, grackle_part_data *gp_old, chemistry_
 	if (chemistry->use_radiative_transfer) {
 	    scoef += p->RT_HI_ionization_rate * p->fSShHI * p->HI_density;
 	}
+	scoef += p->cr_ionization_rate * p->HI_density;  // cosmic rays
 	double HIIp = (scoef * dtit + p->HII_density) / (1.f + acoef * dtit);
 	if (HIIp < 0. ) HIIp = 0.;
 	p->delta_HII = HIIp - p->HII_density;
@@ -660,6 +674,7 @@ void evolve_hydrogen(grackle_part_data *p, grackle_part_data *gp_old, chemistry_
 	          + 0.25 * p->RT_HeI_ionization_rate * p->fSShHeI * (p->HeI_density+p->delta_HeI)
 	          + 0.25 * p->RT_HeII_ionization_rate * p->fSShHeII * (p->HeII_density+p->delta_HeII);
 	}
+	scoef += p->cr_ionization_rate * (HIp + 0.25 * CR_HEI_FACTOR * (p->HeI_density+p->delta_HeI));  // cosmic rays
 	acoef = my_rates->k1 * p->HI_density
 	      - my_rates->k2 * p->HII_density
 	      +	0.25 * my_rates->k3 * p->HeI_density
