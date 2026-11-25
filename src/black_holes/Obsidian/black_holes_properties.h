@@ -973,6 +973,28 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     parser_get_param_string(params, "BlackHoles:rt_agn_table_path",
                             bp->rt_agn_table_path);
     black_holes_rt_agn_read_table(bp, params);
+    if (engine_rank == 0) {
+      message(
+          "AGN RT photons on: table %s (%d x %d x %d: log10 M_BH %.2f-%.2f, "
+          "log10 L/L_Edd %.2f-%.2f, spin %.3f-%.3f; clamped outside), "
+          "luminosity capped at %.2f L_Edd, none in the ADAF state",
+          bp->rt_agn_table_path, bp->rt_agn_nM, bp->rt_agn_nL, bp->rt_agn_nS,
+          bp->rt_agn_logM[0], bp->rt_agn_logM[bp->rt_agn_nM - 1],
+          bp->rt_agn_logL[0], bp->rt_agn_logL[bp->rt_agn_nL - 1],
+          bp->rt_agn_spin[0], bp->rt_agn_spin[bp->rt_agn_nS - 1],
+          bp->rt_agn_max_eddington_ratio);
+      if (bp->rt_agn_escape_fraction_model == 1)
+        message(
+            "AGN RT escape fraction: Ricci et al. 2017 (0.15 below L/L_Edd = "
+            "10^-1.5, 0.60 above) x %.3f",
+            bp->rt_agn_escape_fraction);
+      else
+        message("AGN RT escape fraction: %.3f", bp->rt_agn_escape_fraction);
+      if (bp->rt_agn_luminosity_floor > 0.)
+        message("AGN RT luminosity floor (test): %g erg/s",
+                bp->rt_agn_luminosity_floor *
+                    units_cgs_conversion_factor(us, UNIT_CONV_POWER));
+    }
   }
 #endif
 
