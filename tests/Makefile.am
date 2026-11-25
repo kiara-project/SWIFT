@@ -42,7 +42,7 @@ TESTS = testGreetings testMaths testReading.sh testKernel testKernelAccuracy \
         testLog testDistance testTimeline testZoomInit.sh testGetZoomIJKFunc.sh \
         testZoomRegrid.sh testSpaceSplit testZoomVoidTree.sh testZoomGravityDown testMeshGravityRebuildCheck \
         testKIARADustGrid testKIARADustSources testKIARADustEvolution \
-        testKIARADustCooling
+        testKIARADustCooling testSortShiftBound
         # testMatrixInversion
 
 # List of test programs to compile
@@ -61,7 +61,7 @@ check_PROGRAMS = testGreetings testReading testTimeIntegration testKernelLongGra
 		 testNeutrinoFermiDirac testLog testTimeline testZoomInit testGetZoomIJKFunc \
 		 testZoomRegrid testSpaceSplit testZoomVoidTree testZoomGravityDown \
 		 testKIARADustGrid testKIARADustSources testKIARADustEvolution \
-		 testKIARADustCooling
+		 testKIARADustCooling testSortShiftBound
 
 # Rebuild tests when SWIFT is updated.
 $(check_PROGRAMS): ../src/.libs/libswiftsim.a
@@ -105,6 +105,8 @@ testNeutrinoFermiDirac_SOURCES = testNeutrinoFermiDirac.c
 testTimeIntegration_SOURCES = testTimeIntegration.c
 
 testActivePair_SOURCES = testActivePair.c
+
+testSortShiftBound_SOURCES = testSortShiftBound.c
 
 test27cells_SOURCES = test27cells.c
 
