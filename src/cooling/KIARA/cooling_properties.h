@@ -99,6 +99,11 @@ struct cooling_function_data {
    * GEAR) */
   int self_shielding_method;
 
+  /*! HeII reionization redshift and width (UVB HeII photoionization and
+   * photoheating scaled by 0.5 [1 - tanh((z - z_HeII) / width)]; < 0 = off) */
+  double HeII_reionization_redshift;
+  double HeII_reionization_width;
+
   /*! What to do with adiabatic du/dt when in ISM mode: 0=no adiabatic heating,
    * 1=evolve in grackle, 2=use to evaporate cold ism */
   int ism_adiabatic_heating_method;
@@ -236,6 +241,20 @@ struct cooling_function_data {
 
   /*! For Grackle subgrid model, arbitrary multiplier for G0 */
   double G0_multiplier;
+
+  /*! Cosmic-ray ionization rate per H atom (s^-1) in the subgrid ISM of a
+   * galaxy with the Milky Way's sSFR; scaled linearly with the host galaxy
+   * sSFR (0 = no cosmic rays) */
+  double cosmic_ray_ionization_rate_MW;
+
+  /*! Milky Way sSFR (Gyr^-1) at which the rate above applies */
+  double cosmic_ray_ssfr_MW;
+
+  /*! Cap on the cosmic-ray rate, in units of the MW rate (0 = no cap) */
+  double cosmic_ray_max_factor;
+
+  /*! Heat deposited per cosmic-ray ionization (erg) */
+  double cosmic_ray_heat_per_ionization;
 
   /*! For Grackle subgrid model, set max density to avoid pointlessly
    * over-iterating in Grackle */

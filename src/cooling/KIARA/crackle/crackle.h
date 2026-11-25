@@ -95,6 +95,8 @@ typedef struct
   cr_float RT_HeI_ionization_rate;
   cr_float RT_HeII_ionization_rate;
   cr_float RT_H2_dissociation_rate;
+  cr_float cr_ionization_rate;  /* per H atom, 1/time_units */
+  cr_float cr_heating_rate;     /* per neutral H atom, erg/s (cgs) */
   cr_float H2_self_shielding_length;
   cr_float H2_custom_shielding_factor;
 

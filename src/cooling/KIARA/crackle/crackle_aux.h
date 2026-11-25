@@ -191,6 +191,9 @@ static inline void copy_grackle_fields_to_part(grackle_field_data *p, grackle_pa
 	    gp->RT_HeII_ionization_rate = 0.;
 	    gp->RT_H2_dissociation_rate = 0.;
 	}
+	/* Cosmic rays (optional fields) */
+	gp->cr_ionization_rate = (p->cr_ionization_rate != NULL) ? fmax(p->cr_ionization_rate[0], 0.) : 0.;
+	gp->cr_heating_rate = (p->cr_heating_rate != NULL) ? fmax(p->cr_heating_rate[0], 0.) : 0.;
 	if (chemistry->H2_custom_shielding==2) {
 	    gp->H2_self_shielding_length = p->H2_self_shielding_length[0];
 	}

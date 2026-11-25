@@ -623,6 +623,10 @@ struct black_holes_props {
 
   /*! The mass loading factor of stellar feedback suppressed above this z */
   float wind_eta_suppression_redshift;
+
+  /*! KIARAFeedback:recouple_escape_length for BH winds: 0 = launch kernel,
+   * 1 = initial firehose stream radius */
+  int recouple_escape_length;
 };
 
 /**
@@ -865,6 +869,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     bp->wind_eta_suppression_redshift = parser_get_opt_param_float(
         params, "KIARAFeedback:wind_eta_suppression_redshift", 0.f);
   }
+
+  /* Same escape length as for the stellar winds */
+  bp->recouple_escape_length = parser_get_opt_param_int(
+      params, "KIARAFeedback:recouple_escape_length", 0);
 
   bp->f_Edd_maximum =
       parser_get_param_float(params, "ObsidianAGN:max_eddington_fraction");

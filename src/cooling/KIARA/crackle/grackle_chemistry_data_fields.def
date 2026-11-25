@@ -160,6 +160,11 @@ ENTRY(UVbackground_redshift_off, DOUBLE, FLOAT_UNDEFINED)
 ENTRY(UVbackground_redshift_fullon, DOUBLE, FLOAT_UNDEFINED)
 ENTRY(UVbackground_redshift_drop, DOUBLE, FLOAT_UNDEFINED)
 
+/* HeII reionization: the UVB HeII photoionization and photoheating rates are
+   multiplied by 0.5 [1 - tanh((z - z_HeII) / width)] (z_HeII < 0 = off) */
+ENTRY(HeII_reionization_redshift, DOUBLE, -1.0)
+ENTRY(HeII_reionization_width, DOUBLE, 0.5)
+
 /* Factor to account for extra electrons from metals.
    Only for old-style Cloudy tables.
    f = SUM { A_i * i }, for i = 3 to N.

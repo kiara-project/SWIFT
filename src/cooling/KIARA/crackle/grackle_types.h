@@ -77,6 +77,11 @@ typedef struct
   gr_float *RT_HeII_ionization_rate;
   gr_float *RT_H2_dissociation_rate;
 
+  /* Cosmic rays: ionization rate per H atom (1/time_units) and heating per
+   * ionization times that rate (erg/s, cgs); NULL = none */
+  gr_float *cr_ionization_rate;
+  gr_float *cr_heating_rate;
+
   gr_float *H2_self_shielding_length;
   gr_float *H2_custom_shielding_factor;
 
