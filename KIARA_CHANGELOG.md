@@ -39,7 +39,12 @@ Covered: every `romeel_dev` merge (PRs #32–#58), plus `rt_fuv` (#53), which wa
 
 ## Unreleased (on `romeel_dev`)
 
-Nothing yet.
+KIARA-RT runs about 1.2× faster: the radiation transport interaction is vectorised.
+
+> ⚠️ Restart files from earlier builds are not compatible. A field was added to the RT particle data (`rt_part_data.area_scale`), which changes the layout of `struct part` (its size is unchanged).
+
+### Performance
+- **Vectorised M1 face flux in the RT transport** (15f00ab20). The face states of both particles in all photon groups are corrected and their fluxes computed in one AVX operation (`rt_face_state_fluxes()`), the export limit is computed once per pair instead of once per group, and the transport area scale is cached per particle instead of recomputed (with `cbrtf`) for both particles of every pair. On s12.5n256 at z=7.8 the whole run is 1.21× faster from the same restart, with identical particle updates. Energy conservation in the transport is unchanged (debug budget, L6.25 box to z=9: −6×10⁻⁶ of the injected energy). The new closure is also free of the float underflow the old one had at very small radiation energies.
 
 ---
 
