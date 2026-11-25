@@ -50,7 +50,8 @@
 #define GRACKLE_NPART 1
 #define GRACKLE_RANK 3
 #if COOLING_GRACKLE_MODE >= 2
-#define N_SPECIES 47 /* This further includes properties for dust model */
+#define N_SPECIES 49 /* This further includes properties for dust model and
+                        the cosmic-ray ionization and heating rates */
 #else
 #define N_SPECIES                                 \
   21 /* This includes extra values at end to hold \

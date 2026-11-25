@@ -501,9 +501,16 @@ __attribute__((always_inline)) INLINE static void feedback_kick_gas_around_star(
       pj->decoupled = 1;
       pj->feedback_data.jet_decoupled = 0;
       pj->feedback_data.decoupled_time = 0.f;
+      /* Escape length: the launch kernel, or the initial stream radius,
+       * which scales with the galaxy size (and is >= the star's kernel) */
+      const float escape_length =
+          (fb_props->recouple_escape_length == 1 &&
+           si->feedback_data.firehose_radius_stream > 0.f)
+              ? si->feedback_data.firehose_radius_stream
+              : kernel_gamma * pj->h;
       pj->feedback_data.escape_crossing_time =
           (wind_velocity_phys > 0.f)
-              ? kernel_gamma * pj->h * cosmo->a / wind_velocity_phys
+              ? escape_length * cosmo->a / wind_velocity_phys
               : 0.f;
     } else {
       pj->feedback_data.decoupling_delay_time = 0.f;
