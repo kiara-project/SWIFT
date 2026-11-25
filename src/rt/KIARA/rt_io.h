@@ -254,6 +254,21 @@ INLINE static int rt_write_particles(const struct part *parts,
       "interface areas to those of a sphere, if larger than 1");
   num_elements++;
 
+  /* Ionizing photon counters (could be dropped in production runs that do
+   * not need escape fractions, to save 16 bytes per particle) */
+  list[num_elements] = io_make_output_field(
+      "IonizingPhotonsInjected", DOUBLE, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      rt_data.ion_photons_injected,
+      "Cumulative ionizing photons (all groups but FUV), in units of 1e50, "
+      "injected into the particle's radiation by the stars");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "IonizingPhotonsAbsorbed", DOUBLE, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      rt_data.ion_photons_absorbed,
+      "Cumulative ionizing photons (all groups but FUV), in units of 1e50, "
+      "absorbed by the particle's gas species and subgrid ISM clouds");
+  num_elements++;
+
 #ifdef SWIFT_KIARA_RT_DEBUG
   /* DEBUG: photon energy budget */
   list[num_elements] = io_make_output_field(
@@ -269,6 +284,20 @@ INLINE static int rt_write_particles(const struct part *parts,
       "RT heating minus u without), intended (heating rate times "
       "start-of-step HI atoms times dt). Zero unless "
       "KIARART:debug_grackle_heat");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugIonizingBudget", DOUBLE, 4, UNIT_CONV_NO_UNITS, 0.f, parts,
+      rt_data.debug_ion,
+      "Cumulative ionizing budget in units of 1e50 photons or ions: photons "
+      "absorbed by the gas species, photons absorbed by the subgrid ISM "
+      "clouds, photoionizations asked of Grackle (rates times start-of-step "
+      "HI, HeI, HeII atoms times dt), net change of HII + HeII + 2 HeIII");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "RTDebugMaxTau", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
+      rt_data.debug_tau_max,
+      "Largest absorption optical depth over one thermochemistry step (rate "
+      "times dt, before the cap at 1) of any ionizing group");
   num_elements++;
   list[num_elements] = io_make_output_field_convert_part(
       "RTDebugInterfaceAreaRatio", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts,
@@ -358,6 +387,19 @@ INLINE static int rt_write_particles(const struct part *parts,
 INLINE static int rt_write_stars(const struct spart *sparts,
                                  struct io_props *list) {
   int num_elements = 0;
+
+  list[num_elements] = io_make_output_field(
+      "IonizingPhotonsInjected", DOUBLE, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
+      rt_data.ion_photons_injected,
+      "IonizingPhotonsInjected of the gas particle the star formed from, "
+      "less the radiation it handed to the star (which the star injects "
+      "again)");
+  num_elements++;
+  list[num_elements] = io_make_output_field(
+      "IonizingPhotonsAbsorbed", DOUBLE, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
+      rt_data.ion_photons_absorbed,
+      "IonizingPhotonsAbsorbed of the gas particle the star formed from");
+  num_elements++;
 
 #ifdef SWIFT_KIARA_RT_DEBUG
   /* DEBUG: photon energy budget of the gas the stars formed from */

@@ -143,6 +143,10 @@ struct rt_props {
   /* Integral over photon numbers of user provided spectrum. */
   double photon_number_integral[RT_NGROUPS];
 
+  /*! Ionizing photons, in units of 1e50, per internal energy unit of each
+   * group (0 for the FUV group), for the ionizing photon counters */
+  double ion_photons_per_energy[RT_NGROUPS];
+
   /* Location of Stellar spectrum tables. */
   char stellar_table_path[200];
 
@@ -783,6 +787,14 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
           "photodissociation per G0 is %.3g times that of the Draine field",
           rtp->FUV_LW_photon_fraction, E_FUV_eV, rtp->H2_LW_spectral_factor);
   }
+
+  /* Ionizing photon counters: photons (1e50) per internal energy unit */
+  for (int g = 0; g < RT_NGROUPS; g++)
+    rtp->ion_photons_per_energy[g] =
+        (g == rtp->fuv_group || rtp->average_photon_energy[g] <= 0.)
+            ? 0.
+            : 1e-50 * units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) /
+                  rtp->average_photon_energy[g];
 
   /* Finishers */
   /* --------- */

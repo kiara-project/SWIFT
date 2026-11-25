@@ -49,6 +49,19 @@ struct rt_part_data {
    * heating - u without)), 1 intended (heating rate * start-of-step N_HI *
    * dt) */
   float debug_heat[2];
+
+  /*! DEBUG: cumulative ionizing budget, in units of 1e50 (photons or ions):
+   * 0 ionizing photons absorbed by the gas species, 1 ionizing photons
+   * absorbed by the subgrid ISM clouds, 2 photoionizations asked of Grackle
+   * (ionization rates times the start-of-step HI, HeI and HeII atoms times
+   * dt), 3 net change of the ions HII + HeII + 2 HeIII over the
+   * thermochemistry steps (photo- and collisional ionizations minus
+   * recombinations) */
+  double debug_ion[4];
+
+  /*! DEBUG: largest absorption optical depth over one thermochemistry step
+   * (absorption rate times dt, before the cap at 1) of any ionizing group */
+  float debug_tau_max;
 #endif
 
   /* Radiation state vector. */
@@ -83,6 +96,15 @@ struct rt_part_data {
   /*! Rate (energy per physical time) at which emission_pending is added to
    * the radiation, the sum of the rates of the stars it came from */
   float emission_rate[RT_NGROUPS];
+
+  /*! Cumulative ionizing photons (all groups but the FUV group), in units of
+   * 1e50: injected into the particle's radiation by the stars, and absorbed
+   * by its gas species and subgrid ISM clouds. Their differences between
+   * snapshots give escape fractions on any scale. 16 bytes per particle:
+   * consider removing them (or compiling them out) for full production runs
+   * that do not need them, to save memory. */
+  double ion_photons_injected;
+  double ion_photons_absorbed;
 
   /*! Sum of the kernel weights of the neighbours eligible for transport,
    * for a particle that is not (decoupled or with its cooling shut off) and
@@ -236,6 +258,13 @@ struct rt_spart_data {
    * steps without gas neighbours, and the radiation of the gas particle the
    * star formed from */
   float emission_carry[RT_NGROUPS];
+
+  /*! The ionizing photon counters (rt_part_data.ion_photons_injected,
+   * ion_photons_absorbed) of the gas particle the star formed from, with
+   * the radiation it handed to the star taken out of the injected count
+   * (the star injects it again, and it is counted there) */
+  double ion_photons_injected;
+  double ion_photons_absorbed;
 
 #ifdef SWIFT_KIARA_RT_DEBUG
   /*! DEBUG: photon energy budget (rt_part_data.debug_dE) of the gas particle
