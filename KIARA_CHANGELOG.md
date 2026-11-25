@@ -4,11 +4,14 @@ This file records what each KIARA merge into `master` changed: bug fixes, new or
 
 Newest first. Normally every change goes through `romeel_dev`. Add a section here with each `romeel_dev` → `master` PR, and list work not yet merged under "Unreleased".
 
-Covered: every `romeel_dev` merge (PRs #32–#55), plus `rt_fuv` (#53), which was merged directly. Not covered: the `zoom-kiara-merge` merges (#45, #50) and the direct upstream SWIFT merge 9636cc20c (2026-11-12). Pre-KIARA upstream SWIFT history is in the upstream repository.
+Covered: every `romeel_dev` merge (PRs #32–#58), plus `rt_fuv` (#53), which was merged directly. Not covered: the `zoom-kiara-merge` merges (#45, #50) and the direct upstream SWIFT merge 9636cc20c (2026-11-12). Pre-KIARA upstream SWIFT history is in the upstream repository.
 
 | PR | date | merge | theme |
 |---|---|---|---|
 | [—](#unreleased) | — | — | Unreleased changes on `romeel_dev` |
+| [#58](#pr-58) | 2026-11-25 | 4d5e4f7f9 | KIARA_25 example synced with the calibration; example parse fix |
+| [#57](#pr-57) | 2026-11-25 | 773edb4b9 | Low-metallicity SF options (PopIII, KMT, cosmic rays), HeII reionization switch, stream-radius recoupling, f_gas jet speed, upstream sort fix |
+| [#56](#pr-56) | 2026-11-23 | 605dc11f6 | KIARA changelog, configure.ac and parameter clean-up |
 | [#55](#pr-55) | 2026-11-23 | ddf619d5c | crackle/feedback/BH bug fixes, wind recoupling, HeII self-shielding, halo T_vir |
 | [#54](#pr-54) | 2026-11-18 | 23224c129 | MAGMA2 gradient limiter, direct neighbour counts |
 | [#53](#pr-53) | 2026-11-16 | 5abd30c94 | KIARA RT FUV band, G0 from RT and photon conservation |
@@ -36,20 +39,57 @@ Covered: every `romeel_dev` merge (PRs #32–#55), plus `rt_fuv` (#53), which wa
 
 ## Unreleased (on `romeel_dev`)
 
-- **Added `KIARA_CHANGELOG.md`** (667d0bd9e).
-- **Resolved leftover merge-conflict markers in `configure.ac`** (b897bf792). They sat in the `--with-subgrid` help string, from PR #38. The help text now lists the options the `case` statement actually accepts.
-- **Removed `ObsidianAGN:reposition_central_only`** (b897bf792). It has had no effect since PR #34, and a parameter file that still sets it now gets it reported as unused.
-- **New option `ObsidianAGN:jet_velocity_cold_km_s`** (9efb4cf66), default 0 (off). The resolved jet speed is interpolated in log from `jet_velocity_km_s` at host gas fraction 0 to this value at gas fraction 1, with f_gas = M_gas/(M_gas+M*) from the FOF galaxy. Jet power is unchanged; gas-rich hosts get heavier, slower jets (more subgrid entrainment). Restart compatible.
-- **New option `KIARAFeedback:recouple_escape_length`** (3cc710659), default 0 (launch kernel, as before). With 1, the escape-time recoupling (`recouple_escape_kernels`) measures crossing times over the initial firehose stream radius, which scales with the galaxy size, for both stellar and BH winds. Recalibrate N when switching. Restart compatible.
+Nothing yet.
+
+---
+
+<a id="pr-58"></a>
+
+## PR #58 — KIARA_25 example synced with the calibration; example parse fix (2026-11-25, merge 4d5e4f7f9)
+
+The KIARA_25 example now runs the current calibration, and it parses again. There are no code changes, so restart files are unaffected.
+
+### Examples
+- **`examples/KIARA/KIARA_25/kiara_25.yml` synced with the current calibration** (8dd91eb42). It now has the s25n256 baseline subgrid parameters, including the newer options (HeII reionization redshift, WN07 t_ff exponent, FIRE (H/H0) wind speed, escape recoupling, cold-jet speed, 64 neighbours for stars and BHs). This also fixes the example's parse failure: a 461-character comment added in 5d93fa0b9 exceeded the parser's 256-character line limit.
+
+---
+
+<a id="pr-57"></a>
+
+## PR #57 — Low-metallicity SF options (PopIII, KMT, cosmic rays), HeII reionization switch, stream-radius recoupling, f_gas jet speed, upstream sort fix (2026-11-25, merge 773edb4b9)
+
+New runtime options from the s12.5n128 / s25n256 GSMF-slope calibration. Every option defaults to off and leaves runs unchanged unless it is set. Of these, the s25n256 baseline (cal_sl_0) uses `HeII_reionization_redshift` 3.5, `recouple_escape_length` 1 and `jet_velocity_cold_km_s` 2000. The cosmic-ray, PopIII and low-Z KMT options were tested and not adopted. Also merges upstream SWIFT master.
+
+> ⚠️ Restart files from earlier builds are not compatible. New fields were added to `cooling_function_data`, `feedback_props`, `star_formation` and `black_holes_props`, which are dumped whole into restart files.
+
+### New options
+- **New option `ObsidianAGN:jet_velocity_cold_km_s`** (9efb4cf66), default 0 (off). The resolved jet speed is interpolated in log from `jet_velocity_km_s` at host gas fraction 0 to this value at gas fraction 1, with f_gas = M_gas/(M_gas+M*) from the FOF galaxy. Jet power is unchanged; gas-rich hosts get heavier, slower jets (more subgrid entrainment). Not restart compatible with earlier builds (new field in the dumped `black_holes_props`).
+- **New option `KIARAFeedback:recouple_escape_length`** (3cc710659), default 0 (launch kernel, as before). With 1, the escape-time recoupling (`recouple_escape_kernels`) measures crossing times over the initial firehose stream radius, which scales with the galaxy size, for both stellar and BH winds. Recalibrate N when switching. Not restart compatible with earlier builds (new fields in the dumped `feedback_props` and `black_holes_props`).
 - **New option: cosmic rays in the subgrid ISM** (a89ed967f), `KIARACooling:cosmic_ray_ionization_rate_MW`, default 0 (off). This is the ionization rate per H atom (s⁻¹) at the Milky Way sSFR (`cosmic_ray_ssfr_MW_per_Gyr`, default 0.027); it scales linearly with the host galaxy sSFR, with an optional cap `cosmic_ray_max_factor` (in MW units). In crackle it ionizes HI and HeI (1.1× per He atom) and heats the neutral gas by `cosmic_ray_heating_eV` (default 10) per ionization. Before this, nothing heated the cold phase of metal-free gas, so the self-enrichment metals cooled it to T_CMB, x_e fell to ~1e-7 and H⁻ (the only primordial H2 route) shut off. Not restart compatible with earlier builds (new fields in the dumped `cooling_function_data`).
 - **New option: PopIII stars** (fd00ff8a6), `KIARAFeedback:popIII_max_metallicity`, default −1 (off). This exposes chem5's existing PopIII channel (`zmax3`, previously hardcoded off) together with its IMF: `popIII_imf_slope` 1.35 (Salpeter), `popIII_mass_min_Msun` 20, `popIII_mass_max_Msun` 120, with the Z = 0 SN/HN yields. Stars above 50 M☉ collapse without ejecta, and there are no pair-instability SNe. Below the same threshold (gas + dust metallicity), the WadaNorman and lognormal SF laws use an H2 fraction of at least `KIARAStarFormation:popIII_H2_fraction` (default 1), so metal-free gas can form stars without self-enrichment; the stars it forms get the PopIII IMF. Not restart compatible with earlier builds (new fields in the dumped `feedback_props` and `star_formation`). (fd00ff8a6 aborted at startup any run whose parameter file did not set `popIII_max_metallicity`, because the SF and chem5 code read it with different defaults; fixed in e35585d09.)
 - **New option `KIARAStarFormation:lowZ_KMT_metallicity`** (e37ea1e27), solar units, default 0 (off). With the WadaNorman and lognormal SF laws, gas below this metallicity uses at least the Krumholz & Gnedin (2011) H2 fraction evaluated at it (surface density ρ²/|∇ρ|, `clumping_factor_scaling`), as Simba's KMT does with Z′ floored at 0.01. Below ~1% solar, stars form in cold atomic gas (Krumholz 2012), so the crackle H2 fraction no longer gates their formation. Metal-free gas then forms stars above Σ ≈ 70 M☉/pc² (Z′ = 0.01, clumping 30) instead of needing a high self-enrichment floor. The KMT calculation is now a shared helper; SchmidtLaw + `H2_model: KMT` is unchanged. Not restart compatible with earlier builds (new field in the dumped `star_formation`).
 - **New option `KIARACooling:HeII_reionization_redshift`** (5ff4deac5), default −1 (off), with `HeII_reionization_width` 0.5. The UVB HeII photoionization and photoheating rates are multiplied by ½[1 − tanh((z − z_HeII)/width)]. An optically thin uniform UVB (FG2011) otherwise ionizes and heats the IGM HeII by z ≈ 4.5 under `self_shielding_method: 4`, well before the observed HeII reionization (z ≈ 3–3.5). Not restart compatible with earlier builds (new fields in the dumped `cooling_function_data` and chemistry data).
 
-- **`examples/KIARA/KIARA_25/kiara_25.yml` synced with the current calibration** (8dd91eb42): the s25n256 baseline subgrid parameters, including the newer options (HeII reionization redshift, WN07 t_ff exponent, FIRE (H/H0) wind speed, escape recoupling, cold-jet speed, 64 neighbours for stars and BHs). It also fixes the example's parse failure on master: a 461-character comment added in 5d93fa0b9 exceeded the parser's 256-character line limit.
+### Other
+- An optional atomic (non-H2) star formation channel, `KIARAStarFormation:atomic_SF_efficiency`, was added (a62fe6ba3) and then reverted (2d33065d6) within this PR, so there is no net change. In s25n256 it did not raise the sSFR of 10^8.5–9 M☉ dwarfs, which are self-regulated. Instead it boosted the smallest galaxies and lowered the GSMF faint end.
+- Corrected the restart-compatibility notes for the options above (b401f087f).
 
 ### Upstream SWIFT
 - Merged upstream master in 9cb92007f. A tighter upper bound on `dx_max_sort` stays valid when cells are re-sorted in only some directions (7c94f9ab1, with the new unit test `testSortShiftBound`). The multipole check of a single-particle cell skips higher-order terms (f3049a168). Restart compatible: the new fields are in `struct cell`, which is rebuilt on restart.
+
+---
+
+<a id="pr-56"></a>
+
+## PR #56 — KIARA changelog, configure.ac and parameter clean-up (2026-11-23, merge 605dc11f6)
+
+Housekeeping: this changelog, plus two leftovers from earlier merges.
+
+> ⚠️ Restart files from earlier builds are not compatible: a field was removed from the dumped `black_holes_props`.
+
+- **Added `KIARA_CHANGELOG.md`** (667d0bd9e, 3620e7d4f).
+- **Resolved leftover merge-conflict markers in `configure.ac`** (b897bf792). They sat in the `--with-subgrid` help string, from PR #38. The help text now lists the options the `case` statement actually accepts.
+- **Removed `ObsidianAGN:reposition_central_only`** (b897bf792). It has had no effect since PR #34, and a parameter file that still sets it now gets it reported as unused.
 
 ---
 
