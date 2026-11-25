@@ -46,6 +46,12 @@ KIARA-RT runs about 1.2× faster: the radiation transport interaction is vectori
 ### Performance
 - **Vectorised M1 face flux in the RT transport** (15f00ab20). The face states of both particles in all photon groups are corrected and their fluxes computed in one AVX operation (`rt_face_state_fluxes()`), the export limit is computed once per pair instead of once per group, and the transport area scale is cached per particle instead of recomputed (with `cbrtf`) for both particles of every pair. On s12.5n256 at z=7.8 the whole run is 1.21× faster from the same restart, with identical particle updates. Energy conservation in the transport is unchanged (debug budget, L6.25 box to z=9: −6×10⁻⁶ of the injected energy). The new closure is also free of the float underflow the old one had at very small radiation energies.
 
+### Changed defaults
+- **`KIARART:rt_with_galaxy_subgrid` now defaults to 1** (7834dd2a7). The RT thermochemistry coupled to the KIARA subgrid ISM model is the KIARA standard, and every production parameter file already sets it.
+
+### Bug fixes
+- **No RT photoheating with `KIARART:rt_with_galaxy_subgrid: 0`** (7834dd2a7). The uncoupled thermochemistry, `rt_do_thermochemistry()`, computed the photoionization and photoheating rates with zero species densities. The photoionization rates are per atom and were unaffected, but the photoheating rate is a sum over the absorbing species, so it was always zero: gas was ionized but stayed cold, recombined too fast, and ionization fronts stalled (found with the Iliev Test 2 Strömgren sphere). It now uses the particle's species densities, as the subgrid path does. The same applied to the thermochemistry time of `rt_tchem_get_tchem_time()` (used only by the optional cooling-time step limit, which is off). Runs with `rt_with_galaxy_subgrid: 1`, which includes all KIARA production runs, were not affected.
+
 ### New outputs
 - **Ionizing photon counters** (d6d659b71). Every gas particle carries cumulative counters (in units of 1e50 photons, all groups but the FUV group) of the ionizing photons the stars inject into its radiation and of those absorbed by its gas species and subgrid ISM clouds, written as `IonizingPhotonsInjected` and `IonizingPhotonsAbsorbed`. A star takes over the counters of the gas it forms from, less the radiation it injects again. Differences between snapshots give the escape fraction on any scale, f_esc(<r) = 1 − ΔAbsorbed/ΔInjected (the snapshot flux cannot be used for this). Costs 16 bytes per particle.
 
