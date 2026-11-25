@@ -644,9 +644,11 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   if (rtp->ism_clouds_per_particle <= 0.f)
     error("KIARART:ism_clouds_per_particle must be > 0");
 
-  /* Are we coupling with galaxy subgrid modules? */
+  /* Are we coupling with galaxy subgrid modules? On by default, as in the
+   * KIARA model (rt_do_thermochemistry_with_subgrid()); 0 uses the plain
+   * thermochemistry (rt_do_thermochemistry()), e.g. for idealised tests */
   rtp->rt_with_galaxy_subgrid = parser_get_opt_param_int(
-      params, "KIARART:rt_with_galaxy_subgrid", /* default = */ 0);
+      params, "KIARART:rt_with_galaxy_subgrid", /* default = */ 1);
 
 #ifdef SWIFT_KIARA_RT_DEBUG
   rtp->debug_grackle_heat = parser_get_opt_param_int(

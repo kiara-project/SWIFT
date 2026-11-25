@@ -491,9 +491,11 @@ INLINE void rt_do_thermochemistry(
   const float u_old = internal_energy;
 #endif
 
-  /* The interaction rates are computed with zero species densities, as
-   * before (the species array was filled only afterwards) */
-  gr_float species_zero[6] = {0., 0., 0., 0., 0., 0.};
+  /* Species densities for the interaction rates: the photoheating rate is
+   * a sum over the absorbing species (with zero densities, as this path used
+   * to pass, there is no photoheating) */
+  gr_float rt_species[6];
+  rt_tchem_get_species_densities(p, density, rt_species);
 
   /* load particle information from particle to grackle data */
   float radiation_energy_density[RT_NGROUPS];
@@ -505,7 +507,7 @@ INLINE void rt_do_thermochemistry(
 
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
-      iact_rates, radiation_energy_density, species_zero,
+      iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
       rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
@@ -637,9 +639,11 @@ float rt_tchem_get_tchem_time(
   /* Note: Can't pass rt_props as const struct because of grackle
    * accessinging its properties there */
 
-  /* The interaction rates are computed with zero species densities, as
-   * before (the species array was filled only afterwards) */
-  gr_float species_zero[6] = {0., 0., 0., 0., 0., 0.};
+  /* Species densities for the interaction rates (see
+   * rt_do_thermochemistry()) */
+  gr_float rt_species[6];
+  rt_tchem_get_species_densities(p, hydro_get_physical_density(p, cosmo),
+                                 rt_species);
 
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
@@ -647,7 +651,7 @@ float rt_tchem_get_tchem_time(
 
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
-      iact_rates, radiation_energy_density, species_zero,
+      iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
       rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
