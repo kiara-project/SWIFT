@@ -119,6 +119,10 @@ struct rt_part_data {
    * RT time-step (0 until the first transport) */
   float area_sum_last;
 
+  /*! Cached rt_part_compute_area_scale(): set where the volume or
+   * area_sum_last change (rt_update_volume(), rt_finalise_transport()) */
+  float area_scale;
+
   /*! Sum of the (comoving) interface areas |A_ij| with the neighbours of the
    * current RT step, from the gradient loop (so it is complete before the
    * transport and the same on all nodes) */

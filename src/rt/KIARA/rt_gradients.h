@@ -629,11 +629,8 @@ __attribute__((always_inline)) INLINE static void rt_gradients_predict(
   Uj[2] += dUj[2];
   Uj[3] += dUj[3];
 
-  /* Check and correct unphysical extrapolated states */
-  rt_check_unphysical_state(Ui, &Ui[1], /*e_old=*/0.f, /*c_red=*/1.f,
-                            /*callloc=*/1);
-  rt_check_unphysical_state(Uj, &Uj[1], /*e_old=*/0.f, /*c_red=*/1.f,
-                            /*callloc=*/1);
+  /* The unphysical extrapolated states (E <= 0 or |F| > c E) are corrected
+   * in rt_face_state_fluxes(), together with the flux computation */
 }
 
 /**

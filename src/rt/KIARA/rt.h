@@ -174,6 +174,7 @@ __attribute__((always_inline)) INLINE static void rt_update_volume(
     }
   }
   if (V > 0.f) p->rt_data.volume_previous = V;
+  p->rt_data.area_scale = rt_part_compute_area_scale(p);
 }
 
 /**
@@ -250,6 +251,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.volume_previous = 0.f;
   p->rt_data.area_sum = 0.f;
   p->rt_data.area_sum_last = 0.f;
+  p->rt_data.area_scale = 1.f;
   p->rt_data.c_scale = 1.f;
   for (int g = 0; g < RT_NGROUPS; g++) {
     p->rt_data.emission_pending[g] = 0.f;
@@ -834,6 +836,7 @@ __attribute__((always_inline)) INLINE static void rt_finalise_transport(
   /* Keep the interface area of this transport step for the time-step */
   rtd->area_sum_last = rtd->area_sum;
   rtd->area_sum = 0.f;
+  rtd->area_scale = rt_part_compute_area_scale(p);
 }
 
 /**
