@@ -132,17 +132,6 @@ struct star_formation {
    * lognormal SF laws) */
   float lowZ_KMT_metallicity;
 
-  /*! Atomic SF channel: efficiency of star formation from cold non-H2 gas
-   * relative to H2 (0 = off), for WadaNorman and lognormal SF laws */
-  float atomic_SF_efficiency;
-
-  /*! Atomic SF channel: metallicity scale (solar units) of the taper */
-  float atomic_SF_metallicity;
-
-  /*! Atomic SF channel taper: 0 = step (off above atomic_SF_metallicity),
-   * 1 = exp(-Z / atomic_SF_metallicity) */
-  int atomic_SF_taper;
-
   /* The lognormal & WadaNorman SF model parameters */
   struct {
     /*! Characteristic density (approx 10^-1.5 Mo/pc^3) */
@@ -459,14 +448,6 @@ INLINE static float star_formation_KMT_H2_fraction(
  * 2012), so the (crackle) H2 fraction does not trace star formation there.
  * Simba floors Z' at 0.01 in KMT for the same reason.
  *
- * With atomic_SF_efficiency = eps_a > 0, the cold non-molecular gas also
- * forms stars, at eps_a times the H2 rate and weighted by w(Z) (a step at,
- * or exp(-Z/Z_a) with, Z_a = atomic_SF_metallicity): f -> f + eps_a w (1-f).
- * Where H2 forms more slowly than the gas collapses (low Z), cold atomic
- * gas forms stars (Krumholz 2012; Glover & Clark 2012); outer disks and
- * dwarfs bound this at <~10-20% of the H2 efficiency per unit HI
- * (Bigiel+10; Roychowdhury+14).
- *
  * @param p #part.
  * @param xp the #xpart.
  * @param starform the star formation law properties to use.
@@ -483,19 +464,6 @@ INLINE static float star_formation_H2_fraction(
                                  p, starform, cosmo,
                                  cooling_get_subgrid_density(p, xp),
                                  starform->lowZ_KMT_metallicity));
-  /* Atomic SF channel: cold non-molecular gas forms stars with a
-   * fraction atomic_SF_efficiency of the H2 efficiency, tapered off with
-   * metallicity */
-  if (starform->atomic_SF_efficiency > 0.f) {
-    const float Z_solar_units =
-        p->chemistry_data.metal_mass_fraction_total / starform->Z_solar;
-    float w = 0.f;
-    if (starform->atomic_SF_taper == 1)
-      w = expf(-Z_solar_units / starform->atomic_SF_metallicity);
-    else if (Z_solar_units < starform->atomic_SF_metallicity)
-      w = 1.f;
-    H2_frac += starform->atomic_SF_efficiency * w * fmaxf(1.f - H2_frac, 0.f);
-  }
   if (starform->popIII_max_metallicity < 0.f) return H2_frac;
   /* Metallicity of the star that would form: gas-phase metals plus those
    * in dust (as in star_formation_copy_properties), which chem5 compares
@@ -1083,26 +1051,6 @@ INLINE static void starformation_init_backend(
         "KIARAStarFormation:lowZ_KMT_metallicity is for the WadaNorman and "
         "lognormal SF models (use H2_model KMT with SchmidtLaw)");
 
-  /* Atomic (non-H2) star formation channel */
-  starform->atomic_SF_efficiency = parser_get_opt_param_float(
-      parameter_file, "KIARAStarFormation:atomic_SF_efficiency", 0.f);
-  starform->atomic_SF_metallicity = parser_get_opt_param_float(
-      parameter_file, "KIARAStarFormation:atomic_SF_metallicity", 0.1f);
-  starform->atomic_SF_taper = parser_get_opt_param_int(
-      parameter_file, "KIARAStarFormation:atomic_SF_taper", 1);
-  if (starform->atomic_SF_efficiency < 0.f ||
-      starform->atomic_SF_efficiency > 1.f)
-    error("KIARAStarFormation:atomic_SF_efficiency must be in [0, 1]");
-  if (starform->atomic_SF_metallicity <= 0.f)
-    error("KIARAStarFormation:atomic_SF_metallicity must be > 0");
-  if (starform->atomic_SF_taper != 0 && starform->atomic_SF_taper != 1)
-    error("KIARAStarFormation:atomic_SF_taper must be 0 (step) or 1 (exp)");
-  if (starform->atomic_SF_efficiency > 0.f &&
-      starform->SF_model == kiara_star_formation_SchmidtLaw)
-    error(
-        "KIARAStarFormation:atomic_SF_efficiency is for the WadaNorman and "
-        "lognormal SF models");
-
   /* PopIII star formation: the threshold is chem5's PopIII metallicity, so
    * that the stars formed this way get the PopIII IMF */
   /* Same type and default as in feedback_props_init(): the parser refuses
@@ -1233,14 +1181,6 @@ INLINE static void starformation_print_backend(
         "the KMT H2 fraction at %g Z_sun (clumping factor %g)",
         starform->lowZ_KMT_metallicity, starform->lowZ_KMT_metallicity,
         starform->clumping_factor_scaling);
-
-  if (starform->atomic_SF_efficiency > 0.f)
-    message(
-        "Atomic star formation: cold non-H2 gas forms stars at %g x the H2 "
-        "rate, weighted by %s %g Z_sun",
-        starform->atomic_SF_efficiency,
-        starform->atomic_SF_taper == 1 ? "exp(-Z/Z_a) with Z_a =" : "Z <",
-        starform->atomic_SF_metallicity);
 
   if (starform->popIII_max_metallicity >= 0.f)
     message(
