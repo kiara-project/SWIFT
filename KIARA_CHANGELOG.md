@@ -39,12 +39,18 @@ Covered: every `romeel_dev` merge (PRs #32–#58), plus `rt_fuv` (#53), which wa
 
 ## Unreleased (on `romeel_dev`)
 
-KIARA-RT runs about 1.2× faster: the radiation transport interaction is vectorised.
+KIARA-RT runs about 1.2× faster: the radiation transport interaction is vectorised. Gas and stars now count the ionizing photons they receive and absorb, so escape fractions can be measured from snapshots (merge of `rt_photcons`, 913ef222e).
 
-> ⚠️ Restart files from earlier builds are not compatible. A field was added to the RT particle data (`rt_part_data.area_scale`), which changes the layout of `struct part` (its size is unchanged).
+> ⚠️ Restart files from earlier builds are not compatible. Fields were added to the RT particle data (`rt_part_data.area_scale`, the ionizing photon counters and, in debug builds, the ionizing budget), which change the layout of `struct part` and `struct spart`, and `rt_props` gained a field.
 
 ### Performance
 - **Vectorised M1 face flux in the RT transport** (15f00ab20). The face states of both particles in all photon groups are corrected and their fluxes computed in one AVX operation (`rt_face_state_fluxes()`), the export limit is computed once per pair instead of once per group, and the transport area scale is cached per particle instead of recomputed (with `cbrtf`) for both particles of every pair. On s12.5n256 at z=7.8 the whole run is 1.21× faster from the same restart, with identical particle updates. Energy conservation in the transport is unchanged (debug budget, L6.25 box to z=9: −6×10⁻⁶ of the injected energy). The new closure is also free of the float underflow the old one had at very small radiation energies.
+
+### New outputs
+- **Ionizing photon counters** (d6d659b71). Every gas particle carries cumulative counters (in units of 1e50 photons, all groups but the FUV group) of the ionizing photons the stars inject into its radiation and of those absorbed by its gas species and subgrid ISM clouds, written as `IonizingPhotonsInjected` and `IonizingPhotonsAbsorbed`. A star takes over the counters of the gas it forms from, less the radiation it injects again. Differences between snapshots give the escape fraction on any scale, f_esc(<r) = 1 − ΔAbsorbed/ΔInjected (the snapshot flux cannot be used for this). Costs 16 bytes per particle.
+
+### Diagnostics (debug builds only)
+- **Ionizing photon budget and optical depth** (e261e716e). With `--enable-rt-debug`, `RTDebugIonizingBudget` accumulates per particle the ionizing photons absorbed by the gas species and by the ISM clouds, the photoionizations asked of crackle, and the net change of HII + HeII + 2 HeIII; `RTDebugMaxTau` is the largest optical depth of an ionizing group over one thermochemistry step. Ionizations (net change plus recombinations) match the absorbed photons to about 10–20%.
 
 ---
 
