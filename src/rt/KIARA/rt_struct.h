@@ -88,6 +88,14 @@ struct rt_part_data {
   /* Particle RT time step. */
   float flux_dt;
 
+  /*! Start of the RT step for which flux_dt was set (integer time). With
+   * MPI, the copy of a particle on another rank is only updated when its
+   * cell is sent, i.e. in the RT steps in which it is active, so its flux_dt
+   * stays positive after its step ended: a neighbour is active in the
+   * exchange only if its step starts at the same time as the active
+   * particle's (rt_part_active_in_exchange()) */
+  long long flux_ti_begin;
+
   /*! Stellar emission received and not yet added to the radiation (total
    * energy): stars spread their emission over their time step, see
    * rt_inject_pending_emission() */

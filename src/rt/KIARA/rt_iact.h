@@ -241,16 +241,41 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
  * @param p_exp The (possibly) shedding particle.
  * @param p_rec The (possibly) receiving neighbour.
  * @param a Current scale factor.
+ * @param ti_ref Start of the RT step of the active particle of the pair.
  * @param update_exp Update the shedding particle in this call?
  * @param update_rec Update the receiving particle in this call?
  */
+/**
+ * @brief Is particle p active in the current RT step of the active particle
+ * p_ref? Its flux_dt is positive in its own RT step, and its step starts at
+ * the same time as that of p_ref (all active particles start their step at
+ * the current sub-cycle time). The second condition matters with MPI: the
+ * copy of a particle on another rank is only updated when its cell is sent,
+ * so after its step ended it keeps a positive flux_dt (its own rank sets it
+ * to -1 in rt_finalise_transport()). Both ranks must agree on which
+ * particles are active for the pairwise exchanges to be conservative.
+ *
+ * @param p The particle.
+ * @param p_ref An active particle of the pair.
+ */
+__attribute__((always_inline)) INLINE static int rt_part_active_in_exchange(
+    const struct part *restrict p, const struct part *restrict p_ref) {
+  return p->rt_data.flux_dt > 0.f &&
+         p->rt_data.flux_ti_begin == p_ref->rt_data.flux_ti_begin;
+}
+
 __attribute__((always_inline)) INLINE static void rt_shed_radiation_exchange(
     const float r2, const float h_exp, struct part *restrict p_exp,
-    struct part *restrict p_rec, const float a, const int update_exp,
-    const int update_rec) {
+    struct part *restrict p_rec, const long long ti_ref, const float a,
+    const int update_exp, const int update_rec) {
 
-  /* Only over the shedding particle's own RT step */
-  if (p_exp->rt_data.flux_dt <= 0.f || p_exp->rt_data.shed_wsum <= 0.f) return;
+  /* Only over the shedding particle's own RT step (ti_ref is the start of
+   * the step of the active particle of the pair, see
+   * rt_part_active_in_exchange()) */
+  if (p_exp->rt_data.flux_dt <= 0.f ||
+      p_exp->rt_data.flux_ti_begin != ti_ref ||
+      p_exp->rt_data.shed_wsum <= 0.f)
+    return;
   if (rt_part_is_ineligible(p_rec) || !rt_part_sheds_radiation(p_exp)) return;
   if (r2 >= kernel_gamma2 * h_exp * h_exp) return;
 
@@ -323,9 +348,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
 
   /* Hand-over of the radiation of particles ineligible for transport, with
    * the same rule for which particles are updated as for the fluxes */
-  const int update_j = (mode == 1 || pj->rt_data.flux_dt < 0.f);
-  rt_shed_radiation_exchange(r2, hi, pi, pj, a, /*update_exp=*/1, update_j);
-  rt_shed_radiation_exchange(r2, hj, pj, pi, a, update_j, /*update_rec=*/1);
+  const int pj_active = rt_part_active_in_exchange(pj, pi);
+  const int update_j = (mode == 1 || !pj_active);
+  const long long ti_ref = pi->rt_data.flux_ti_begin;
+  rt_shed_radiation_exchange(r2, hi, pi, pj, ti_ref, a, /*update_exp=*/1,
+                             update_j);
+  rt_shed_radiation_exchange(r2, hj, pj, pi, ti_ref, a, update_j,
+                             /*update_rec=*/1);
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
@@ -378,7 +407,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   /* Get the time step for the flux exchange. This is always the smallest time
    * step among the two particles. */
   const float mindt =
-      (rtj->flux_dt > 0.f) ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
+      pj_active ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
 
   /* Accumulate the interface areas of the particles' own transport steps,
    * for the time-step criterion and the positivity limiter. Each interface
@@ -388,7 +417,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
    * steps. It gets the area from its own step's interactions. */
   if (mindt > 0.f) {
     rti->area_sum += Anorm;
-    if (mode == 1 && rtj->flux_dt > 0.f) rtj->area_sum += Anorm;
+    if (mode == 1 && pj_active) rtj->area_sum += Anorm;
   }
 
   /* The interface area used for the exchange, scaled so that neither
@@ -503,17 +532,17 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
        * neighbour only applies it at the end of its own, longer, step). */
       const float dt_a = mindt / a;
 #ifdef SWIFT_KIARA_RT_DEBUG
-      if (!(mode == 1 || (rtj->flux_dt < 0.f)))
+      if (!update_j)
         rti->debug_dE_onesided -= totflux[0] * dt_a;
       atomic_add_f(&rti->debug_dE_acc, -totflux[0] * dt_a);
-      if (mode == 1 || (rtj->flux_dt < 0.f))
+      if (update_j)
         atomic_add_f(&rtj->debug_dE_acc, totflux[0] * dt_a);
 #endif
       rti->flux[g].energy -= totflux[0] * dt_a;
       rti->flux[g].flux[0] -= ci * totflux[1] * dt_a;
       rti->flux[g].flux[1] -= ci * totflux[2] * dt_a;
       rti->flux[g].flux[2] -= ci * totflux[3] * dt_a;
-      if (mode == 1 || (rtj->flux_dt < 0.f)) {
+      if (update_j) {
         rtj->flux[g].energy += totflux[0] * dt_a;
         rtj->flux[g].flux[0] += cj * totflux[1] * dt_a;
         rtj->flux[g].flux[1] += cj * totflux[2] * dt_a;
