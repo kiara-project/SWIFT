@@ -729,30 +729,46 @@ __attribute__((always_inline)) INLINE static float black_hole_MAD_jet_efficiency
  * luminosity in each RT photon group as a function of log10(M_BH/Msun),
  * log10(L/L_Edd) and spin.
  *
+ * With an AGN hard photon group (the last edge of KIARART:photon_groups_Hz
+ * repeated, see rt_props.agn_hard_group) the table has one group fewer than
+ * the run, and the share of its last band (above the HeII edge) goes to the
+ * hard group instead of the HeII group.
+ *
  * @param bp The black hole properties.
  * @param params The parsed parameters (for the RT photon groups).
+ * @return The index of the AGN hard group, or -1 if there is none.
  */
-INLINE static void black_holes_rt_agn_read_table(struct black_holes_props *bp,
-                                                 struct swift_params *params) {
+INLINE static int black_holes_rt_agn_read_table(struct black_holes_props *bp,
+                                                struct swift_params *params) {
 #ifdef HAVE_HDF5
   hid_t file = H5Fopen(bp->rt_agn_table_path, H5F_ACC_RDONLY, H5P_DEFAULT);
   if (file < 0)
     error("Could not open the AGN RT table %s", bp->rt_agn_table_path);
 
-  /* The table must have been made for the RT photon groups of the run */
+  /* The table must have been made for the RT photon groups of the run
+   * (without the AGN hard group) */
   double groups_run[RT_NGROUPS], groups_table[RT_NGROUPS];
   parser_get_param_double_array(params, "KIARART:photon_groups_Hz",
                                 RT_NGROUPS, groups_run);
+  const int hard_group =
+      (RT_NGROUPS >= 2 &&
+       (float)groups_run[RT_NGROUPS - 1] == (float)groups_run[RT_NGROUPS - 2])
+          ? RT_NGROUPS - 1
+          : -1;
+  const int n_table = (hard_group >= 0) ? RT_NGROUPS - 1 : RT_NGROUPS;
   hid_t attr = H5Aopen(file, "photon_groups_Hz", H5P_DEFAULT);
   if (attr < 0) error("No photon_groups_Hz in %s", bp->rt_agn_table_path);
   hid_t aspace = H5Aget_space(attr);
-  if (H5Sget_simple_extent_npoints(aspace) != RT_NGROUPS)
-    error("The AGN RT table %s has a different number of photon groups",
-          bp->rt_agn_table_path);
+  if (H5Sget_simple_extent_npoints(aspace) != n_table)
+    error(
+        "The AGN RT table %s has %d photon groups, the run %d (%s an AGN "
+        "hard group)",
+        bp->rt_agn_table_path, (int)H5Sget_simple_extent_npoints(aspace),
+        RT_NGROUPS, (hard_group >= 0) ? "with" : "without");
   H5Aread(attr, H5T_NATIVE_DOUBLE, groups_table);
   H5Sclose(aspace);
   H5Aclose(attr);
-  for (int g = 0; g < RT_NGROUPS; g++)
+  for (int g = 0; g < n_table; g++)
     if (fabs(groups_table[g] / groups_run[g] - 1.) > 1e-3)
       error("AGN RT table %s: photon group %d starts at %g Hz, the run's at %g",
             bp->rt_agn_table_path, g, groups_table[g], groups_run[g]);
@@ -789,7 +805,7 @@ INLINE static void black_holes_rt_agn_read_table(struct black_holes_props *bp,
     error("luminosity_fraction in %s is not 4D", bp->rt_agn_table_path);
   H5Sget_simple_extent_dims(sp, dims, NULL);
   if ((int)dims[0] != bp->rt_agn_nM || (int)dims[1] != bp->rt_agn_nL ||
-      (int)dims[2] != bp->rt_agn_nS || dims[3] != RT_NGROUPS)
+      (int)dims[2] != bp->rt_agn_nS || (int)dims[3] != n_table)
     error("luminosity_fraction in %s does not match the axes",
           bp->rt_agn_table_path);
   const size_t ntot = dims[0] * dims[1] * dims[2] * dims[3];
@@ -797,20 +813,29 @@ INLINE static void black_holes_rt_agn_read_table(struct black_holes_props *bp,
   H5Dread(d, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
   for (int i = 0; i < bp->rt_agn_nM; i++)
     for (int j = 0; j < bp->rt_agn_nL; j++)
-      for (int k = 0; k < bp->rt_agn_nS; k++)
-        for (int g = 0; g < RT_NGROUPS; g++) {
+      for (int k = 0; k < bp->rt_agn_nS; k++) {
+        for (int g = 0; g < n_table; g++) {
           const float x =
               buf[(((size_t)i * dims[1] + j) * dims[2] + k) * dims[3] + g];
           if (!(x >= 0.f && x <= 1.f))
             error("AGN RT table share out of range: %g", x);
           bp->rt_agn_frac[i][j][k][g] = x;
         }
+        /* The hard band goes to the AGN hard group */
+        if (hard_group >= 0) {
+          bp->rt_agn_frac[i][j][k][hard_group] =
+              bp->rt_agn_frac[i][j][k][n_table - 1];
+          bp->rt_agn_frac[i][j][k][n_table - 1] = 0.f;
+        }
+      }
   free(buf);
   H5Sclose(sp);
   H5Dclose(d);
   H5Fclose(file);
+  return hard_group;
 #else
   error("The AGN RT table needs HDF5");
+  return -1;
 #endif
 }
 #endif
@@ -972,7 +997,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   if (bp->rt_agn_emission) {
     parser_get_param_string(params, "BlackHoles:rt_agn_table_path",
                             bp->rt_agn_table_path);
-    black_holes_rt_agn_read_table(bp, params);
+    const int hard_group = black_holes_rt_agn_read_table(bp, params);
     if (engine_rank == 0) {
       message(
           "AGN RT photons on: table %s (%d x %d x %d: log10 M_BH %.2f-%.2f, "
@@ -990,6 +1015,11 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
             bp->rt_agn_escape_fraction);
       else
         message("AGN RT escape fraction: %.3f", bp->rt_agn_escape_fraction);
+      if (hard_group >= 0)
+        message(
+            "AGN RT photons above the HeII edge go to the AGN hard group "
+            "(photon group %d)",
+            hard_group);
       if (bp->rt_agn_luminosity_floor > 0.)
         message("AGN RT luminosity floor (test): %g erg/s",
                 bp->rt_agn_luminosity_floor *

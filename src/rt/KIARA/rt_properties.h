@@ -167,6 +167,22 @@ struct rt_props {
   /*! Photon escape fraction of the FUV group (BPASS model) */
   double f_esc_FUV;
 
+  /*! Index of the AGN hard photon group, or -1 if there is none. It is an
+   * extra last group over the same band as the HeII group (54.4 eV to the
+   * upper end of the AGN spectral table, 1 keV), declared by repeating the
+   * last edge in KIARART:photon_groups_Hz. Only black holes emit into it
+   * (their photons of that band go there instead of into the HeII group),
+   * with the cross sections and mean photon energy of the AGN spectrum,
+   * which is much harder there than the stellar one. */
+  int agn_hard_group;
+
+  /*! Energy and number weighted cross sections (cm^2; HI, HeI, HeII) and
+   * mean photon energy (erg) of the AGN hard group, from the AGN spectral
+   * table (BlackHoles:rt_agn_table_path) */
+  double agn_hard_cse[3];
+  double agn_hard_csn[3];
+  double agn_hard_photon_energy;
+
   /*! Dust absorption opacity of the FUV group, per unit dust mass (internal
    * units). In the subgrid ISM only the dust of the warm phase absorbs. */
   double dust_opacity_FUV;
@@ -250,6 +266,10 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
 /* Function to read the table. */
 double **read_Bpass_from_hdf5(char *file_name, char *dataset_name);
 
+/* Read the properties of the AGN hard group from the AGN spectral table */
+void rt_props_read_agn_hard_group(struct rt_props *rtp,
+                                  struct swift_params *params);
+
 /*! Frequency of the HI ionization edge (13.6 eV), in Hz */
 #define RT_KIARA_NU_HI_HZ 3.288e15
 
@@ -272,8 +292,25 @@ __attribute__((always_inline)) INLINE static int rt_props_find_fuv_group(
 }
 
 /**
+ * @brief Find the AGN hard photon group: the last group, if its lower edge
+ * is the same as that of the group before it (see rt_props.agn_hard_group).
+ *
+ * @param rtp The #rt_props, with the photon group edges set.
+ * @return the index of the AGN hard group, or -1 if there is none.
+ */
+__attribute__((always_inline)) INLINE static int rt_props_find_agn_hard_group(
+    const struct rt_props *rtp) {
+
+  if (RT_NGROUPS < 2) return -1;
+  if (rtp->photon_groups[RT_NGROUPS - 1] == rtp->photon_groups[RT_NGROUPS - 2])
+    return RT_NGROUPS - 1;
+  return -1;
+}
+
+/**
  * @brief Name of the BPASS table (band) of a photon group: "FUV" for the
- * FUV group, then "HI", "HeI" and "HeII" for the ionizing groups.
+ * FUV group, then "HI", "HeI" and "HeII" for the ionizing groups, and
+ * "AGN_hard" for the AGN hard group (no stellar emission).
  *
  * @param rtp The #rt_props.
  * @param g The photon group.
@@ -283,13 +320,16 @@ rt_props_bpass_table_name(const struct rt_props *rtp, const int g) {
 
   static const char *ionizing_names[3] = {"HI", "HeI", "HeII"};
   const int n_fuv = (rtp->fuv_group >= 0) ? 1 : 0;
-  if (RT_NGROUPS - n_fuv != 3)
+  const int n_hard = (rtp->agn_hard_group >= 0) ? 1 : 0;
+  if (RT_NGROUPS - n_fuv - n_hard != 3)
     error(
         "The BPASS model needs exactly 3 ionizing photon groups (HI, HeI, "
-        "HeII), plus optionally one FUV group below 13.6 eV; you have %d "
-        "groups, %d of them FUV",
-        RT_NGROUPS, n_fuv);
+        "HeII), plus optionally one FUV group below 13.6 eV and one AGN hard "
+        "group (the last edge repeated); you have %d groups, %d of them FUV "
+        "and %d AGN hard",
+        RT_NGROUPS, n_fuv, n_hard);
   if (g == rtp->fuv_group) return "FUV";
+  if (g == rtp->agn_hard_group) return "AGN_hard";
   return ionizing_names[g - n_fuv];
 }
 
@@ -303,6 +343,11 @@ __attribute__((always_inline)) INLINE static void rt_props_read_bpass_tables(
 
   rtp->ionizing_tables = malloc(RT_NGROUPS * sizeof(double **));
   for (int g = 0; g < RT_NGROUPS; g++) {
+    /* Stars do not emit into the AGN hard group */
+    if (g == rtp->agn_hard_group) {
+      rtp->ionizing_tables[g] = NULL;
+      continue;
+    }
     char dataset_name[64];
     sprintf(dataset_name, "/Table_%s/block0_values",
             rt_props_bpass_table_name(rtp, g));
@@ -340,6 +385,13 @@ __attribute__((always_inline)) INLINE static void rt_props_print(
         "Photon group %d is the non-ionizing FUV group, dust opacity %g, G0 "
         "above density %g (internal units)",
         rtp->fuv_group, rtp->dust_opacity_FUV, rtp->G0_min_density);
+  if (rtp->agn_hard_group >= 0)
+    message(
+        "Photon group %d is the AGN hard group (AGN only): mean photon energy "
+        "%.4g eV, cross sections HI %.3e HeI %.3e HeII %.3e cm^2 (energy "
+        "weighted)",
+        rtp->agn_hard_group, rtp->agn_hard_photon_energy / 1.602176634e-12,
+        rtp->agn_hard_cse[0], rtp->agn_hard_cse[1], rtp->agn_hard_cse[2]);
   message(
       "RT transport length floored at the softening: %s; local Courant "
       "reduction of the speed of light: %s",
@@ -419,8 +471,13 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
                                  rtp->photon_groups);
   }
 
-  /* Sanity check: photon group edges must be in increasing order. */
+  /* Is there an AGN hard group (the last edge repeated)? */
+  rtp->agn_hard_group = rt_props_find_agn_hard_group(rtp);
+
+  /* Sanity check: photon group edges must be in increasing order (except
+   * for the AGN hard group). */
   for (int g = 0; g < RT_NGROUPS - 1; g++) {
+    if (g + 1 == rtp->agn_hard_group) continue;
     if (rtp->photon_groups[g + 1] <= rtp->photon_groups[g])
       error(
           "Photon frequency bin edges need to be in increasing order. "
@@ -717,6 +774,22 @@ __attribute__((always_inline)) INLINE static void rt_props_init(
   } else {
     error("Selected unknown stellar spectrum type %d",
           rtp->stellar_spectrum_type);
+  }
+
+  /* AGN hard group */
+  /* -------------- */
+  for (int i = 0; i < 3; i++) rtp->agn_hard_cse[i] = rtp->agn_hard_csn[i] = 0.;
+  rtp->agn_hard_photon_energy = 0.;
+  if (rtp->agn_hard_group >= 0) {
+    if (rtp->stellar_spectrum_type != 2)
+      error("The AGN hard photon group needs the BPASS stellar spectrum");
+    if (rtp->agn_hard_group - 1 == rtp->fuv_group)
+      error("The AGN hard photon group must follow the HeII group");
+    if (!parser_get_opt_param_int(params, "BlackHoles:rt_agn_emission", 0))
+      error(
+          "KIARART:photon_groups_Hz has an AGN hard group (last edge "
+          "repeated), but BlackHoles:rt_agn_emission is off");
+    rt_props_read_agn_hard_group(rtp, params);
   }
 
   /* Maximal Star Timestep? */
