@@ -194,12 +194,17 @@ __attribute__((always_inline)) INLINE static void rt_face_state_fluxes_scalar(
     /* |F| > c E: limit the flux to c E, before normalising (c E may be tiny
      * at a face while F is not, see rt_face_state_flux()) */
     const float F2 = Fx * Fx + Fy * Fy + Fz * Fz;
-    const float corr1 = (F2 > E * E) ? E / sqrtf(fmaxf(F2, FLT_MIN)) : 1.f;
+    const int lim = (F2 > E * E);
+    const float F_inv = 1.f / sqrtf(fmaxf(F2, FLT_MIN));
+    const float corr1 = lim ? E * F_inv : 1.f;
 
-    const float E_inv = 1.f / fmaxf(E, FLT_MIN);
-    float fx = Fx * corr1 * E_inv;
-    float fy = Fy * corr1 * E_inv;
-    float fz = Fz * corr1 * E_inv;
+    /* f = F / |F| when limited, F / E otherwise: |f| <= 1 either way. Not
+     * F * corr1 / E, which -ffast-math may evaluate as (F / E) * corr1:
+     * F / E overflows for tiny E and corr1 flushes to zero, giving NaN. */
+    const float s1 = lim ? F_inv : 1.f / fmaxf(E, FLT_MIN);
+    float fx = Fx * s1;
+    float fy = Fy * s1;
+    float fz = Fz * s1;
     const float f2_raw = fx * fx + fy * fy + fz * fz;
     /* Round-off (or F2 and E^2 below the float range): normalise */
     const float corr2 = (f2_raw > 1.f) ? 1.f / sqrtf(f2_raw) : 1.f;
