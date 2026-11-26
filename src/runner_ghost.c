@@ -1715,6 +1715,11 @@ void runner_do_rt_ghost1(struct runner *r, struct cell *c, int timer) {
           rt_part_dt(ti_begin, ti_end, e->time_base, with_cosmology, cosmo);
 
       rt_reset_part_each_subcycle(p, cosmo, dt);
+#ifdef RT_KIARA
+      /* The start of the step flux_dt is for (see
+       * rt_part_active_in_exchange()) */
+      p->rt_data.flux_ti_begin = ti_begin;
+#endif
 
       /* Now finish up injection */
       rt_finalise_injection(p, e->rt_props);

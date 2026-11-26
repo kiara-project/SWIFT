@@ -256,6 +256,7 @@ __attribute__((always_inline)) INLINE static void rt_first_init_part(
   p->rt_data.area_sum = 0.f;
   p->rt_data.area_sum_last = 0.f;
   p->rt_data.area_scale = 1.f;
+  p->rt_data.flux_ti_begin = -1;
   p->rt_data.c_scale = 1.f;
   for (int g = 0; g < RT_NGROUPS; g++) {
     p->rt_data.emission_pending[g] = 0.f;
