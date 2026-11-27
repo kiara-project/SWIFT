@@ -1063,6 +1063,38 @@ runner_iact_nonsym_bh_gas_feedback(
   const float dv[3] = {bi->v[0] - pj->v[0], bi->v[1] - pj->v[1],
                        bi->v[2] - pj->v[2]};
 
+#ifdef RT_KIARA
+  /* KIARA-RT: hand the radiation the black hole took over from gas (seeding,
+   * swallowing, mergers; see black_holes_rt_take_radiation()) to all its gas
+   * neighbours (winds too: the RT shed passes it on), with the mass-weighted
+   * kernel shares of the density loop, which add up to 1. As the stellar
+   * emission, each neighbour adds it to its radiation over the black hole's
+   * time step (rt_inject_pending_emission()). The dependency
+   * black_holes_out -> rt_in orders this before the RT step. */
+  if (bi->kernel_wt_sum > 0.f) {
+    float E_out = 0.f;
+    for (int g = 0; g < RT_NGROUPS; g++) E_out += bi->rt_carry_out[g];
+    if (E_out > 0.f) {
+      const integertime_t ti_step_rt = get_integer_timestep(bi->time_bin);
+      const integertime_t ti_begin_rt =
+          get_integer_time_begin(ti_current - 1, bi->time_bin);
+      const double dt_rt = cosmology_get_delta_time(cosmo, ti_begin_rt,
+                                                    ti_begin_rt + ti_step_rt);
+      float w_rt;
+      kernel_eval(sqrtf(r2) / hi, &w_rt);
+      const float share = hydro_get_mass(pj) * w_rt / bi->kernel_wt_sum;
+      for (int g = 0; g < RT_NGROUPS; g++) {
+        const float E_share = bi->rt_carry_out[g] * share;
+        if (E_share <= 0.f) continue;
+        pj->rt_data.emission_pending[g] += E_share;
+        /* No time step: add it all in the next RT step */
+        pj->rt_data.emission_rate[g] +=
+            (dt_rt > 0.) ? E_share / dt_rt : FLT_MAX;
+      }
+    }
+  }
+#endif
+
   if (black_hole_gas_is_eligible(bi, pj, dv, dx) == 0) return;
 
   /* Need time-step for decoupling and ADAF heating */

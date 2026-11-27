@@ -491,9 +491,11 @@ INLINE void rt_do_thermochemistry(
   const float u_old = internal_energy;
 #endif
 
-  /* The interaction rates are computed with zero species densities, as
-   * before (the species array was filled only afterwards) */
-  gr_float species_zero[6] = {0., 0., 0., 0., 0., 0.};
+  /* Species densities for the interaction rates: the photoheating rate is
+   * a sum over the absorbing species (with zero densities, as this path used
+   * to pass, there is no photoheating) */
+  gr_float rt_species[6];
+  rt_tchem_get_species_densities(p, density, rt_species);
 
   /* load particle information from particle to grackle data */
   float radiation_energy_density[RT_NGROUPS];
@@ -505,7 +507,7 @@ INLINE void rt_do_thermochemistry(
 
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
-      iact_rates, radiation_energy_density, species_zero,
+      iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
       rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
@@ -597,6 +599,9 @@ INLINE void rt_do_thermochemistry(
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
 #endif
+    p->rt_data.ion_photons_absorbed +=
+        f * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+        p->geometry.volume * rt_props->ion_photons_per_energy[g];
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);
@@ -634,9 +639,11 @@ float rt_tchem_get_tchem_time(
   /* Note: Can't pass rt_props as const struct because of grackle
    * accessinging its properties there */
 
-  /* The interaction rates are computed with zero species densities, as
-   * before (the species array was filled only afterwards) */
-  gr_float species_zero[6] = {0., 0., 0., 0., 0., 0.};
+  /* Species densities for the interaction rates (see
+   * rt_do_thermochemistry()) */
+  gr_float rt_species[6];
+  rt_tchem_get_species_densities(p, hydro_get_physical_density(p, cosmo),
+                                 rt_species);
 
   float radiation_energy_density[RT_NGROUPS];
   rt_part_get_physical_radiation_energy_density(p, radiation_energy_density,
@@ -644,7 +651,7 @@ float rt_tchem_get_tchem_time(
 
   gr_float iact_rates[5];
   rt_get_interaction_rates_for_grackle(
-      iact_rates, radiation_energy_density, species_zero,
+      iact_rates, radiation_energy_density, rt_species,
       rt_props->average_photon_energy, rt_props->energy_weighted_cross_sections,
       rt_props->number_weighted_cross_sections, rt_part_get_effective_speed_of_light(p), phys_const, us);
 
@@ -656,6 +663,21 @@ float rt_tchem_get_tchem_time(
 
   return (float)tchem_time;
 }
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+/**
+ * @brief DEBUG: number of ions (HII + HeII + 2 HeIII) of the particle, in
+ * units of 1e50, from its RT mass fractions.
+ */
+static double rt_tchem_debug_ions_1e50(const struct part *restrict p,
+                                       const struct phys_const *phys_const) {
+  const double N = hydro_get_mass(p) / phys_const->const_proton_mass;
+  return 1e-50 * N *
+         (p->rt_data.tchem.mass_fraction_HII +
+          0.25 * p->rt_data.tchem.mass_fraction_HeII +
+          0.5 * p->rt_data.tchem.mass_fraction_HeIII);
+}
+#endif
 
 /**
  * @brief Main function for the thermochemistry step when coupling with
@@ -764,6 +786,21 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   }
 
 #ifdef SWIFT_KIARA_RT_DEBUG
+  /* DEBUG: ionizing budget. The photoionizations asked of Grackle are its
+   * ionization rates (per atom) times the start-of-step HI, HeI and HeII
+   * atoms times dt; Grackle zeroes the rates in the subgrid ISM. */
+  const double debug_ions_before = rt_tchem_debug_ions_1e50(p, phys_const);
+  if (p->cooling_data.subgrid_temp == 0.f) {
+    const double N = 1e-50 * hydro_get_mass(p) / phys_const->const_proton_mass;
+    p->rt_data.debug_ion[2] +=
+        (iact_rates[1] * p->rt_data.tchem.mass_fraction_HI +
+         iact_rates[2] * 0.25 * p->rt_data.tchem.mass_fraction_HeI +
+         iact_rates[3] * 0.25 * p->rt_data.tchem.mass_fraction_HeII) *
+        N * dt;
+  }
+#endif
+
+#ifdef SWIFT_KIARA_RT_DEBUG
   /* DEBUG: Grackle applies the RT heating rate per HI atom to its own,
    * evolving HI density, so the heat it delivers need not match the heating
    * rate times the start-of-step HI. Measure the delivered heat with a
@@ -841,6 +878,11 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   p->rt_data.tchem.mass_fraction_HeI = xp->cooling_data.HeI_frac;
   p->rt_data.tchem.mass_fraction_HeII = xp->cooling_data.HeII_frac;
   p->rt_data.tchem.mass_fraction_HeIII = xp->cooling_data.HeIII_frac;
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  p->rt_data.debug_ion[3] +=
+      rt_tchem_debug_ions_1e50(p, phys_const) - debug_ions_before;
+#endif
 
   /* Update radiation fields */
 
@@ -922,7 +964,16 @@ INLINE void rt_do_thermochemistry_with_subgrid(
 #ifdef SWIFT_KIARA_RT_DEBUG
       p->rt_data.debug_dE[1] -=
           p->rt_data.radiation[g].energy_density * f_g * p->geometry.volume;
+      if (g != rt_props->fuv_group && rt_props->average_photon_energy[g] > 0.)
+        p->rt_data.debug_ion[1] +=
+            1e-50 * f_g * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+            p->geometry.volume *
+            units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) /
+            rt_props->average_photon_energy[g];
 #endif
+      p->rt_data.ion_photons_absorbed +=
+          f_g * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+          p->geometry.volume * rt_props->ion_photons_per_energy[g];
       p->rt_data.radiation[g].energy_density *= (1. - f_g);
       for (int i = 0; i < 3; i++) {
         p->rt_data.radiation[g].flux[i] *= (1. - f_g);
@@ -978,13 +1029,26 @@ INLINE void rt_do_thermochemistry_with_subgrid(
   for (int g = 0; g < RT_NGROUPS; g++) {
     const float E_old = p->rt_data.radiation[g].energy_density;
     double f = dt * 0.5 * (absorption_rates[g] + absorption_rates_new[g]);
+#ifdef SWIFT_KIARA_RT_DEBUG
+    if (g != rt_props->fuv_group)
+      p->rt_data.debug_tau_max = fmaxf(p->rt_data.debug_tau_max, (float)f);
+#endif
     f = min(1., f);
     f = max(0., f);
     if (g == rt_props->fuv_group) f = 1. - (1. - f) * exp(-tau_dust);
 #ifdef SWIFT_KIARA_RT_DEBUG
     p->rt_data.debug_dE[1] -=
         p->rt_data.radiation[g].energy_density * f * p->geometry.volume;
+    if (g != rt_props->fuv_group && rt_props->average_photon_energy[g] > 0.)
+      p->rt_data.debug_ion[0] +=
+          1e-50 * f * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+          p->geometry.volume *
+          units_cgs_conversion_factor(us, UNIT_CONV_ENERGY) /
+          rt_props->average_photon_energy[g];
 #endif
+    p->rt_data.ion_photons_absorbed +=
+        f * fmax(p->rt_data.radiation[g].energy_density, 0.f) *
+        p->geometry.volume * rt_props->ion_photons_per_energy[g];
     p->rt_data.radiation[g].energy_density *= (1. - f);
     for (int i = 0; i < 3; i++) {
       p->rt_data.radiation[g].flux[i] *= (1. - f);

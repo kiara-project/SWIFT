@@ -767,6 +767,18 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
     struct bpart *bp, const struct black_holes_props *props) {
 
   bp->time_bin = 0;
+#ifdef RT_KIARA
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    bp->rt_carry[g] = 0.f;
+    bp->rt_carry_out[g] = 0.f;
+  }
+  bp->rt_ion_photons_injected = 0.;
+  bp->rt_ion_photons_absorbed = 0.;
+  bp->rt_agn_energy_emitted = 0.;
+#ifdef SWIFT_KIARA_RT_DEBUG
+  for (int i = 0; i < 6; i++) bp->rt_debug_dE[i] = 0.f;
+#endif
+#endif
   if (props->use_subgrid_mass_from_ics == 0) {
     bp->subgrid_mass = bp->mass;
   } else if (props->with_subgrid_mass_check && bp->subgrid_mass <= 0) {
@@ -1366,6 +1378,19 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
 
   /* We had another merger */
   bpi->number_of_mergers++;
+
+#ifdef RT_KIARA
+  /* The radiation the swallowed black hole had still to hand to the gas
+   * (its rt_carry_out of this step, if it is active, is added in
+   * runner_do_black_holes_swallow(): its feedback loop does not run) */
+  for (int g = 0; g < RT_NGROUPS; g++) bpi->rt_carry[g] += bpj->rt_carry[g];
+  bpi->rt_ion_photons_injected += bpj->rt_ion_photons_injected;
+  bpi->rt_ion_photons_absorbed += bpj->rt_ion_photons_absorbed;
+  bpi->rt_agn_energy_emitted += bpj->rt_agn_energy_emitted;
+#ifdef SWIFT_KIARA_RT_DEBUG
+  for (int i = 0; i < 6; i++) bpi->rt_debug_dE[i] += bpj->rt_debug_dE[i];
+#endif
+#endif
   // #ifdef OBSIDIAN_DEBUG_CHECKS
   const float galaxy_mstar_i = bpi->galaxy_data.stellar_mass;
   const float galaxy_sfr_i =
@@ -2232,6 +2257,47 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->v_kick / props->kms_to_internal, bp->spin,
       get_black_hole_jet_efficiency(bp, props), bp->bondi_fraction);
 #endif
+
+#ifdef RT_KIARA
+  /* AGN photons of this step: the bolometric radiative luminosity split
+   * into the RT photon groups with the spectral table, handed to the gas in
+   * this step's feedback loop (with the radiation the black hole took over
+   * from gas, see black_holes_reset_feedback()). The ADAF state emits no RT
+   * photons. */
+  if (props->rt_agn_emission &&
+      (bp->state != BH_states_adaf || props->rt_agn_luminosity_floor > 0.)) {
+    /* The RT luminosity is capped at rt_agn_max_eddington_ratio times the
+     * Eddington luminosity (L_Edd = 0.1 Mdot_Edd c^2): at strongly
+     * super-Eddington accretion the radiative output saturates (photon
+     * trapping in a slim disc). This applies to the RT photons only, not to
+     * Obsidian's feedback. */
+    const double L_Edd = 0.1 * Eddington_rate * c * c;
+    const double L_bol =
+        fmax(fmin(bp->radiative_luminosity,
+                  props->rt_agn_max_eddington_ratio * L_Edd),
+             props->rt_agn_luminosity_floor);
+    if (L_bol > 0. && dt > 0. && L_Edd > 0.) {
+      /* Eddington ratio of the (capped) RT luminosity, for the shape of the
+       * spectrum */
+      const float lambda = L_bol / L_Edd;
+      float frac[RT_NGROUPS];
+      black_holes_rt_agn_band_fractions(
+          props, log10f(max(bp->subgrid_mass * props->mass_to_solar_mass,
+                            FLT_MIN)),
+          log10f(max(lambda, FLT_MIN)), bp->spin, frac);
+      const float f_esc = black_holes_rt_agn_escape_fraction(props, lambda);
+      const int has_gas = (bp->kernel_wt_sum > 0.f);
+      for (int g = 0; g < RT_NGROUPS; g++) {
+        const float E = f_esc * frac[g] * L_bol * dt;
+        if (has_gas)
+          bp->rt_carry_out[g] += E;
+        else
+          bp->rt_carry[g] += E;
+        bp->rt_agn_energy_emitted += E;
+      }
+    }
+  }
+#endif
 }
 
 /**
@@ -2502,6 +2568,17 @@ __attribute__((always_inline)) INLINE static void black_holes_end_reposition(
 __attribute__((always_inline)) INLINE static void black_holes_reset_feedback(
     struct bpart *restrict bp) {
 
+#ifdef RT_KIARA
+  /* The radiation to hand to the gas in this step's feedback loop: all of
+   * it if the black hole has gas neighbours (their kernel shares add up to
+   * 1, see runner_iact_nonsym_bh_gas_feedback()), otherwise it waits */
+  const int has_gas = (bp->kernel_wt_sum > 0.f);
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    bp->rt_carry_out[g] = has_gas ? bp->rt_carry[g] : 0.f;
+    if (has_gas) bp->rt_carry[g] = 0.f;
+  }
+#endif
+
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
   for (int i = 0; i < MAX_NUM_OF_NEIGHBOURS_STARS; ++i)
     bp->ids_ngbs_force[i] = -1;
@@ -2538,6 +2615,55 @@ black_holes_store_potential_in_part(struct black_holes_part_data *p_data,
                                     const struct gpart *gp) {
   p_data->potential = gp->potential;
 }
+
+#ifdef RT_KIARA
+/**
+ * @brief KIARA-RT: take over the radiation of a gas particle that becomes
+ * this black hole (seeding) or is swallowed by it, to hand it to the
+ * neighbouring gas in the next feedback loop. As for a gas particle that
+ * turns into a star (rt_convert_part_to_spart()): this includes the energy
+ * the particle has received but not yet applied, and its stellar emission
+ * not yet added to its radiation.
+ *
+ * @param bp The black hole.
+ * @param p The gas particle.
+ * @param ion_photons_per_energy Ionizing photons (1e50) per unit energy of
+ * each group (rt_props.ion_photons_per_energy).
+ */
+__attribute__((always_inline)) INLINE static void
+black_holes_rt_take_radiation(struct bpart *restrict bp,
+                              const struct part *restrict p,
+                              const double ion_photons_per_energy[RT_NGROUPS]) {
+
+  bp->rt_ion_photons_injected += p->rt_data.ion_photons_injected;
+  bp->rt_ion_photons_absorbed += p->rt_data.ion_photons_absorbed;
+#ifdef SWIFT_KIARA_RT_DEBUG
+  for (int i = 0; i < 6; i++) bp->rt_debug_dE[i] += p->rt_data.debug_dE[i];
+#endif
+
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    /* As applied in rt_finalise_transport() */
+    const float E_pending = p->rt_data.flux[g].energy;
+    const float E =
+        p->rt_data.radiation[g].energy_density * p->geometry.volume +
+        E_pending;
+#ifdef SWIFT_KIARA_RT_DEBUG
+    bp->rt_debug_dE[2] += E_pending;
+#endif
+    if (E > 0.f) {
+      bp->rt_carry[g] += E;
+      /* Injected again into the gas, and counted there */
+      bp->rt_ion_photons_injected -= E * ion_photons_per_energy[g];
+#ifdef SWIFT_KIARA_RT_DEBUG
+      bp->rt_debug_dE[0] -= E;
+#endif
+    }
+    /* Stellar emission not yet added to the radiation: not yet injected */
+    if (p->rt_data.emission_pending[g] > 0.f)
+      bp->rt_carry[g] += p->rt_data.emission_pending[g];
+  }
+}
+#endif
 
 /**
  * @brief Initialise a BH particle that has just been seeded.

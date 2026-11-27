@@ -241,16 +241,41 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_inject(
  * @param p_exp The (possibly) shedding particle.
  * @param p_rec The (possibly) receiving neighbour.
  * @param a Current scale factor.
+ * @param ti_ref Start of the RT step of the active particle of the pair.
  * @param update_exp Update the shedding particle in this call?
  * @param update_rec Update the receiving particle in this call?
  */
+/**
+ * @brief Is particle p active in the current RT step of the active particle
+ * p_ref? Its flux_dt is positive in its own RT step, and its step starts at
+ * the same time as that of p_ref (all active particles start their step at
+ * the current sub-cycle time). The second condition matters with MPI: the
+ * copy of a particle on another rank is only updated when its cell is sent,
+ * so after its step ended it keeps a positive flux_dt (its own rank sets it
+ * to -1 in rt_finalise_transport()). Both ranks must agree on which
+ * particles are active for the pairwise exchanges to be conservative.
+ *
+ * @param p The particle.
+ * @param p_ref An active particle of the pair.
+ */
+__attribute__((always_inline)) INLINE static int rt_part_active_in_exchange(
+    const struct part *restrict p, const struct part *restrict p_ref) {
+  return p->rt_data.flux_dt > 0.f &&
+         p->rt_data.flux_ti_begin == p_ref->rt_data.flux_ti_begin;
+}
+
 __attribute__((always_inline)) INLINE static void rt_shed_radiation_exchange(
     const float r2, const float h_exp, struct part *restrict p_exp,
-    struct part *restrict p_rec, const float a, const int update_exp,
-    const int update_rec) {
+    struct part *restrict p_rec, const long long ti_ref, const float a,
+    const int update_exp, const int update_rec) {
 
-  /* Only over the shedding particle's own RT step */
-  if (p_exp->rt_data.flux_dt <= 0.f || p_exp->rt_data.shed_wsum <= 0.f) return;
+  /* Only over the shedding particle's own RT step (ti_ref is the start of
+   * the step of the active particle of the pair, see
+   * rt_part_active_in_exchange()) */
+  if (p_exp->rt_data.flux_dt <= 0.f ||
+      p_exp->rt_data.flux_ti_begin != ti_ref ||
+      p_exp->rt_data.shed_wsum <= 0.f)
+    return;
   if (rt_part_is_ineligible(p_rec) || !rt_part_sheds_radiation(p_exp)) return;
   if (r2 >= kernel_gamma2 * h_exp * h_exp) return;
 
@@ -323,9 +348,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
 
   /* Hand-over of the radiation of particles ineligible for transport, with
    * the same rule for which particles are updated as for the fluxes */
-  const int update_j = (mode == 1 || pj->rt_data.flux_dt < 0.f);
-  rt_shed_radiation_exchange(r2, hi, pi, pj, a, /*update_exp=*/1, update_j);
-  rt_shed_radiation_exchange(r2, hj, pj, pi, a, update_j, /*update_rec=*/1);
+  const int pj_active = rt_part_active_in_exchange(pj, pi);
+  const int update_j = (mode == 1 || !pj_active);
+  const long long ti_ref = pi->rt_data.flux_ti_begin;
+  rt_shed_radiation_exchange(r2, hi, pi, pj, ti_ref, a, /*update_exp=*/1,
+                             update_j);
+  rt_shed_radiation_exchange(r2, hj, pj, pi, ti_ref, a, update_j,
+                             /*update_rec=*/1);
 
   /* Check if particles are eligible for this interaction */
   if (rt_check_ineligible(pi, pj, r2)) return;
@@ -378,7 +407,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   /* Get the time step for the flux exchange. This is always the smallest time
    * step among the two particles. */
   const float mindt =
-      (rtj->flux_dt > 0.f) ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
+      pj_active ? fminf(rti->flux_dt, rtj->flux_dt) : rti->flux_dt;
 
   /* Accumulate the interface areas of the particles' own transport steps,
    * for the time-step criterion and the positivity limiter. Each interface
@@ -388,7 +417,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
    * steps. It gets the area from its own step's interactions. */
   if (mindt > 0.f) {
     rti->area_sum += Anorm;
-    if (mode == 1 && rtj->flux_dt > 0.f) rtj->area_sum += Anorm;
+    if (mode == 1 && pj_active) rtj->area_sum += Anorm;
   }
 
   /* The interface area used for the exchange, scaled so that neither
@@ -402,74 +431,89 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
   const float ci = rt_part_get_reduced_speed_of_light(pi);
   const float cj = rt_part_get_reduced_speed_of_light(pj);
 
+  /* Face states of both particles in all groups (transport states
+   * W = (c E, F)), [component][group (pi) | RT_NGROUPS + group (pj)] */
+  float W[4][RT_NFACE];
   for (int g = 0; g < RT_NGROUPS; g++) {
-
-    /* transport state W = (c E, F) to be used to compute the flux */
     float Ui[4], Uj[4];
     rt_gradients_predict(pi, pj, Ui, Uj, g, dx, r, xij_i);
+    for (int k = 0; k < 4; k++) {
+      W[k][g] = Ui[k];
+      W[k][RT_NGROUPS + g] = Uj[k];
+    }
+  }
 
-    /* For first order method, skip the gradients */
-    /* float Ui[4], Uj[4]; */
-    /* rt_part_get_radiation_state_vector(pi, g, Ui); */
-    /* rt_part_get_radiation_state_vector(pj, g, Uj); */
-    /* No need to check for unphysical quantities, they
-     * haven't been touched since
-     * rt_injection_update_photon_densities */
+  /* Corrected states and their fluxes through the face, all at once */
+  float Fn[4][RT_NFACE];
+  rt_face_state_fluxes(W, n_unit, Fn);
 
+  /* Positivity: a particle may export at most the fraction |A_ij| / sum|A|
+   * (interface areas of its last transport step) of the radiation energy
+   * it holds through this interface, so that over all its interfaces it
+   * never exports more than it has. The exchanged energy is
+   * totflux * mindt / a (see rt_finalise_transport), and the same flux is
+   * applied to both particles, so the exchange stays conservative.
+   * The energy a particle holds is only updated at the end of its own RT
+   * step (rt_finalise_transport), but a neighbour with a smaller step
+   * exchanges with it every one of its own steps in between: limit the
+   * export per exchange to the fraction mindt / dt_exp of the exporter's
+   * step dt_exp, so it never exports more than it holds over its whole
+   * step. mindt is the step of the particle with the smaller time bin.
+   * The interface areas are those of the last transport step or of this
+   * step's gradient loop, whichever sum is larger, so the limits over all
+   * interfaces add up to at most the energy held even if the neighbourhood
+   * changed since the last step.
+   * The gradient loop only sees the neighbours within the particle's own
+   * kernel, while the transport also exchanges with those whose kernel
+   * contains it, so its area alone can be far too small. A particle without
+   * a transport step with any interface yet (e.g. a wind particle that just
+   * recoupled) therefore exports nothing until it has one: its full area
+   * is known after one RT step.
+   * Everything used here is identical on both sides of an MPI boundary. */
+  /* The export limit of each side, per unit of its radiation energy density
+   * (the same for all groups) */
+  float cap_i = 0.f, cap_j = 0.f;
+  if (mindt > 0.f) {
+    const int bin_i = pi->rt_time_data.time_bin;
+    const int bin_j = pj->rt_time_data.time_bin;
+    const int bin_min = min(bin_i, bin_j);
+    const float dt_frac_i =
+        (bin_min > 0 && bin_i > bin_min) ? ldexpf(1.f, bin_min - bin_i) : 1.f;
+    const float dt_frac_j =
+        (bin_min > 0 && bin_j > bin_min) ? ldexpf(1.f, bin_min - bin_j) : 1.f;
+    const float area_i =
+        fmaxf(rti->area_sum_last, rti->area_sum_grad);
+    const float area_j =
+        fmaxf(rtj->area_sum_last, rtj->area_sum_grad);
+    cap_i = (rti->area_sum_last <= 0.f)
+                ? 0.f
+                : ((area_i > Anorm) ? Anorm / area_i : 1.f) *
+                      pi->geometry.volume * dt_frac_i;
+    cap_j = (rtj->area_sum_last <= 0.f)
+                ? 0.f
+                : ((area_j > Anorm) ? Anorm / area_j : 1.f) *
+                      pj->geometry.volume * dt_frac_j;
+  }
+
+  const float hA = 0.5f * Anorm_flux;
+  for (int g = 0; g < RT_NGROUPS; g++) {
+
+    /* GLF flux (maximal signal speed 1, see rt_riemann_solve_for_flux()).
+     * pi is the left state, pj the right one: a positive total flux is
+     * subtracted from pi and added to pj. Unlike in SPH schemes, we do need
+     * to update inactive neighbours, so that the fluxes are always exchanged
+     * symmetrically; they are detected through their negative flux_dt. */
+    const int gj = RT_NGROUPS + g;
     float totflux[4];
+    for (int k = 0; k < 4; k++)
+      totflux[k] = hA * (Fn[k][g] + Fn[k][gj] - (W[k][gj] - W[k][g]));
 
-    rt_compute_flux(Ui, Uj, n_unit, Anorm_flux, totflux);
-
-    /* When solving the Riemann problem, we assume pi is left state, and
-     * pj is right state. The sign convention is that a positive total
-     * flux is subtracted from the left state, and added to the right
-     * state, based on how we chose the unit vector. By this convention,
-     * the time integration results in conserved quantity += flux * dt */
-    /* Unlike in SPH schemes, we do need to update inactive neighbours, so that
-     * the fluxes are always exchanged symmetrically. Thanks to our sneaky use
-     * of flux_dt, we can detect inactive neighbours through their negative time
-     * step. */
-    /* Make sure mindt larger than 0 to avoid mindt=-1 case. */
-
-    /* Positivity: a particle may export at most the fraction |A_ij| / sum|A|
-     * (interface areas of its last transport step) of the radiation energy
-     * it holds through this interface, so that over all its interfaces it
-     * never exports more than it has. The exchanged energy is
-     * totflux * mindt / a (see rt_finalise_transport), and the same flux is
-     * applied to both particles, so the exchange stays conservative.
-     * The energy a particle holds is only updated at the end of its own RT
-     * step (rt_finalise_transport), but a neighbour with a smaller step
-     * exchanges with it every one of its own steps in between: limit the
-     * export per exchange to the fraction mindt / dt_exp of the exporter's
-     * step dt_exp, so it never exports more than it holds over its whole
-     * step. mindt is the step of the particle with the smaller time bin.
-     * The interface areas are those of the last transport step or of this
-     * step's gradient loop, whichever sum is larger, so the limits over all
-     * interfaces add up to at most the energy held even if the neighbourhood
-     * changed since the last step.
-     * The gradient loop only sees the neighbours within the particle's own
-     * kernel, while the transport also exchanges with those whose kernel
-     * contains it, so its area alone can be far too small. A particle without
-     * a transport step with any interface yet (e.g. a wind particle that just
-     * recoupled) therefore exports nothing until it has one: its full area
-     * is known after one RT step.
-     * Everything used here is identical on both sides of an MPI boundary. */
+    /* Positivity (see above) */
     if (mindt > 0.f && totflux[0] != 0.f) {
-      const struct part *restrict p_exp = (totflux[0] > 0.f) ? pi : pj;
-      const float area_sum = fmaxf(p_exp->rt_data.area_sum_last,
-                                   p_exp->rt_data.area_sum_grad);
-      const int no_area = (p_exp->rt_data.area_sum_last <= 0.f);
-      const int bin_exp = p_exp->rt_time_data.time_bin;
-      const int bin_min =
-          min(pi->rt_time_data.time_bin, pj->rt_time_data.time_bin);
-      const float dt_frac =
-          (bin_min > 0 && bin_exp > bin_min) ? ldexpf(1.f, bin_min - bin_exp)
-                                             : 1.f;
-      const float E_avail = p_exp->rt_data.radiation[g].energy_density *
-                            p_exp->geometry.volume * dt_frac;
       const float E_max =
-          no_area ? 0.f
-                  : ((area_sum > Anorm) ? E_avail * Anorm / area_sum : E_avail);
+          (totflux[0] > 0.f)
+              ? rti->radiation[g].energy_density * cap_i
+              : rtj->radiation[g].energy_density * cap_j;
       const float E_exch = fabsf(totflux[0]) * mindt / a;
       if (E_exch > E_max) {
         const float ratio = E_max / E_exch;
@@ -488,30 +532,25 @@ __attribute__((always_inline)) INLINE static void runner_iact_rt_flux_common(
        * neighbour only applies it at the end of its own, longer, step). */
       const float dt_a = mindt / a;
 #ifdef SWIFT_KIARA_RT_DEBUG
-      if (!(mode == 1 || (rtj->flux_dt < 0.f)))
+      if (!update_j)
         rti->debug_dE_onesided -= totflux[0] * dt_a;
       atomic_add_f(&rti->debug_dE_acc, -totflux[0] * dt_a);
-      if (mode == 1 || (rtj->flux_dt < 0.f))
+      if (update_j)
         atomic_add_f(&rtj->debug_dE_acc, totflux[0] * dt_a);
 #endif
       rti->flux[g].energy -= totflux[0] * dt_a;
       rti->flux[g].flux[0] -= ci * totflux[1] * dt_a;
       rti->flux[g].flux[1] -= ci * totflux[2] * dt_a;
       rti->flux[g].flux[2] -= ci * totflux[3] * dt_a;
-      if (mode == 1 || (rtj->flux_dt < 0.f)) {
+      if (update_j) {
         rtj->flux[g].energy += totflux[0] * dt_a;
         rtj->flux[g].flux[0] += cj * totflux[1] * dt_a;
         rtj->flux[g].flux[1] += cj * totflux[2] * dt_a;
         rtj->flux[g].flux[2] += cj * totflux[3] * dt_a;
       }
     }
-    // if (g==0 && totflux[0] != 0. && (Ei > 1.e60 || Ej > 1.e60))
-    // message("RT_energy_exch: z=%g pid=%lld pjd=%lld fluxdt=%g mindt=%g
-    // Ftot=%g Ei=%g Eiprev=%g Ej=%g Ejprev=%g hi=%g hj=%g r=%g", 1./a-1.,
-    // pi->id, pj->id, rtj->flux_dt, mindt, totflux[g] * mindt * 1.98841e+53,
-    // rti->flux[g].energy * 1.98841e+53, Ei_prev, rtj->flux[g].energy
-    // * 1.98841e+53, Ej_prev, pi->h, pj->h, sqrtf(r2));
   }
+
 }
 
 /**

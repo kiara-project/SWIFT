@@ -360,12 +360,12 @@ rt_get_emission_this_step_BPASS(double emission_this_step[RT_NGROUPS], float M,
   }
 
   for (int g = 0; g < RT_NGROUPS; g++) {
-    if (star_age_before_Myr > 100.) {
+    if (star_age_before_Myr > 100. || ionizing_tables[g] == NULL) {
       /* If the stellar age before this timestep is above 100Myr, we set the
-       * emission to zero*/
+       * emission to zero. Stars have no table for (do not emit into) the AGN
+       * hard group. */
       emission_this_step[g] = 0.;
     } else {
-      if (!ionizing_tables[g]) error("ionizing_tables[%d] is NULL", g);
       for (int i = 0; i < size_Metals; i++) {
         if (!ionizing_tables[g][i])
           error("ionizing_tables[%d][%d] is NULL", g, i);

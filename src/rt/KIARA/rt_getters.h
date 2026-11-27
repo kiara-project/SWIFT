@@ -161,13 +161,26 @@ rt_part_get_effective_speed_of_light(const struct part *restrict p) {
  *
  * @param p Particle.
  */
-__attribute__((always_inline)) INLINE static float rt_part_get_area_scale(
+__attribute__((always_inline)) INLINE static float rt_part_compute_area_scale(
     const struct part *restrict p) {
   const float V = p->geometry.volume;
   const float A = p->rt_data.area_sum_last;
   if (V <= 0.f || A <= 0.f) return 1.f;
   const float R = cbrtf(3.f * V / (4.f * M_PI));
   return fminf(1.f, rt_params.area_ratio_max * V / (R * A));
+}
+
+/**
+ * @brief The area scale of rt_part_compute_area_scale(), cached in
+ * rt_data.area_scale (its inputs only change in rt_update_volume() and
+ * rt_finalise_transport()): the transport needs it for both particles of
+ * every pair, and cbrtf is expensive.
+ *
+ * @param p Particle.
+ */
+__attribute__((always_inline)) INLINE static float rt_part_get_area_scale(
+    const struct part *restrict p) {
+  return p->rt_data.area_scale;
 }
 
 /**

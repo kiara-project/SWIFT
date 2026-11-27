@@ -29,7 +29,20 @@
 #include "hydro_properties.h"
 
 /* Includes. */
+#include <float.h>
+#include <math.h>
 #include <string.h>
+#if defined(RT_KIARA) && defined(HAVE_HDF5)
+#include <hdf5.h>
+#endif
+
+#ifdef RT_KIARA
+/*! Maximal dimensions of the KIARA-RT AGN spectral table (M_BH, Eddington
+ * ratio, spin), stored in the properties so that restart files keep it */
+#define BH_RT_AGN_MAX_M 32
+#define BH_RT_AGN_MAX_L 32
+#define BH_RT_AGN_MAX_S 16
+#endif
 
 enum BH_states {
   BH_states_adaf = 0, /* < 0.03 Mdot,BH / Mdot,Edd */
@@ -627,6 +640,38 @@ struct black_holes_props {
   /*! KIARAFeedback:recouple_escape_length for BH winds: 0 = launch kernel,
    * 1 = initial firehose stream radius */
   int recouple_escape_length;
+
+#ifdef RT_KIARA
+  /* ----- AGN radiation in KIARA-RT ------ */
+
+  /*! Do black holes emit RT photons? */
+  int rt_agn_emission;
+
+  /*! Fraction of the AGN photons that leave the unresolved nuclear region
+   * (model 0), or a factor applied to the Ricci+17 escape fraction (1) */
+  float rt_agn_escape_fraction;
+
+  /*! Escape fraction model: 0 constant; 1 one minus the covering factor of
+   * the obscuring material as a function of the Eddington ratio (Ricci et
+   * al. 2017, Nature 549, 488) */
+  int rt_agn_escape_fraction_model;
+
+  /*! Cap of the RT luminosity in units of the Eddington luminosity */
+  float rt_agn_max_eddington_ratio;
+
+  /*! Luminosity floor of every black hole (internal units; tests only) */
+  double rt_agn_luminosity_floor;
+
+  /*! The AGN spectral table: axes and shares of the bolometric luminosity
+   * in each RT photon group */
+  char rt_agn_table_path[200];
+  int rt_agn_nM, rt_agn_nL, rt_agn_nS;
+  float rt_agn_logM[BH_RT_AGN_MAX_M];
+  float rt_agn_logL[BH_RT_AGN_MAX_L];
+  float rt_agn_spin[BH_RT_AGN_MAX_S];
+  float rt_agn_frac[BH_RT_AGN_MAX_M][BH_RT_AGN_MAX_L][BH_RT_AGN_MAX_S]
+                   [RT_NGROUPS];
+#endif
 };
 
 /**
@@ -676,6 +721,197 @@ __attribute__((always_inline)) INLINE static float black_hole_MAD_jet_efficiency
 
   return (1.f / (24.f * M_PI * M_PI)) * phi_bh * phi_bh * f_j;
 }
+
+#ifdef RT_KIARA
+/**
+ * @brief Read the KIARA-RT AGN spectral table (made by
+ * tools/make_kiara_rt_agn_table.py): the shares of the bolometric
+ * luminosity in each RT photon group as a function of log10(M_BH/Msun),
+ * log10(L/L_Edd) and spin.
+ *
+ * With an AGN hard photon group (the last edge of KIARART:photon_groups_Hz
+ * repeated, see rt_props.agn_hard_group) the table has one group fewer than
+ * the run, and the share of its last band (above the HeII edge) goes to the
+ * hard group instead of the HeII group.
+ *
+ * @param bp The black hole properties.
+ * @param params The parsed parameters (for the RT photon groups).
+ * @return The index of the AGN hard group, or -1 if there is none.
+ */
+INLINE static int black_holes_rt_agn_read_table(struct black_holes_props *bp,
+                                                struct swift_params *params) {
+#ifdef HAVE_HDF5
+  hid_t file = H5Fopen(bp->rt_agn_table_path, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (file < 0)
+    error("Could not open the AGN RT table %s", bp->rt_agn_table_path);
+
+  /* The table must have been made for the RT photon groups of the run
+   * (without the AGN hard group) */
+  double groups_run[RT_NGROUPS], groups_table[RT_NGROUPS];
+  parser_get_param_double_array(params, "KIARART:photon_groups_Hz",
+                                RT_NGROUPS, groups_run);
+  const int hard_group =
+      (RT_NGROUPS >= 2 &&
+       (float)groups_run[RT_NGROUPS - 1] == (float)groups_run[RT_NGROUPS - 2])
+          ? RT_NGROUPS - 1
+          : -1;
+  const int n_table = (hard_group >= 0) ? RT_NGROUPS - 1 : RT_NGROUPS;
+  hid_t attr = H5Aopen(file, "photon_groups_Hz", H5P_DEFAULT);
+  if (attr < 0) error("No photon_groups_Hz in %s", bp->rt_agn_table_path);
+  hid_t aspace = H5Aget_space(attr);
+  if (H5Sget_simple_extent_npoints(aspace) != n_table)
+    error(
+        "The AGN RT table %s has %d photon groups, the run %d (%s an AGN "
+        "hard group)",
+        bp->rt_agn_table_path, (int)H5Sget_simple_extent_npoints(aspace),
+        RT_NGROUPS, (hard_group >= 0) ? "with" : "without");
+  H5Aread(attr, H5T_NATIVE_DOUBLE, groups_table);
+  H5Sclose(aspace);
+  H5Aclose(attr);
+  for (int g = 0; g < n_table; g++)
+    if (fabs(groups_table[g] / groups_run[g] - 1.) > 1e-3)
+      error("AGN RT table %s: photon group %d starts at %g Hz, the run's at %g",
+            bp->rt_agn_table_path, g, groups_table[g], groups_run[g]);
+
+  /* Axes */
+  const char *axis_names[3] = {"log10_M_BH_Msun", "log10_eddington_ratio",
+                               "spin"};
+  float *axes[3] = {bp->rt_agn_logM, bp->rt_agn_logL, bp->rt_agn_spin};
+  int *ns[3] = {&bp->rt_agn_nM, &bp->rt_agn_nL, &bp->rt_agn_nS};
+  const int nmax[3] = {BH_RT_AGN_MAX_M, BH_RT_AGN_MAX_L, BH_RT_AGN_MAX_S};
+  for (int a = 0; a < 3; a++) {
+    hid_t d = H5Dopen2(file, axis_names[a], H5P_DEFAULT);
+    if (d < 0) error("No %s in %s", axis_names[a], bp->rt_agn_table_path);
+    hid_t sp = H5Dget_space(d);
+    const int n = (int)H5Sget_simple_extent_npoints(sp);
+    if (n < 2 || n > nmax[a])
+      error("AGN RT table axis %s has %d points (2-%d allowed)",
+            axis_names[a], n, nmax[a]);
+    *ns[a] = n;
+    H5Dread(d, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, axes[a]);
+    for (int i = 1; i < n; i++)
+      if (!(axes[a][i] > axes[a][i - 1]))
+        error("AGN RT table axis %s is not increasing", axis_names[a]);
+    H5Sclose(sp);
+    H5Dclose(d);
+  }
+
+  /* Shares [M][L][S][group] */
+  hid_t d = H5Dopen2(file, "luminosity_fraction", H5P_DEFAULT);
+  if (d < 0) error("No luminosity_fraction in %s", bp->rt_agn_table_path);
+  hid_t sp = H5Dget_space(d);
+  hsize_t dims[4];
+  if (H5Sget_simple_extent_ndims(sp) != 4)
+    error("luminosity_fraction in %s is not 4D", bp->rt_agn_table_path);
+  H5Sget_simple_extent_dims(sp, dims, NULL);
+  if ((int)dims[0] != bp->rt_agn_nM || (int)dims[1] != bp->rt_agn_nL ||
+      (int)dims[2] != bp->rt_agn_nS || (int)dims[3] != n_table)
+    error("luminosity_fraction in %s does not match the axes",
+          bp->rt_agn_table_path);
+  const size_t ntot = dims[0] * dims[1] * dims[2] * dims[3];
+  float *buf = (float *)malloc(ntot * sizeof(float));
+  H5Dread(d, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
+  for (int i = 0; i < bp->rt_agn_nM; i++)
+    for (int j = 0; j < bp->rt_agn_nL; j++)
+      for (int k = 0; k < bp->rt_agn_nS; k++) {
+        for (int g = 0; g < n_table; g++) {
+          const float x =
+              buf[(((size_t)i * dims[1] + j) * dims[2] + k) * dims[3] + g];
+          if (!(x >= 0.f && x <= 1.f))
+            error("AGN RT table share out of range: %g", x);
+          bp->rt_agn_frac[i][j][k][g] = x;
+        }
+        /* The hard band goes to the AGN hard group */
+        if (hard_group >= 0) {
+          bp->rt_agn_frac[i][j][k][hard_group] =
+              bp->rt_agn_frac[i][j][k][n_table - 1];
+          bp->rt_agn_frac[i][j][k][n_table - 1] = 0.f;
+        }
+      }
+  free(buf);
+  H5Sclose(sp);
+  H5Dclose(d);
+  H5Fclose(file);
+  return hard_group;
+#else
+  error("The AGN RT table needs HDF5");
+  return -1;
+#endif
+}
+#endif
+
+#ifdef RT_KIARA
+/**
+ * @brief KIARA-RT: the shares of the bolometric AGN luminosity in the RT
+ * photon groups, interpolated (trilinearly, clamped at the edges) in the
+ * spectral table read by black_holes_rt_agn_read_table().
+ *
+ * @param props The black hole properties.
+ * @param logM log10 of the black hole mass in Msun.
+ * @param logL log10 of the Eddington ratio L / L_Edd.
+ * @param spin The dimensionless spin.
+ * @param frac (return) The shares in each photon group.
+ */
+__attribute__((always_inline)) INLINE static void
+black_holes_rt_agn_band_fractions(const struct black_holes_props *props,
+                                  const float logM, const float logL,
+                                  const float spin, float frac[RT_NGROUPS]) {
+  const float x[3] = {logM, logL, spin};
+  const float *axes[3] = {props->rt_agn_logM, props->rt_agn_logL,
+                          props->rt_agn_spin};
+  const int n[3] = {props->rt_agn_nM, props->rt_agn_nL, props->rt_agn_nS};
+  int i0[3];
+  float w[3];
+  for (int a = 0; a < 3; a++) {
+    const float xc = fminf(fmaxf(x[a], axes[a][0]), axes[a][n[a] - 1]);
+    int i = 0;
+    while (i < n[a] - 2 && xc > axes[a][i + 1]) i++;
+    i0[a] = i;
+    w[a] = (xc - axes[a][i]) / (axes[a][i + 1] - axes[a][i]);
+  }
+  for (int g = 0; g < RT_NGROUPS; g++) {
+    float f = 0.f;
+    for (int c = 0; c < 8; c++) {
+      const int di = c & 1, dj = (c >> 1) & 1, dk = (c >> 2) & 1;
+      const float wc = (di ? w[0] : 1.f - w[0]) * (dj ? w[1] : 1.f - w[1]) *
+                       (dk ? w[2] : 1.f - w[2]);
+      f += wc * props->rt_agn_frac[i0[0] + di][i0[1] + dj][i0[2] + dk][g];
+    }
+    frac[g] = f;
+  }
+}
+
+/**
+ * @brief KIARA-RT: the fraction of the AGN's ionizing photons that escape
+ * the unresolved nuclear region.
+ *
+ * Model 1 is one minus the covering factor of the obscuring material
+ * (Compton-thin and Compton-thick, which both block the ionizing photons)
+ * of Ricci et al. 2017 (Nature 549, 488; Swift/BAT AGN): ~85% (64% Compton
+ * thin, 23% Compton thick) below lambda = L/L_Edd = 10^-1.5, and ~40% (19% +
+ * 22%) at 10^-1.5 <= lambda < 1, where radiation pressure on dusty gas
+ * clears the material; the Compton-thin obscured fraction drops over
+ * lambda = 0.02-0.05. A smooth step in log10(lambda) centred at -1.5 with
+ * a width of 0.1 dex: f_esc = 0.15 well below the transition, 0.60 above.
+ * It is multiplied by BlackHoles:rt_agn_escape_fraction (default 1).
+ *
+ * @param props The black hole properties.
+ * @param lambda The Eddington ratio of the RT luminosity.
+ */
+__attribute__((always_inline)) INLINE static float
+black_holes_rt_agn_escape_fraction(const struct black_holes_props *props,
+                                   const float lambda) {
+  if (props->rt_agn_escape_fraction_model == 0)
+    return props->rt_agn_escape_fraction;
+
+  const float f_cov_low = 0.85f;  /* lambda < 10^-1.5 */
+  const float f_cov_high = 0.40f; /* 10^-1.5 <= lambda < 1 */
+  const float x = (log10f(fmaxf(lambda, FLT_MIN)) + 1.5f) / 0.1f;
+  const float step = 1.f / (1.f + expf(fminf(x, 50.f)));
+  const float f_cov = f_cov_high + (f_cov_low - f_cov_high) * step;
+  return props->rt_agn_escape_fraction * (1.f - f_cov);
+}
+#endif /* RT_KIARA */
 
 /**
  * @brief Initialise the black hole properties from the parameter file.
@@ -734,6 +970,63 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   /* Tolerance for the smoothing length Newton-Raphson scheme */
   bp->h_tolerance = parser_get_opt_param_float(params, "BlackHoles:h_tolerance",
                                                hydro_props->h_tolerance);
+
+#ifdef RT_KIARA
+  /* AGN radiation in KIARA-RT: the shares of the bolometric luminosity in
+   * the RT photon groups come from a spectral table (qsosed) */
+  bp->rt_agn_emission =
+      parser_get_opt_param_int(params, "BlackHoles:rt_agn_emission", 0);
+  bp->rt_agn_escape_fraction = parser_get_opt_param_float(
+      params, "BlackHoles:rt_agn_escape_fraction", 1.f);
+  if (bp->rt_agn_escape_fraction < 0.f || bp->rt_agn_escape_fraction > 1.f)
+    error("BlackHoles:rt_agn_escape_fraction must be in [0, 1]");
+  bp->rt_agn_escape_fraction_model = parser_get_opt_param_int(
+      params, "BlackHoles:rt_agn_escape_fraction_model", 0);
+  if (bp->rt_agn_escape_fraction_model < 0 ||
+      bp->rt_agn_escape_fraction_model > 1)
+    error("BlackHoles:rt_agn_escape_fraction_model must be 0 or 1");
+  bp->rt_agn_max_eddington_ratio = parser_get_opt_param_float(
+      params, "BlackHoles:rt_agn_max_eddington_ratio", 1.f);
+  if (bp->rt_agn_max_eddington_ratio <= 0.f)
+    error("BlackHoles:rt_agn_max_eddington_ratio must be > 0");
+  bp->rt_agn_luminosity_floor =
+      parser_get_opt_param_double(
+          params, "BlackHoles:rt_agn_luminosity_floor_erg_s", 0.) /
+      units_cgs_conversion_factor(us, UNIT_CONV_POWER);
+  bp->rt_agn_nM = bp->rt_agn_nL = bp->rt_agn_nS = 0;
+  if (bp->rt_agn_emission) {
+    parser_get_param_string(params, "BlackHoles:rt_agn_table_path",
+                            bp->rt_agn_table_path);
+    const int hard_group = black_holes_rt_agn_read_table(bp, params);
+    if (engine_rank == 0) {
+      message(
+          "AGN RT photons on: table %s (%d x %d x %d: log10 M_BH %.2f-%.2f, "
+          "log10 L/L_Edd %.2f-%.2f, spin %.3f-%.3f; clamped outside), "
+          "luminosity capped at %.2f L_Edd, none in the ADAF state",
+          bp->rt_agn_table_path, bp->rt_agn_nM, bp->rt_agn_nL, bp->rt_agn_nS,
+          bp->rt_agn_logM[0], bp->rt_agn_logM[bp->rt_agn_nM - 1],
+          bp->rt_agn_logL[0], bp->rt_agn_logL[bp->rt_agn_nL - 1],
+          bp->rt_agn_spin[0], bp->rt_agn_spin[bp->rt_agn_nS - 1],
+          bp->rt_agn_max_eddington_ratio);
+      if (bp->rt_agn_escape_fraction_model == 1)
+        message(
+            "AGN RT escape fraction: Ricci et al. 2017 (0.15 below L/L_Edd = "
+            "10^-1.5, 0.60 above) x %.3f",
+            bp->rt_agn_escape_fraction);
+      else
+        message("AGN RT escape fraction: %.3f", bp->rt_agn_escape_fraction);
+      if (hard_group >= 0)
+        message(
+            "AGN RT photons above the HeII edge go to the AGN hard group "
+            "(photon group %d)",
+            hard_group);
+      if (bp->rt_agn_luminosity_floor > 0.)
+        message("AGN RT luminosity floor (test): %g erg/s",
+                bp->rt_agn_luminosity_floor *
+                    units_cgs_conversion_factor(us, UNIT_CONV_POWER));
+    }
+  }
+#endif
 
   /* Get derived properties */
   bp->target_neighbours = pow_dimension(bp->eta_neighbours) * kernel_norm;

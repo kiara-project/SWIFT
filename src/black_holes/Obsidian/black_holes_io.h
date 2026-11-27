@@ -489,6 +489,43 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
       "torque-fed flux factor and any redshift scaling).");
   num++;
 
+#ifdef RT_KIARA
+  list[num] = io_make_output_field(
+      "IonizingPhotonsInjected", DOUBLE, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      rt_ion_photons_injected,
+      "IonizingPhotonsInjected (1e50 photons) of the gas particles the black "
+      "hole was seeded from or swallowed (and of the black holes it merged "
+      "with), less the radiation it took over (which is injected again)");
+  num++;
+  list[num] = io_make_output_field(
+      "IonizingPhotonsAbsorbed", DOUBLE, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      rt_ion_photons_absorbed,
+      "IonizingPhotonsAbsorbed (1e50 photons) of the gas particles the black "
+      "hole was seeded from or swallowed (and of the black holes it merged "
+      "with)");
+  num++;
+  list[num] = io_make_output_field(
+      "RTAGNEnergyEmitted", DOUBLE, 1, UNIT_CONV_ENERGY, 0.f, bparts,
+      rt_agn_energy_emitted,
+      "Cumulative energy the black hole emitted as AGN RT photons (all "
+      "photon groups, after BlackHoles:rt_agn_escape_fraction)");
+  num++;
+#ifdef SWIFT_KIARA_RT_DEBUG
+  list[num] = io_make_output_field(
+      "RTDebugEnergyBudget", FLOAT, 6, UNIT_CONV_ENERGY, 0.f, bparts,
+      rt_debug_dE,
+      "Photon energy budget (as for the gas) of the gas particles the black "
+      "hole was seeded from or swallowed; the radiation it took over is "
+      "taken out of the injected column");
+  num++;
+  list[num] = io_make_output_field(
+      "RTDebugEmissionCarry", FLOAT, RT_NGROUPS, UNIT_CONV_ENERGY, 0.f,
+      bparts, rt_carry,
+      "Photon energy held by the black hole to hand to the gas");
+  num++;
+#endif
+#endif
+
   *num_fields = num;
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES

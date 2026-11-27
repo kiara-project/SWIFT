@@ -232,6 +232,13 @@ void rt_cross_sections_init(struct rt_props *restrict rt_props,
           csn[group][s] = 0.;
         }
         av_energy[group] = av_energy_FUV;
+      } else if (group == rt_props->agn_hard_group) {
+        /* AGN spectrum, see rt_props_read_agn_hard_group() */
+        for (int s = 0; s < rt_ionizing_species_count; s++) {
+          cse[group][s] = rt_props->agn_hard_cse[s];
+          csn[group][s] = rt_props->agn_hard_csn[s];
+        }
+        av_energy[group] = rt_props->agn_hard_photon_energy;
       } else {
         const int b = group - n_fuv;
         for (int s = 0; s < rt_ionizing_species_count; s++) {
@@ -498,4 +505,56 @@ double **read_Bpass_from_hdf5(char *file_name, char *dataset_name) {
   if (status < 0) error("error closing file");
 
   return Table;
+}
+
+/**
+ * @brief Read the properties of the AGN hard photon group (see
+ * rt_props.agn_hard_group) from the attributes of the AGN spectral table
+ * (BlackHoles:rt_agn_table_path, made by tools/make_kiara_rt_agn_table.py):
+ * the energy and number weighted cross sections of HI, HeI and HeII and the
+ * mean photon energy of a reference AGN spectrum over the band of the
+ * group.
+ *
+ * @param rtp The #rt_props.
+ * @param params The parsed parameters.
+ */
+void rt_props_read_agn_hard_group(struct rt_props *rtp,
+                                  struct swift_params *params) {
+
+  char path[200];
+  parser_get_param_string(params, "BlackHoles:rt_agn_table_path", path);
+  const hid_t file = H5Fopen(path, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (file < 0) error("Could not open the AGN RT table %s", path);
+
+  /* The band of the hard group: from the lower edge of the table's last
+   * group (the HeII edge) */
+  const char *names[3] = {"hard_group_cse_cm2", "hard_group_csn_cm2",
+                          "hard_group_mean_photon_energy_eV"};
+  double *dest[3] = {rtp->agn_hard_cse, rtp->agn_hard_csn,
+                     &rtp->agn_hard_photon_energy};
+  const int n[3] = {3, 3, 1};
+  for (int a = 0; a < 3; a++) {
+    if (H5Aexists(file, names[a]) <= 0)
+      error(
+          "The AGN RT table %s has no attribute %s, needed by the AGN hard "
+          "photon group (make it with tools/make_kiara_rt_agn_table.py "
+          "--add-hard-group)",
+          path, names[a]);
+    const hid_t attr = H5Aopen(file, names[a], H5P_DEFAULT);
+    const hid_t space = H5Aget_space(attr);
+    if (H5Sget_simple_extent_npoints(space) != n[a])
+      error("Attribute %s in %s has the wrong size", names[a], path);
+    H5Aread(attr, H5T_NATIVE_DOUBLE, dest[a]);
+    H5Sclose(space);
+    H5Aclose(attr);
+  }
+  H5Fclose(file);
+
+  rtp->agn_hard_photon_energy *= 1.602176634e-12; /* eV -> erg */
+  if (!(rtp->agn_hard_photon_energy > 0.))
+    error("AGN hard group: mean photon energy %g erg in %s",
+          rtp->agn_hard_photon_energy, path);
+  for (int s = 0; s < 3; s++)
+    if (!(rtp->agn_hard_cse[s] >= 0. && rtp->agn_hard_csn[s] >= 0.))
+      error("AGN hard group: negative cross section in %s", path);
 }

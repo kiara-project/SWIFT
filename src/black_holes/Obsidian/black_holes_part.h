@@ -402,6 +402,34 @@ struct bpart {
   long long ids_ngbs_force[MAX_NUM_OF_NEIGHBOURS_BLACK_HOLES];
 #endif
 
+#ifdef RT_KIARA
+  /*! KIARA-RT: radiation energy (per photon group) of the gas particles the
+   * black hole was seeded from or swallowed, and of the black holes it
+   * merged with, still to be handed to the neighbouring gas
+   * (black_holes_rt_take_radiation()) */
+  float rt_carry[RT_NGROUPS];
+
+  /*! KIARA-RT: the part of rt_carry handed to the gas in the feedback loop
+   * of the current step (set in black_holes_reset_feedback()) */
+  float rt_carry_out[RT_NGROUPS];
+
+  /*! KIARA-RT: ionizing photon counters (rt_part_data.ion_photons_injected,
+   * ion_photons_absorbed) of the gas taken in, less the radiation handed to
+   * the black hole (which is injected into the gas again) */
+  double rt_ion_photons_injected;
+  double rt_ion_photons_absorbed;
+
+  /*! KIARA-RT: cumulative energy emitted as AGN RT photons (after the
+   * escape fraction; internal units) */
+  double rt_agn_energy_emitted;
+
+#ifdef SWIFT_KIARA_RT_DEBUG
+  /*! DEBUG: photon energy budget (rt_part_data.debug_dE) of the gas taken
+   * in, so that each column can be summed over gas, stars and black holes */
+  float rt_debug_dE[6];
+#endif
+#endif
+
 } SWIFT_STRUCT_ALIGN;
 
 #endif /* SWIFT_OBSIDIAN_BLACK_HOLE_PART_H */
