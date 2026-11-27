@@ -880,7 +880,6 @@ black_holes_rt_agn_band_fractions(const struct black_holes_props *props,
     frac[g] = f;
   }
 }
-#endif
 
 /**
  * @brief KIARA-RT: the fraction of the AGN's ionizing photons that escape
@@ -912,6 +911,7 @@ black_holes_rt_agn_escape_fraction(const struct black_holes_props *props,
   const float f_cov = f_cov_high + (f_cov_low - f_cov_high) * step;
   return props->rt_agn_escape_fraction * (1.f - f_cov);
 }
+#endif /* RT_KIARA */
 
 /**
  * @brief Initialise the black hole properties from the parameter file.
