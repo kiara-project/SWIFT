@@ -504,6 +504,12 @@ INLINE static void black_holes_write_particles(const struct bpart *bparts,
       "hole was seeded from or swallowed (and of the black holes it merged "
       "with)");
   num++;
+  list[num] = io_make_output_field(
+      "RTAGNEnergyEmitted", DOUBLE, 1, UNIT_CONV_ENERGY, 0.f, bparts,
+      rt_agn_energy_emitted,
+      "Cumulative energy the black hole emitted as AGN RT photons (all "
+      "photon groups, after BlackHoles:rt_agn_escape_fraction)");
+  num++;
 #ifdef SWIFT_KIARA_RT_DEBUG
   list[num] = io_make_output_field(
       "RTDebugEnergyBudget", FLOAT, 6, UNIT_CONV_ENERGY, 0.f, bparts,

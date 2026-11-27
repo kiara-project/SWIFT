@@ -419,6 +419,10 @@ struct bpart {
   double rt_ion_photons_injected;
   double rt_ion_photons_absorbed;
 
+  /*! KIARA-RT: cumulative energy emitted as AGN RT photons (after the
+   * escape fraction; internal units) */
+  double rt_agn_energy_emitted;
+
 #ifdef SWIFT_KIARA_RT_DEBUG
   /*! DEBUG: photon energy budget (rt_part_data.debug_dE) of the gas taken
    * in, so that each column can be summed over gas, stars and black holes */
