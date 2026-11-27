@@ -17,7 +17,8 @@ Grackle library is needed, the KIARA cooling uses a built-in crackle).
 
 run.sh fetches the ICs (with ../../EAGLE_ICs/EAGLE_25_low_res/getIC.sh) and
 the Cloudy cooling table, then runs SWIFT with --cosmology --kiara. The chem5
-tables are read from ../chem5.
+tables are read from ../chem5. Snapshots are written at the scale factors in
+output_list.txt.
 
 MD5 hash of the ICs:
 62e7ec93a1b0b4c57ff0c63ad0da2028  EAGLE_L0025N0188_ICs.hdf5

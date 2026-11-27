@@ -7,7 +7,8 @@
 # and run with --cosmology --kiara (see run.sh).
 #
 # The EAGLE L0025N0188 ICs (gas particle mass 1.45e7 Msun) are close to the
-# resolution at which KIARA is calibrated (25 Mpc/h with 256^3 particles), so
+# resolution at which KIARA is calibrated (25 Mpc/h with 256^3 particles, or
+# 50 Mpc/h with 512^3), so
 # the subgrid parameters below are used unchanged.
 
 # Define some meta-data about the simulation
@@ -225,8 +226,8 @@ KIARAFeedback:
   FIRE_eta_break_Msun:                  5.2e9           #
   FIRE_eta_lower_slope:                 -0.317          # Angles-Alcazar+17: -0.317
   FIRE_eta_upper_slope:                 -0.761          # Angles-Alcazar+17: -0.761
-  wind_velocity_suppression_redshift:   -12.
-  wind_eta_suppression_redshift:        -12.
+  wind_velocity_suppression_redshift:   -11.
+  wind_eta_suppression_redshift:        -11.
   metal_dependent_vwind:                0               # 0=Off, 1=vwind boost, 2=eta boost, 3=both boost
   cold_wind_temperature_K:              8000            #
   hot_wind_temperature_K:               8000            # converted to K from erg/g released by 1 SN per ~100Mo
@@ -234,7 +235,7 @@ KIARAFeedback:
   wind_decouple_time_factor:            0.1            # fraction of Hubble time at launch to decouple (max)
   recouple_ism_density_nH_cgs:          0.1            # ISM threshold density for purposes of recoupling (cgs)
   recouple_density_factor:              0.001            # Factor below recouple_ism_density_cgs at which to recouple
-  recouple_escape_kernels:              2.               # recouple a non-jet wind still/again in ISM-density ambient gas after this many launch kernel-crossing times (0 = off)
+  recouple_escape_kernels:              3.               # recouple a non-jet wind still/again in ISM-density ambient gas after this many launch kernel-crossing times (0 = off)
   recouple_escape_length:               1                # escape length: 0 = launch kernel, 1 = initial firehose stream radius
   SNII_energy_multiplier:               1.0
   wind_energy_from_chem5:               1               # wind energy budget = chem5 SNII (incl. HN) + SNIa energy (not also thermal while launching), no metallicity boost; 0 = 1e51 erg per SN x metal_dependent_vwind boost

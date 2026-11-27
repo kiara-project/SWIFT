@@ -12,6 +12,23 @@ Shared files:
 
  - chem5/             chem5 stellar lifetime and yield tables (KIARAFeedback:tables_path)
  - getCloudyTable.sh  fetches the Cloudy table used by the cooling (KIARACooling:cloudy_table)
+ - rt_tables/         KIARA-RT tables (only needed with --with-subgrid=KIARART
+                      and --with-rt=KIARA_<N>):
+     BPASS_chab100_fuv.h5         stellar photon tables per photon group
+                                  (FUV, HI, HeI, HeII), BPASS Chabrier IMF to
+                                  100 Msun (KIARART:stellar_table_path, with
+                                  KIARART:stellar_luminosity_model: BPASS).
+                                  Groups are read by name, so the same file
+                                  serves builds with or without the FUV group.
+                                  Made with tools/make_kiara_rt_bpass_tables.py.
+     kiara_rt_agn_qsosed_v2.hdf5  AGN spectral shares per photon group, and the
+                                  AGN hard group's cross sections and mean
+                                  photon energy, from qsosed (Kubota & Done
+                                  2018), for the photon groups
+                                  [1.451e15, 3.288e15, 5.945e15, 13.157e15] Hz
+                                  (BlackHoles:rt_agn_table_path, with
+                                  BlackHoles:rt_agn_emission: 1). Made with
+                                  tools/make_kiara_rt_agn_table.py.
 
 Star particle luminosities (the Luminosities output) are only computed if
 Stars:luminosity_filename points to the EAGLE photometry tables (see
@@ -21,3 +38,5 @@ Examples:
 
  - KIARA_25/          EAGLE 25 Mpc ICs at low resolution (L0025N0188), with the
                       current KIARA calibration.
+ - KIARA_RT/          The same ICs and calibration with radiative transfer
+                      (KIARA-RT), to z=6.
