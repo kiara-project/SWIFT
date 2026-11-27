@@ -40,7 +40,10 @@ Covered: every `romeel_dev` merge (PRs #32–#59; #59 only added changelog secti
 
 ## Unreleased (on `romeel_dev`)
 
-Nothing yet.
+### Examples
+- **New example `examples/KIARA/KIARA_RT`** (18cb3917d): the KIARA_25 ICs (EAGLE L0025N0188) and calibration with KIARA-RT (4 groups: FUV, HI, HeI, HeII), to z = 6. The RT settings are those of the KIARA-RT production runs (f_reduce_c 0.1, RT CFL 0.6, ionizing escape fraction 0.4, G0 from the RT FUV group, no uniform UV background, no particle splitting); AGN radiation is included but off (`BlackHoles:rt_agn_emission: 0`).
+- **`examples/KIARA/KIARA_25/kiara_25.yml` synced with the current calibration** (s50n512, 18cb3917d): `KIARAFeedback:recouple_escape_kernels` 2 → 3 and the wind speed and mass-loading suppression redshifts −12 → −11. The example's `output_list.txt` was never committed (`.gitignore` excludes `examples/*/*/*.txt`), so KIARA_25 could not run as shipped; it is now included.
+- **KIARA-RT tables shipped in `examples/KIARA/rt_tables/`** (18cb3917d), as the chem5 tables are: the BPASS stellar photon tables with the FUV group (`BPASS_chab100_fuv.h5`, 23 KB; for `KIARART:stellar_table_path`) and the AGN qsosed table with the hard group (`kiara_rt_agn_qsosed_v2.hdf5`, 300 KB; for `BlackHoles:rt_agn_table_path`). `tools/make_kiara_rt_bpass_tables.py` now records only the file name of the source SED grid, not its full path.
 
 ---
 
