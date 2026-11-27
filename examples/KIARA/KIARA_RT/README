@@ -1,0 +1,40 @@
+KIARA with radiative transfer (KIARA-RT) in the 25 Mpc EAGLE volume at 8x
+lower resolution than EAGLE (L0025N0188: 188^3 dark matter particles, the
+same number of gas particles generated at start-up), from z=127 to the end
+of reionization at z=6.
+
+KIARA-RT follows the M1 radiation transport of the stellar photons in 4
+groups: FUV (6-13.6 eV, Habing band), HI, HeI and HeII ionizing. The
+radiation is coupled to the KIARA subgrid ISM and the crackle chemistry: it
+photoionizes and heats the gas, the FUV field sets G0 (and so H2
+photodissociation and dust heating), and there is no uniform UV background.
+
+kiara_rt_25.yml uses the subgrid physics of the KIARA_25 example (the
+current KIARA calibration) and the RT settings of the KIARA-RT production
+runs: reduced speed of light 0.1 c, RT CFL 0.6, ionizing escape fraction 0.4
+from the star particles. Particle splitting is off, as KIARA-RT does not
+support it.
+
+Black holes can also emit RT photons (AGN radiation, from a qsosed spectral
+table): set BlackHoles:rt_agn_emission to 1. With the default
+rt_agn_escape_fraction_model 1, the escape fraction from the nucleus follows
+the unobscured fraction of Ricci et al. 2017.
+
+The code should be configured with
+
+  --with-subgrid=KIARART --with-hydro=magma2 --with-kernel=wendland-C2
+  --with-rt=KIARA_4 --with-rt-riemann-solver=GLF
+
+(plus any compiler, library or MPI options for your system).
+
+run.sh fetches the ICs (with ../../EAGLE_ICs/EAGLE_25_low_res/getIC.sh) and
+the Cloudy cooling table, then runs SWIFT with --cosmology --kiara
+--radiation. The chem5 tables are read from ../chem5 and the RT tables
+(BPASS stellar photons, AGN spectra) from ../rt_tables. Snapshots are
+written at the scale factors in output_list.txt (z=15 to 6).
+
+The RT makes the run considerably more expensive than KIARA_25: the
+radiation is sub-cycled with time steps set by the reduced speed of light.
+
+MD5 hash of the ICs:
+62e7ec93a1b0b4c57ff0c63ad0da2028  EAGLE_L0025N0188_ICs.hdf5

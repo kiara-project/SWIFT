@@ -35,6 +35,7 @@ Usage:
 """
 
 import argparse
+import os
 
 import h5py
 import numpy as np
@@ -147,7 +148,7 @@ def main():
     with h5py.File(args.out, "w") as f:
         for name in ("HI", "HeI", "HeII", "FUV"):
             write_table(f, name, tables[name])
-        f.attrs["source_sed"] = np.bytes_(args.sed)
+        f.attrs["source_sed"] = np.bytes_(os.path.basename(args.sed))
         f.attrs["FUV_band_Angstrom"] = BANDS["FUV"]
         f.attrs["LW_band_Angstrom"] = LW_BAND
         f.attrs["FUV_LW_photon_fraction_0_100Myr"] = f_lw
