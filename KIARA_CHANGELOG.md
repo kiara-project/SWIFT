@@ -9,7 +9,7 @@ Covered: every `romeel_dev` merge (PRs #32–#59; #59 only added changelog secti
 | PR | date | merge | theme |
 |---|---|---|---|
 | [—](#unreleased) | — | — | Unreleased changes on `romeel_dev` |
-| [direct](#merge-2026-11-27) | 2026-11-27 | — | KIARA-RT AGN radiation and hard photon group, vectorised transport, ionizing photon counters, RT photoheating/BH/MPI fixes, upstream sync |
+| [direct](#merge-2026-11-27) | 2026-11-27 | a3a4aaf1b | KIARA-RT AGN radiation and hard photon group, vectorised transport, ionizing photon counters, RT photoheating/BH/MPI fixes, upstream sync |
 | [#58](#pr-58) | 2026-11-25 | 4d5e4f7f9 | KIARA_25 example synced with the calibration; example parse fix |
 | [#57](#pr-57) | 2026-11-25 | 773edb4b9 | Low-metallicity SF options (PopIII, KMT, cosmic rays), HeII reionization switch, stream-radius recoupling, f_gas jet speed, upstream sort fix |
 | [#56](#pr-56) | 2026-11-23 | 605dc11f6 | KIARA changelog, configure.ac and parameter clean-up |
@@ -46,7 +46,7 @@ Nothing yet.
 
 <a id="merge-2026-11-27"></a>
 
-## Direct merge — KIARA-RT AGN radiation and hard photon group, vectorised transport, ionizing photon counters, RT fixes, upstream sync (2026-11-27, merge —)
+## Direct merge — KIARA-RT AGN radiation and hard photon group, vectorised transport, ionizing photon counters, RT fixes, upstream sync (2026-11-27, merge a3a4aaf1b)
 
 Obsidian black holes can now emit KIARA-RT photons, optionally into a dedicated AGN hard group (merge of `rt_agn`, b70a9c5e5); this is off by default. KIARA-RT runs about 1.2× faster: the radiation transport interaction is vectorised. Gas and stars now count the ionizing photons they receive and absorb, so escape fractions can be measured from snapshots (merge of `rt_photcons`, 913ef222e). Fixes: RT photoheating in the uncoupled thermochemistry, radiation lost when gas turns into or is swallowed by a black hole, and radiation energy conservation across MPI ranks. `KIARART:rt_with_galaxy_subgrid` now defaults to 1. Also merges upstream SWIFT master. This merge went directly into `master` rather than through a PR.
 
