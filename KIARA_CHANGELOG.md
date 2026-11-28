@@ -45,6 +45,9 @@ Covered: every `romeel_dev` merge (PRs #32–#59; #59 only added changelog secti
 - **`examples/KIARA/KIARA_25/kiara_25.yml` synced with the current calibration** (s50n512, 18cb3917d): `KIARAFeedback:recouple_escape_kernels` 2 → 3 and the wind speed and mass-loading suppression redshifts −12 → −11. The example's `output_list.txt` was never committed (`.gitignore` excludes `examples/*/*/*.txt`), so KIARA_25 could not run as shipped; it is now included.
 - **KIARA-RT tables shipped in `examples/KIARA/rt_tables/`** (18cb3917d), as the chem5 tables are: the BPASS stellar photon tables with the FUV group (`BPASS_chab100_fuv.h5`, 23 KB; for `KIARART:stellar_table_path`) and the AGN qsosed table with the hard group (`kiara_rt_agn_qsosed_v2.hdf5`, 300 KB; for `BlackHoles:rt_agn_table_path`). `tools/make_kiara_rt_bpass_tables.py` now records only the file name of the source SED grid, not its full path.
 
+### Outputs
+- **Dust size-bin metadata** (8f04bbfe0). The `DustCarbonaceousBinMasses`/`DustSilicateBinMasses` descriptions said the bin radii are in the CoolingScheme group; they are in `SubgridScheme` (`KIARA dust grain-size bin radii [micron]`). A new `SubgridScheme` attribute, `KIARA dust grain-size bin representation`, states that each bin holds grains of a single radius (a pivot, not a range), with grains of other radii split between the two neighbouring pivots conserving mass and number.
+
 ---
 
 <a id="merge-2026-11-27"></a>
