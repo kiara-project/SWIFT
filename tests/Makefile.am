@@ -42,7 +42,7 @@ TESTS = testGreetings testMaths testReading.sh testKernel testKernelAccuracy \
         testLog testDistance testTimeline testZoomInit.sh testGetZoomIJKFunc.sh \
         testZoomRegrid.sh testSpaceSplit testZoomVoidTree.sh testZoomGravityDown testMeshGravityRebuildCheck \
         testKIARADustGrid testKIARADustSources testKIARADustEvolution \
-        testKIARADustCooling testSortShiftBound
+        testKIARADustCooling testSortShiftBound testCompression
         # testMatrixInversion
 
 # List of test programs to compile
@@ -61,10 +61,13 @@ check_PROGRAMS = testGreetings testReading testTimeIntegration testKernelLongGra
 		 testNeutrinoFermiDirac testLog testTimeline testZoomInit testGetZoomIJKFunc \
 		 testZoomRegrid testSpaceSplit testZoomVoidTree testZoomGravityDown \
 		 testKIARADustGrid testKIARADustSources testKIARADustEvolution \
-		 testKIARADustCooling testSortShiftBound
+		 testKIARADustCooling testSortShiftBound testCompression
 
 # Rebuild tests when SWIFT is updated.
 $(check_PROGRAMS): ../src/.libs/libswiftsim.a
+
+# Files written by the tests that are not removed when a test fails
+CLEANFILES = testCompression.hdf5
 
 # Sources for the individual programs
 testGreetings_SOURCES = testGreetings.c
@@ -86,6 +89,8 @@ testRandomCone_SOURCES = testRandomCone.c
 testReading_SOURCES = testReading.c
 
 testSelectOutput_SOURCES = testSelectOutput.c
+
+testCompression_SOURCES = testCompression.c
 
 testCosmologyAccuracy_SOURCES = testCosmologyAccuracy.c
 

@@ -138,6 +138,9 @@ tests/test_nonsym_force_2_vec.dat
 tests/potential.dat
 tests/testGreetings
 tests/testSelectOutput
+tests/testCompression
+tests/testCompression.hdf5
+tests/testSortShiftBound
 tests/testReading
 tests/testSingle
 tests/testTimeIntegration
