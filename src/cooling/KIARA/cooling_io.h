@@ -60,6 +60,11 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
                        KIARA_DUST_N_BINS);
   io_write_attribute(h_grp, "KIARA dust grain-size bin radii [micron]", DOUBLE,
                      cooling->dust_grain_sizes, KIARA_DUST_N_BINS);
+  io_write_attribute_s(
+      h_grp, "KIARA dust grain-size bin representation",
+      "Each bin holds grains of a single radius (the bin radius, a pivot), "
+      "not a range; grains of other radii are split between the two "
+      "neighbouring pivots conserving mass and number");
   io_write_attribute_s(h_grp, "KIARA dust initial source",
                        cooling->dust_initial_source ? "AGB" : "SNII");
   io_write_attribute_i(h_grp, "KIARA dust coagulation",
@@ -383,14 +388,14 @@ __attribute__((always_inline)) INLINE static int cooling_write_particles(
       "DustCarbonaceousBinMasses", FLOAT, KIARA_DUST_N_BINS, UNIT_CONV_MASS,
       0.f, parts, xparts, convert_part_carbonaceous_dust_bin_masses,
       "Carbonaceous dust mass in each grain-size bin; the bin radii are in "
-      "the CoolingScheme metadata.");
+      "the SubgridScheme metadata.");
   num++;
 
   list[num] = io_make_output_field_convert_part(
       "DustSilicateBinMasses", FLOAT, KIARA_DUST_N_BINS, UNIT_CONV_MASS, 0.f,
       parts, xparts, convert_part_silicate_dust_bin_masses,
       "Silicate dust mass in each grain-size bin; the bin radii are in the "
-      "CoolingScheme metadata.");
+      "SubgridScheme metadata.");
   num++;
 #endif
 
