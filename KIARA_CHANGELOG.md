@@ -45,6 +45,12 @@ Covered: every `romeel_dev` merge (PRs #32–#59; #59 only added changelog secti
 - **`examples/KIARA/KIARA_25/kiara_25.yml` synced with the current calibration** (s50n512, 18cb3917d): `KIARAFeedback:recouple_escape_kernels` 2 → 3 and the wind speed and mass-loading suppression redshifts −12 → −11. The example's `output_list.txt` was never committed (`.gitignore` excludes `examples/*/*/*.txt`), so KIARA_25 could not run as shipped; it is now included.
 - **KIARA-RT tables shipped in `examples/KIARA/rt_tables/`** (18cb3917d), as the chem5 tables are: the BPASS stellar photon tables with the FUV group (`BPASS_chab100_fuv.h5`, 23 KB; for `KIARART:stellar_table_path`) and the AGN qsosed table with the hard group (`kiara_rt_agn_qsosed_v2.hdf5`, 300 KB; for `BlackHoles:rt_agn_table_path`). `tools/make_kiara_rt_bpass_tables.py` now records only the file name of the source SED grid, not its full path.
 
+### Upstream
+- **Upstream SWIFT master merged** (a546f32c9): force checks use the maximal softening, lossy Nbit compression keeps the sign of the data (new `testCompression`), and minor BH fixes for EAGLE, GEAR and SPIN_JET.
+
+### Bug fixes
+- **Obsidian BH merger velocity threshold used comoving distances** (ported from upstream ffd00b355). The escape (or circular) velocity was computed at the comoving separation (or smoothing length) but compared with the physical peculiar velocity, so v² was too small by a factor a: BH pairs had to be 3× slower in v² at z = 2 to merge. It now uses physical distances; this makes mergers easier at high redshift. The remnant velocity is now explicitly the pre-merger centre-of-mass velocity (no change in Obsidian, where the summed mass was already used).
+
 ### Outputs
 - **Dust size-bin metadata** (8f04bbfe0). The `DustCarbonaceousBinMasses`/`DustSilicateBinMasses` descriptions said the bin radii are in the CoolingScheme group; they are in `SubgridScheme` (`KIARA dust grain-size bin radii [micron]`). A new `SubgridScheme` attribute, `KIARA dust grain-size bin representation`, states that each bin holds grains of a single radius (a pivot, not a range), with grains of other radii split between the two neighbouring pivots conserving mass and number.
 
